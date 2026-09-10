@@ -1,0 +1,160 @@
+# RapidRAW MCP
+
+A local, nondestructive interface to RapidRAW's native processing engine. It supports an agent's full editing loop: inspect a RAW photo, make reversible global and selective edits, inspect previews and native detail, manage models/presets/LUTs, save editable state and verify delivery exports. It does not contain a separate renderer or invoke the legacy export CLI.
+
+The MCP server uses the official TypeScript SDK v2 and stdio. One connection owns each workspace at a time through an exclusive native lock; use separate workspaces for simultaneous agents. It owns one persistent native bridge process; image processing and validation remain in Rust. The `mcp/` package and `src-tauri/src/mcp_bridge/` module are isolated so normal upstream development can be merged with a small integration surface. Build the fork with the `mcp` Cargo feature; an unmodified installed RapidRAW app does not provide this bridge.
+
+## Build and connect
+
+Requirements: Node.js 22+, Rust 1.98 or later, this RapidRAW checkout's native system dependencies, and a GPU adapter supported by the renderer. The pinned Rust toolchain below leaves the machine's default unchanged. From the repository root:
+
+```sh
+rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
+npm ci
+npm run build
+cargo +1.98.1 build --release --features mcp --manifest-path src-tauri/Cargo.toml --locked
+npm ci --prefix mcp
+npm run build --prefix mcp
+```
+
+Configure your MCP host with absolute paths (replace the examples with your checkout and desired output folder):
+
+```json
+{
+  "mcpServers": {
+    "rapidraw": {
+      "command": "node",
+      "args": [
+        "/absolute/RapidRAW/mcp/dist/index.js",
+        "--binary", "/absolute/RapidRAW/src-tauri/target/release/RapidRAW",
+        "--workspace", "/absolute/rapidraw-photo-jobs"
+      ]
+    }
+  }
+}
+```
+
+Use the actual Cargo output path if `CARGO_TARGET_DIR` is configured. `RAPIDRAW_BINARY` and `RAPIDRAW_WORKSPACE` are equivalent environment variables. `--timeout-ms`/`RAPIDRAW_TIMEOUT_MS` sets the default native-operation timeout (300000 ms). Model installation, merge and batch export have a 30-minute maximum; configure the host's tool timeout accordingly. Diagnostics go to stderr; stdout contains only MCP protocol traffic.
+
+## Process-local engine settings
+
+Optional `workspace/engine-settings.json` overrides bridge defaults using the native **camelCase** keys returned by `rapidraw_get_engine_settings`. A partial object is merged with defaults; unknown keys are rejected. Restart the MCP connection after changing this file. The bridge does not migrate or write the installed GUI application's preferences.
+
+For an explicitly selected generative retouch provider, for example:
+
+```json
+{
+  "aiProvider": "ai-connector",
+  "aiConnectorAddress": "127.0.0.1:7860"
+}
+```
+
+Use the address of the connector you actually run, in `host:port` form. Alternatively set `aiProvider` to `cloud` and pass a request-scoped `token` to `rapidraw_retouch` with `mode: "generative"`. Generative requests fail with `GENERATION_NOT_CONFIGURED` if no provider is configured; local editing, masking and inpainting do not require this remote setup. Image content is sent only when generative mode is explicitly selected. Do not put provider tokens in the settings file.
+
+## Capabilities
+
+Every tool starts with `rapidraw_`; the table shows the suffixes. The engine's live `capabilities` response is authoritative for availability and schemas.
+
+| Area | Tools |
+| --- | --- |
+| Discovery and state | `capabilities`, `list_images`, `open_photo`, `list_sessions`, `get_session`, `close_session` |
+| Editing and review | `set_adjustments`, `render`, `analyze`, `auto_adjust` |
+| Selective edits | `mask_create`, `mask_update`, `mask_remove`, `mask_generate`, `generate_depth` |
+| Detail and corrections | `retouch`, `denoise`, `lens_profile`, `negative_convert` |
+| History and persistence | `history`, `undo`, `redo`, `save_session`, `load_recipe`, `save_recipe` |
+| Presets and assets | `list_presets`, `apply_preset`, `list_luts`, `apply_lut`, `models`, `install_model` |
+| Delivery and composition | `export`, `batch_export`, `merge` |
+| Metadata and configuration | `get_metadata`, `set_metadata`, `get_engine_settings` |
+
+Resources:
+
+- `rapidraw://workflow`: a concrete editing/review/delivery workflow.
+- `rapidraw://adjustment-schema`: current native adjustment and mask schemas, units and capabilities.
+- `rapidraw://sessions/{session_id}`: current complete editing state.
+
+The `pro_photo_edit` prompt accepts `path` and optional `intent`. It gives the host's model a complete workflow; the server does not itself run or pay for a language model. Professional results require the agent to inspect the returned images and iterate appropriately.
+
+## Example editing loop
+
+Call `rapidraw_capabilities`, read the schema resource, then:
+
+```json
+{"tool":"rapidraw_open_photo","arguments":{"path":"/photos/example.cr3"}}
+{"tool":"rapidraw_render","arguments":{"session_id":"RETURNED_ID","original":true,"long_edge":1600}}
+{"tool":"rapidraw_set_adjustments","arguments":{"session_id":"RETURNED_ID","expected_revision":0,"patch":{"exposure":0.25,"highlights":-18,"shadows":12}}}
+{"tool":"rapidraw_render","arguments":{"session_id":"RETURNED_ID","long_edge":1600}}
+{"tool":"rapidraw_analyze","arguments":{"session_id":"RETURNED_ID","histogram":true,"scopes":true}}
+```
+
+Use the actual returned revision, not the illustrative `0` above. For native detail review, first inspect rendered dimensions, then call `render` with an integer pixel `region`; omitting `long_edge` preserves native 1:1 detail. **Render/analyze regions use full-resolution rendered coordinates after user crop and geometry. Mask geometry and AI subject regions use oriented source coordinates before user crop.** Measure and transform preview coordinates explicitly. `mask_id` renders a grayscale mask with coverage statistics for edge review.
+
+Selective editing examples:
+
+```json
+{"tool":"rapidraw_mask_create","arguments":{"session_id":"RETURNED_ID","type":"radial","name":"Subject lift","parameters":{"centerX":2600,"centerY":1900,"radiusX":1000,"radiusY":1600,"rotation":-12,"feather":0.8},"adjustments":{"exposure":0.18,"shadows":8}}}
+{"tool":"rapidraw_mask_generate","arguments":{"session_id":"RETURNED_ID","kind":"sky","name":"Sky control","adjustments":{"highlights":-12}}}
+{"tool":"rapidraw_mask_update","arguments":{"session_id":"RETURNED_ID","mask_id":"RETURNED_MASK_ID","patch":{"opacity":75}}}
+```
+
+Coordinates above are illustrative and must match the actual photo. Inspect `models` before AI operations and deliberately call `install_model` for missing assets. Local masks/inpaint/denoise can need substantial model downloads. Generative retouch is an explicit remote mode using the configured provider; it sends image content and requires the caller's credentials. The server does not request or log tokens itself.
+
+`denoise` accepts `method: "ai"` (default) or `"bm3d"` and blends its result with the pristine source at the requested intensity; intensity zero leaves the session unchanged. A nonzero result returns a new `session_id` with the existing adjustments inherited, so continue with that returned session. For RAW input, the derived linear TIFF retains its rendering interpretation in the saved MCP session. Reopening that TIFF directly in the GUI cannot recover the same interpretation from `.rrdata` alone; use MCP export for a portable display image. Original RAW working copies and their saved sidecars can be continued in the GUI.
+
+Save and deliver after visual review:
+
+```json
+{"tool":"rapidraw_save_session","arguments":{"session_id":"RETURNED_ID"}}
+{"tool":"rapidraw_save_recipe","arguments":{"session_id":"RETURNED_ID","path":"/absolute/rapidraw-photo-jobs/recipes/final.json"}}
+{"tool":"rapidraw_export","arguments":{"session_id":"RETURNED_ID","path":"/absolute/rapidraw-photo-jobs/exports/master.tiff","format":"tiff","bit_depth":16}}
+{"tool":"rapidraw_export","arguments":{"session_id":"RETURNED_ID","path":"/absolute/rapidraw-photo-jobs/exports/delivery.jpg","format":"jpeg","quality":92,"long_edge":2400}}
+```
+
+`long_edge` is a convenience maximum-long-edge resize. For other delivery targets use `resize: {"mode":"shortEdge","value":1080}` (or `width`, `height`, `longEdge`). Enlargement is disabled by default; `dont_enlarge: false` explicitly permits it. Supply either `long_edge` or `resize`, never both. These options also work in `batch_export.options`.
+
+Inspect the exported image and returned output metadata. Supported formats depend on the native engine build. A successful preview or export call alone does not prove a professional-quality edit. Batch outputs need per-item review.
+
+## Preservation and error behavior
+
+Source images and their sidecars are read-only to the workflow. `open_photo` creates an isolated working copy under `workspace/sessions/<id>`; edits, retouch intermediates and native `.rrdata` state stay with that copy. Exports must remain under `workspace/exports`, and recipes under `workspace/recipes`; relative output paths resolve inside their respective category. Exporting over a source is prohibited, and replacing an existing export requires `overwrite: true`. Recipe saves never overwrite an existing file; choose a new recipe path or revision. GPS stripping defaults on. Metadata edits affect the isolated session and its exports.
+
+Installed presets containing explicitly disabled legacy negative-conversion controls are migrated with a warning naming the removed obsolete fields. Active legacy negative conversion is rejected with guidance to use `negative_convert`; unrelated unknown preset keys remain errors.
+
+Tool inputs reject unknown top-level fields. Native validation checks the actual adjustment/mask records against RapidRAW's schemas, so a misspelled adjustment cannot silently become a no-op. Mutations accept `expected_revision` to reject stale changes. Success returns `structuredContent`; previews also return native MCP image blocks without repeating their base64 in the JSON/text result. Engine failures return `isError: true` with a stable code and actionable message.
+
+Native requests are serialized, and the server never automatically retries a mutation. A timeout, crash, protocol mismatch or active cancellation terminates or invalidates the bridge; reconnect and inspect saved state before retrying. A request cancelled while queued is skipped without invalidating the engine. Closing the MCP connection closes stdin and then terminates an unresponsive native child. Save sessions at meaningful checkpoints for crash recovery.
+
+The MCP process runs with your local account's filesystem permissions. Use it only with trusted local hosts. It is stdio-only: no network listener or authentication service is installed.
+
+## Verification
+
+See [the verification report](VERIFICATION.md) for the checks run on this fork, their evidence and remaining limitations. Reproduction commands follow.
+
+```sh
+npm test --prefix mcp
+```
+
+These tests use the real official MCP client and an intentionally fake native subprocess only to verify protocol transport, schemas, native image blocks, error propagation, serialization, cancellation and subprocess lifecycle. A separate compatibility test uses the official SDK v1.30 client and its MCP 2025 initialize handshake to verify discovery, tool/image results, resources and prompts against this v2 server. These tests do not claim image-processing correctness or prove a particular host configuration is installed.
+
+For real-engine verification after building the fork:
+
+```sh
+RAPIDRAW_BINARY=/absolute/RapidRAW/src-tauri/target/release/RapidRAW \
+RAPIDRAW_TEST_IMAGE=/absolute/photos/example.cr3 \
+RAPIDRAW_WORKSPACE=/absolute/rapidraw-photo-jobs/e2e \
+npm run test:engine --prefix mcp
+```
+
+Set `RAPIDRAW_TEST_IMAGE_2` for a second sample, or `RAPIDRAW_TEST_IMAGES` to a JSON array of source paths. The real test opens each source, renders original/edited/detail/mask images, verifies an edit changes rendered bytes, checks stale/invalid mutations, exercises history, persists metadata/recipe/session, exports and checks source and overwrite protections. It restarts the process and verifies saved state and rendered pixels survive, checks partial batch failure is reported as an MCP error, decodes the actual TIFF sample data to reject expanded 8-bit output, and verifies source and original-sidecar SHA-256 before and after. It writes structured evidence plus review images to the workspace. Optional AI models, external generative services, every RAW camera, merge geometry and artistic quality require additional explicit evaluations; they are not implied by the transport suite.
+
+SDK references: [official v2 server documentation](https://ts.sdk.modelcontextprotocol.io/v2/), [TypeScript SDK repository](https://github.com/modelcontextprotocol/typescript-sdk).
+
+The delivery/asset acceptance script uses a small native JPEG export (300–2048 pixels per dimension) to cover automatic adjustments and undo, oriented crop/ROI, recipe reload, an installed preset if available, local point-curve creation/update/removal with actual pixel comparisons, high-precision CUBE output, session-owned LUT files across source moves and restart, all resize modes, watermark pixels, selective-mask exports, six raster formats and independent metadata inspection:
+
+```sh
+RAPIDRAW_BINARY=/absolute/RapidRAW/src-tauri/target/release/RapidRAW \
+RAPIDRAW_TEST_IMAGE=/absolute/native-small-export.jpg \
+RAPIDRAW_WORKSPACE=/absolute/separate-asset-workspace \
+npm run test:assets --prefix mcp
+```
+
+ImageMagick (`magick`, or `RAPIDRAW_MAGICK`) supplies an independent metadata/dimension inspection and watermark pixel comparison for this acceptance test. Installed presets and the sample source are read-only. If no installed preset exists, that single case is explicitly recorded as skipped. JSONL records capture every operation and a final summary records both verified checks and any external-decoder limitations.

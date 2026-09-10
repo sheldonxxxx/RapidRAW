@@ -11,6 +11,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = []
+mcp = []
 tethering = ["dep:gphoto2"]
 
 [dependencies]

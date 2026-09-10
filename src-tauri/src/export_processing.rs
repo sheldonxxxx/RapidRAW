@@ -174,7 +174,7 @@ fn apply_watermark(
     Ok(())
 }
 
-fn calculate_resize_target(
+pub(crate) fn calculate_resize_target(
     current_w: u32,
     current_h: u32,
     resize_opts: &ResizeOptions,
@@ -270,7 +270,7 @@ fn relative_export_dir_for_preserved_folders(
         })
 }
 
-fn apply_export_resize_and_watermark(
+pub(crate) fn apply_export_resize_and_watermark(
     mut image: DynamicImage,
     export_settings: &ExportSettings,
 ) -> Result<DynamicImage, String> {
@@ -593,7 +593,7 @@ fn encode_grayscale_to_png(bitmap: &GrayImage) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
-fn encode_image_to_bytes(
+pub(crate) fn encode_image_to_bytes(
     image: &DynamicImage,
     output_format: &str,
     jpeg_quality: u8,
@@ -803,13 +803,56 @@ fn export_masks_for_image(
     Ok(())
 }
 
-fn export_adjustments_as_lut(
+pub(crate) fn export_adjustments_as_lut(
     js_adjustments: &Value,
     source_path_str: &str,
     context: &Arc<GpuContext>,
     state: &tauri::State<AppState>,
     app_handle: &tauri::AppHandle,
     cancellation_token: &AtomicBool,
+) -> Result<Vec<u8>, String> {
+    export_adjustments_as_lut_inner(
+        js_adjustments,
+        source_path_str,
+        context,
+        state,
+        app_handle,
+        cancellation_token,
+        false,
+    )
+}
+
+/// Opt-in automation export. Shares LUT semantics with the UI helper while
+/// retaining precision through identity sampling, GPU processing and serialization.
+#[cfg(feature = "mcp")]
+pub(crate) fn export_adjustments_as_lut_high_precision(
+    js_adjustments: &Value,
+    source_path_str: &str,
+    context: &Arc<GpuContext>,
+    state: &tauri::State<AppState>,
+    app_handle: &tauri::AppHandle,
+    cancellation_token: &AtomicBool,
+) -> Result<Vec<u8>, String> {
+    export_adjustments_as_lut_inner(
+        js_adjustments,
+        source_path_str,
+        context,
+        state,
+        app_handle,
+        cancellation_token,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn export_adjustments_as_lut_inner(
+    js_adjustments: &Value,
+    source_path_str: &str,
+    context: &Arc<GpuContext>,
+    state: &tauri::State<AppState>,
+    app_handle: &tauri::AppHandle,
+    cancellation_token: &AtomicBool,
+    high_precision: bool,
 ) -> Result<Vec<u8>, String> {
     ensure_export_not_cancelled(cancellation_token)?;
     let lut_size = 33;
@@ -835,22 +878,44 @@ fn export_adjustments_as_lut(
     all_adjustments.global.chromatic_aberration_blue_yellow = 0.0;
 
     let lut_path = js_adjustments["lutPath"].as_str();
-    let lut = lut_path.and_then(|p| get_or_load_lut(state, p).ok());
+    let lut = if high_precision {
+        lut_path
+            .filter(|p| !p.is_empty())
+            .map(|p| get_or_load_lut(state, p))
+            .transpose()?
+    } else {
+        lut_path.and_then(|p| get_or_load_lut(state, p).ok())
+    };
     let unique_hash = calculate_full_job_hash(source_path_str, js_adjustments);
 
-    let processed_lut = process_and_get_dynamic_image(
-        context,
-        state,
-        &identity_image,
-        unique_hash,
-        RenderRequest {
-            adjustments: all_adjustments,
-            mask_bitmaps: &[],
-            lut,
-            roi: None,
-        },
-        "export_lut",
-    )?;
+    let processed_lut = if high_precision {
+        // A cube describes a global color transform; it cannot contain masks.
+        all_adjustments.mask_count = 0;
+        crate::gpu_processing::process_and_get_dynamic_image_high_precision(
+            context,
+            &identity_image,
+            RenderRequest {
+                adjustments: all_adjustments,
+                mask_bitmaps: &[],
+                lut,
+                roi: None,
+            },
+        )?
+    } else {
+        process_and_get_dynamic_image(
+            context,
+            state,
+            &identity_image,
+            unique_hash,
+            RenderRequest {
+                adjustments: all_adjustments,
+                mask_bitmaps: &[],
+                lut,
+                roi: None,
+            },
+            "export_lut",
+        )?
+    };
     ensure_export_not_cancelled(cancellation_token)?;
 
     let cube_lut = convert_image_to_cube_lut(&processed_lut, lut_size)?;

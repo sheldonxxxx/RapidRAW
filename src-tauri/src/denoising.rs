@@ -294,7 +294,96 @@ fn run_bm3d(
     Ok(DynamicImage::ImageRgb32F(out_img_buffer))
 }
 
-fn denoise_image(
+/// Denoise already-decoded source pixels without baking display tone or edits.
+/// This opt-in path is used by the MCP bridge; the UI preview path below keeps
+/// its existing behavior. Both native filters have bounded output, so preserve
+/// HDR/negative headroom with one shared, reversible RGB normalization.
+#[cfg(feature = "mcp")]
+pub(crate) fn denoise_source_image(
+    source: &DynamicImage,
+    strength: f32,
+    method: &str,
+    app_handle: &AppHandle,
+    ai_session: Option<Arc<Mutex<ort::session::Session>>>,
+) -> Result<(DynamicImage, (f32, f32)), String> {
+    if !strength.is_finite() || !(0.0..=1.0).contains(&strength) {
+        return Err("Denoise strength must be finite and within 0..1".into());
+    }
+    if strength == 0.0 {
+        return Ok((source.clone(), (0.0, 1.0)));
+    }
+    let original = source.to_rgb32f();
+    let (normalized, range) = normalize_denoise_source(&original)?;
+    let filtered = match method {
+        "ai" => {
+            let session = ai_session.ok_or("AI Session not provided")?;
+            // The native AI argument selects tile overlap, not noise strength.
+            // Keep balanced inference quality fixed; strength blends pixels.
+            crate::ai_processing::run_ai_denoise(&normalized, 0.5, &session, app_handle)
+                .map_err(|e| e.to_string())?
+        }
+        "bm3d" => run_bm3d(&normalized, strength, app_handle)?,
+        _ => return Err("Denoise method must be ai or bm3d".into()),
+    };
+    let output = restore_denoise_source(&original, &filtered.to_rgb32f(), range, strength)?;
+    Ok((DynamicImage::ImageRgb32F(output), range))
+}
+
+#[cfg(any(feature = "mcp", test))]
+fn normalize_denoise_source(source: &Rgb32FImage) -> Result<(Rgb32FImage, (f32, f32)), String> {
+    let mut lower = 0.0_f32;
+    let mut upper = 1.0_f32;
+    for &value in source.as_raw() {
+        if !value.is_finite() {
+            return Err("Source pixels contain nonfinite values".into());
+        }
+        lower = lower.min(value);
+        upper = upper.max(value);
+    }
+    let span = upper - lower;
+    if !span.is_finite() {
+        return Err("Source dynamic range exceeds supported float precision".into());
+    }
+    let normalized = Rgb32FImage::from_fn(source.width(), source.height(), |x, y| {
+        Rgb(std::array::from_fn(|channel| {
+            (source.get_pixel(x, y)[channel] - lower) / span
+        }))
+    });
+    Ok((normalized, (lower, upper)))
+}
+
+#[cfg(any(feature = "mcp", test))]
+fn restore_denoise_source(
+    original: &Rgb32FImage,
+    filtered: &Rgb32FImage,
+    range: (f32, f32),
+    strength: f32,
+) -> Result<Rgb32FImage, String> {
+    if strength == 0.0 {
+        return Ok(original.clone());
+    }
+    if filtered.dimensions() != original.dimensions() {
+        return Err("Denoiser returned different source dimensions".into());
+    }
+    if filtered.as_raw().iter().any(|value| !value.is_finite()) {
+        return Err("Denoiser returned nonfinite pixels".into());
+    }
+    let span = range.1 - range.0;
+    Ok(Rgb32FImage::from_fn(
+        original.width(),
+        original.height(),
+        |x, y| {
+            let source = original.get_pixel(x, y);
+            let denoised = filtered.get_pixel(x, y);
+            Rgb(std::array::from_fn(|channel| {
+                let restored = denoised[channel] * span + range.0;
+                source[channel] + strength * (restored - source[channel])
+            }))
+        },
+    ))
+}
+
+pub(crate) fn denoise_image(
     path_str: String,
     intensity: f32,
     method: String,
@@ -1016,4 +1105,49 @@ fn gaussian_blur_1ch(data: &[f32], width: usize, height: usize, sigma: f32) -> V
     }
 
     out
+}
+
+#[cfg(test)]
+mod source_domain_tests {
+    use super::*;
+
+    #[test]
+    fn source_normalization_preserves_linear_midtones_and_hdr_headroom() {
+        let source = Rgb32FImage::from_raw(2, 1, vec![-0.1, 0.18, 1.7, 0.2, 0.5, 0.9]).unwrap();
+        let (normalized, range) = normalize_denoise_source(&source).unwrap();
+        assert_eq!(range, (-0.1, 1.7));
+        assert!(normalized.as_raw().iter().all(|v| (0.0..=1.0).contains(v)));
+        let restored = restore_denoise_source(&source, &normalized, range, 1.0).unwrap();
+        for (actual, expected) in restored.as_raw().iter().zip(source.as_raw()) {
+            assert!((actual - expected).abs() < 1e-6);
+        }
+        // The legacy RAW display bake would move 0.18 and clip 1.7 to 1.0.
+        let mut display = DynamicImage::ImageRgb32F(source.clone());
+        apply_cpu_default_raw_processing(&mut display);
+        assert!((display.to_rgb32f().get_pixel(0, 0)[1] - 0.18).abs() > 0.1);
+        assert_eq!(display.to_rgb32f().get_pixel(0, 0)[2], 1.0);
+    }
+
+    #[test]
+    fn zero_strength_is_exact_and_partial_strength_only_blends_source_domain() {
+        let source = Rgb32FImage::from_pixel(1, 1, Rgb([0.18, 0.5, 1.7]));
+        let filtered = Rgb32FImage::from_pixel(1, 1, Rgb([0.2, 0.3, 0.8]));
+        assert_eq!(
+            restore_denoise_source(&source, &filtered, (0.0, 2.0), 0.0).unwrap(),
+            source
+        );
+        let half = restore_denoise_source(&source, &filtered, (0.0, 2.0), 0.5).unwrap();
+        assert!((half.get_pixel(0, 0)[0] - 0.29).abs() < 1e-6);
+        assert!((half.get_pixel(0, 0)[1] - 0.55).abs() < 1e-6);
+        assert!((half.get_pixel(0, 0)[2] - 1.65).abs() < 1e-6);
+    }
+
+    #[test]
+    fn nonfinite_or_mismatched_filter_outputs_fail_instead_of_corrupting_source() {
+        let source = Rgb32FImage::from_pixel(1, 1, Rgb([0.18, 0.5, 0.9]));
+        let invalid = Rgb32FImage::from_pixel(1, 1, Rgb([f32::NAN, 0.0, 0.0]));
+        assert!(normalize_denoise_source(&invalid).is_err());
+        assert!(restore_denoise_source(&source, &invalid, (0.0, 1.0), 0.5).is_err());
+        assert!(restore_denoise_source(&source, &Rgb32FImage::new(2, 1), (0.0, 1.0), 0.5).is_err());
+    }
 }

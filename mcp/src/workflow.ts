@@ -1,0 +1,16 @@
+export const workflow = `# Automatic professional photo editing
+
+Use the native engine as a nondestructive editor. Choose treatment from the photo and the user's intent, then verify the actual rendered result. Professional quality is a visual judgment, not a histogram target or the successful completion of a tool call.
+
+1. Read rapidraw_capabilities and rapidraw_models. Open the source with rapidraw_open_photo; keep the returned session_id and revision. Source photos and sidecars stay unchanged. Read rapidraw://adjustment-schema before constructing native adjustments or masks.
+2. Render an original overview and inspect the subject, composition, light, white balance, texture and distractions. Use rapidraw_analyze for exposure/clipping context. Record a short edit intention appropriate to the image. Do not blindly neutralize intentional warm light or dramatic shadows.
+3. Set restrained global exposure, tone, white balance, color and crop adjustments. Use expected_revision on edits to catch stale state. Auto-adjust and presets are starting points that require review.
+4. Generate or construct selective masks when they improve the subject/background relationship. Render each mask, inspect edge spill and feathering, then apply local adjustments. Use geometric masks when an AI model is unavailable and the shape is adequate; do not claim semantic masking succeeded.
+5. Render the result and native-detail regions. Check texture, noise, sharpening halos, skin/plumage neutrality, clipping, mask edges, geometry, crop intent and distracting artifacts. Revisit a weak edit using history/undo. Compare the original when needed. Statistics complement visual judgment.
+6. Retouch only when the user requested or clearly authorized content removal. Choose local clone/heal/inpaint where suitable. Remote generative mode requires explicit selection and sends image content to the configured service. Do not remove truthful scene content just to improve a numerical score.
+7. Stop iterating when the result meets the stated intent without new defects; if the source cannot support the desired result, state the specific limitation. Save the session and reusable recipe. Export a full-resolution master and an appropriately sized delivery file inside the workspace. Inspect the exported image, dimensions, format, bit depth and metadata results.
+8. For a batch, inspect each source and review each output. Share a style only where the lighting and subject justify it. Check every batch item outcome; partial success is not completion.
+
+Coordinates: use the coordinate_space and mask schemas returned by capabilities. A crop, a preview pixel coordinate and the full source pixel coordinate are different spaces; scale measurements explicitly. Original RAW working copies with their saved .rrdata can be opened in the RapidRAW GUI for manual continuation. Linear denoised TIFF working copies require the saved MCP session to retain matching RAW interpretation; reopening those TIFFs directly in the GUI can change their appearance.
+
+Reliability: a failed tool is an error, not a blank edit. Missing models, invalid masks and unsupported formats must be resolved explicitly. After a bridge timeout or crash, reconnect and inspect saved state before retrying; mutations are never automatically replayed.\n`;

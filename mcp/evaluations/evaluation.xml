@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>Using only discovery and read-only schema/workflow resources for reference fixture version 1, an editor already has 30 selective masks and plans three more without deleting any. Does the native limit permit that final state? Answer True or False.</question>
+    <answer>False</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Consult the preview tool schema and coordinate documentation in reference fixture version 1. A 6000-by-4000 original has a crop starting at x=1000,y=500 with width=3000,height=2000, and no rotation. Its rendered overview is 1500-by-1000. To inspect the point shown at preview x=750 using a native detail region, what x coordinate belongs in render.region? Return only the integer.</question>
+    <answer>1500</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Consult the AI selection tool and coordinate resource for reference fixture version 1. A 6000-by-4000 source is cropped from x=1000,y=500 to 3000-by-2000, with no rotation. An AI subject rectangle should start at the location shown at x=750 in a 1500-wide cropped preview. What x belongs in mask_generate.region? Return only the integer.</question>
+    <answer>2500</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Read the reference fixture version 1 edit schema and selective-adjustment tool description. A recipe proposes exposure=6, temperature=80, a luma point curve with 16 entries, and mask opacity=75; all other fields and curve ordering are valid. Which named field violates its numerical or size limit? Return exactly its field name.</question>
+    <answer>exposure</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Inspect the reference fixture version 1 master-export tool and native precision capabilities. Which of these proposed formats both appears in the export enum and is explicitly listed by the engine for 16-bit raster delivery: A JPEG, B WebP, C TIFF, D CUBE? Return only A, B, C, or D.</question>
+    <answer>C</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>From reference fixture version 1, compare the render/analyze schemas with the editing workflow. A model requests render.region x=10.5,y=0,width=100,height=100 and no long_edge so it can inspect native detail. Can the read-only request satisfy the advertised schema? Answer True or False.</question>
+    <answer>False</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Using reference fixture version 1 discovery and workflow resources, an editor has inspected its latest image and saved its current JSON adjustments but wants native GUI-compatible editable state beside the isolated working copy. Which advertised tool performs that persistence step? Return the complete rapidraw_ tool name.</question>
+    <answer>rapidraw_save_session</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Inspect the reference fixture version 1 auto-adjust tool schema and workflow. Does invoking auto_adjust with only session_id authorize the tool to apply its suggestions immediately? Answer True or False.</question>
+    <answer>False</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Consult reference fixture version 1 tool annotations, retouch description and model policy. Which retouch mode can send photo content to a configured external provider instead of using only local processing? Return exactly the mode enum string.</question>
+    <answer>generative</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Inspect the reference fixture version 1 adjustment schema and set_adjustments contract. All other curve points are valid and strictly ordered; one proposed red point is x=256,y=128. What is the largest valid replacement x value permitted by the native curve-coordinate schema? Return only the integer.</question>
+    <answer>255</answer>
+  </qa_pair>
+</evaluation>

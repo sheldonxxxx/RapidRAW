@@ -1,0 +1,621 @@
+use super::{
+    EngineSettings, Result, flag, number, required,
+    sessions::{Bridge, Session, atomic_write},
+    validation,
+};
+use crate::{
+    app_state::AppState,
+    file_management::{Preset, PresetItem},
+};
+use serde_json::{Value, json};
+use std::{fs, path::Path, sync::Arc};
+use tauri::Manager;
+
+pub(super) const METHODS: &[&str] = &[
+    "capabilities",
+    "list_images",
+    "open_photo",
+    "list_sessions",
+    "get_session",
+    "close_session",
+    "set_adjustments",
+    "render",
+    "analyze",
+    "auto_adjust",
+    "mask_create",
+    "mask_update",
+    "mask_remove",
+    "mask_generate",
+    "retouch",
+    "generate_depth",
+    "history",
+    "undo",
+    "redo",
+    "save_session",
+    "load_recipe",
+    "save_recipe",
+    "list_presets",
+    "apply_preset",
+    "list_luts",
+    "apply_lut",
+    "models",
+    "install_model",
+    "batch_export",
+    "export",
+    "merge",
+    "negative_convert",
+    "get_metadata",
+    "set_metadata",
+    "get_engine_settings",
+    "denoise",
+    "lens_profile",
+];
+
+impl Bridge {
+    pub async fn dispatch(&mut self, method: &str, params: Value) -> Result<Value> {
+        if !params.is_object() {
+            return Err("INVALID_ARGUMENT: params must be an object".into());
+        }
+        match method {
+            "capabilities" => {
+                return Ok(
+                    json!({"protocol_version":1,"engine":"RapidRAW","bridge_version":"1.0.0","methods":METHODS,"workspace":self.paths.root,"adjustment_schema":validation::adjustment_schema(),"coordinate_space":{"masks":"oriented full-resolution pixels before user crop","render_region":"output pixels after user crop, before preview resizing"},"precision":{"render":"float32 GPU / 16-bit readback","formats_16bit":["png","tiff"]},"persistence":"Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.","originals":"Never overwritten. All source files copied to session workspace.","limits":{"masks":32,"history":32,"request_bytes":67108864},"model_policy":"Local generation copies and verifies installed model assets. Only install_model can download missing assets. Only explicitly selected generative retouch can send image data to a connector."}),
+                );
+            }
+            "get_engine_settings" => {
+                return serde_json::to_value(&self.handle.state::<EngineSettings>().0)
+                    .map_err(|e| e.to_string());
+            }
+            "list_images" => return list_images(&params),
+            "open_photo" => return self.open(&params).await,
+            "list_sessions" => {
+                return Ok(
+                    json!({"sessions":self.sessions.values().map(|s|s.info(false)).collect::<Vec<_>>(),"count":self.sessions.len()}),
+                );
+            }
+            "list_presets" => return Ok(json!({"presets":presets(&self.handle)?})),
+            "list_luts" => {
+                return Ok(json!({"luts":crate::lut_processing::list_luts(self.handle.clone())?}));
+            }
+            "models" | "install_model" | "merge" => return self.advanced(method, &params).await,
+            "batch_export" => return self.batch_export(&params).await,
+            _ => {}
+        }
+        if !METHODS.contains(&method) {
+            return Err(format!("METHOD_NOT_FOUND: {method}"));
+        }
+        let session = self.session(&params)?.clone();
+        let id = session.id.clone();
+        match method {
+            "get_session" => return Ok(session.info(flag(&params, "include_adjustments", false)?)),
+            "get_metadata" => {
+                return Ok(
+                    json!({"session_id":id,"revision":session.revision,"metadata":session.current().metadata}),
+                );
+            }
+            "history" => {
+                return Ok(
+                    json!({"session_id":id,"revision":session.revision,"cursor":session.cursor,"entries":session.history.iter().enumerate().map(|(index,h)|json!({"index":index,"label":h.label,"current":index==session.cursor})).collect::<Vec<_>>()}),
+                );
+            }
+            "close_session" => {
+                self.persist(&session)?;
+                self.sessions.remove(&id);
+                if self.active.as_deref() == Some(&id) {
+                    self.active = None;
+                    let state = self.handle.state::<AppState>();
+                    *state.original_image.lock().unwrap() = None;
+                    *state.cached_preview.lock().unwrap() = None;
+                    *state.full_warped_cache.lock().unwrap() = None;
+                    *state.full_transformed_cache.lock().unwrap() = None;
+                }
+                return Ok(
+                    json!({"session_id":id,"closed":true,"saved":true,"restore":"Session is available on next bridge startup"}),
+                );
+            }
+            "save_session" => return self.save_sidecar(&id),
+            "save_recipe" => {
+                let name = params["path"]
+                    .as_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("{id}-r{}.json", session.revision));
+                let path = self.output_path(&name, "recipes")?;
+                atomic_write(
+                    &path,
+                    &serde_json::to_vec_pretty(&session.current().adjustments)
+                        .map_err(|e| e.to_string())?,
+                    false,
+                )?;
+                return Ok(json!({"session_id":id,"revision":session.revision,"path":path}));
+            }
+            _ => {}
+        }
+        // All remaining calls inspect or mutate one active native image serially.
+        session.check_revision(&params)?;
+        self.activate(&id).await?;
+        match method {
+            "render" => self.render_response(&session, &params),
+            "analyze" => self.analyze(&session, &params),
+            "export" => self.export_photo(&session, &params),
+            "set_adjustments" | "load_recipe" => {
+                let patch = if method == "load_recipe" {
+                    let path = Path::new(required(&params, "path")?);
+                    serde_json::from_slice(
+                        &fs::read(path).map_err(|e| format!("RECIPE_NOT_FOUND: {e}"))?,
+                    )
+                    .map_err(|e| format!("INVALID_RECIPE: {e}"))?
+                } else {
+                    params
+                        .get("patch")
+                        .cloned()
+                        .ok_or("INVALID_ARGUMENT: patch is required")?
+                };
+                let mut adjustments = match params["mode"].as_str().unwrap_or("merge") {
+                    "merge" => session.current().adjustments.clone(),
+                    "replace" => validation::default_adjustments(),
+                    _ => return Err("INVALID_ARGUMENT: mode must be merge or replace".into()),
+                };
+                validation::merge_patch(&mut adjustments, &patch)?;
+                self.materialize_lut(&session, &mut adjustments)?;
+                self.commit(&id, adjustments, session.current().metadata.clone(), method)
+            }
+            "auto_adjust" => {
+                let suggestions = crate::image_processing::calculate_auto_adjustments(
+                    self.handle.state::<AppState>(),
+                )?;
+                if !flag(&params, "apply", false)? {
+                    return Ok(
+                        json!({"session_id":id,"revision":session.revision,"suggestions":suggestions,"applied":false}),
+                    );
+                }
+                let mut adjustments = session.current().adjustments.clone();
+                validation::merge_patch(&mut adjustments, &suggestions)?;
+                let mut result = self.commit(
+                    &id,
+                    adjustments,
+                    session.current().metadata.clone(),
+                    "Auto adjustments",
+                )?;
+                result["suggestions"] = suggestions;
+                result["applied"] = json!(true);
+                Ok(result)
+            }
+            "mask_create" | "mask_update" | "mask_remove" => {
+                self.mask_edit(&session, method, &params)
+            }
+            "undo" | "redo" => {
+                let mut updated = session.clone();
+                if method == "undo" {
+                    if updated.cursor == 0 {
+                        return Err("HISTORY_BOUNDARY: No earlier edit to undo".into());
+                    }
+                    updated.cursor -= 1;
+                } else {
+                    if updated.cursor + 1 >= updated.history.len() {
+                        return Err("HISTORY_BOUNDARY: No later edit to redo".into());
+                    }
+                    updated.cursor += 1;
+                }
+                updated.revision += 1;
+                self.persist(&updated)?;
+                let result = updated.info(false);
+                self.sessions.insert(id, updated);
+                Ok(result)
+            }
+            "set_metadata" => {
+                let mut metadata = session.current().metadata.clone();
+                if params.get("rating").is_some() {
+                    let rating = number(&params, "rating", 0., 0., 5.)?;
+                    if rating.fract() != 0. {
+                        return Err("INVALID_ARGUMENT: rating must be integer".into());
+                    }
+                    metadata["rating"] = json!(rating as u8);
+                }
+                if let Some(tags) = params.get("tags") {
+                    let array = tags
+                        .as_array()
+                        .ok_or("INVALID_ARGUMENT: tags must be strings")?;
+                    if array.len() > 1000
+                        || array
+                            .iter()
+                            .any(|v| v.as_str().is_none_or(|s| s.len() > 256))
+                    {
+                        return Err("INVALID_ARGUMENT: tags must contain up to1000 strings of at most256 bytes".into());
+                    }
+                    metadata["tags"] = tags.clone();
+                }
+                if let Some(exif) = params.get("exif") {
+                    let exif = exif
+                        .as_object()
+                        .ok_or("INVALID_ARGUMENT: exif must be a string map")?;
+                    if !metadata["exif"].is_object() {
+                        metadata["exif"] = json!({});
+                    }
+                    for (key, value) in exif {
+                        if value.as_str().is_none_or(|s| s.len() > 4096) {
+                            return Err(
+                                "INVALID_ARGUMENT: EXIF values must be strings up to4096 bytes"
+                                    .into(),
+                            );
+                        }
+                        metadata["exif"][key] = value.clone();
+                    }
+                }
+                self.commit(
+                    &id,
+                    session.current().adjustments.clone(),
+                    metadata,
+                    "Metadata edit",
+                )
+            }
+            "apply_lut" => {
+                let mut adjustments = session.current().adjustments.clone();
+                adjustments["lutPath"] = json!(required(&params, "path")?);
+                adjustments["lutIntensity"] = json!(number(&params, "intensity", 100., 0., 100.)?);
+                self.materialize_lut(&session, &mut adjustments)?;
+                self.commit(
+                    &id,
+                    adjustments,
+                    session.current().metadata.clone(),
+                    "Apply LUT",
+                )
+            }
+            "apply_preset" => {
+                let preset_id = required(&params, "preset_id")?;
+                let preset = presets(&self.handle)?
+                    .into_iter()
+                    .find(|p| p.id == preset_id)
+                    .ok_or("PRESET_NOT_FOUND: Unknown preset id")?;
+                let mut patch = preset.adjustments;
+                if !patch.is_object() {
+                    return Err("INVALID_PRESET: Adjustment object missing".into());
+                }
+                let migration_warnings = migrate_legacy_preset(&mut patch)?;
+                if preset.include_masks == Some(false) {
+                    patch.as_object_mut().unwrap().remove("masks");
+                }
+                if preset.include_crop_transform == Some(false) {
+                    for key in crate::cache_utils::GEOMETRY_KEYS {
+                        patch.as_object_mut().unwrap().remove(*key);
+                    }
+                }
+                let intensity = number(&params, "intensity", 100., 0., 100.)? / 100.;
+                let mut adjustments = session.current().adjustments.clone();
+                if intensity > 0. {
+                    interpolate_patch(&adjustments, &mut patch, intensity);
+                    validation::merge_patch(&mut adjustments, &patch)?;
+                }
+                self.materialize_lut(&session, &mut adjustments)?;
+                let mut result = self.commit(
+                    &id,
+                    adjustments,
+                    session.current().metadata.clone(),
+                    &format!("Preset {}", preset.name),
+                )?;
+                if !migration_warnings.is_empty() {
+                    result["warnings"] = json!(migration_warnings);
+                }
+                Ok(result)
+            }
+            _ => self.advanced(method, &params).await,
+        }
+    }
+
+    fn mask_edit(&mut self, session: &Session, method: &str, params: &Value) -> Result<Value> {
+        let mut adjustments = session.current().adjustments.clone();
+        let masks = adjustments["masks"]
+            .as_array_mut()
+            .ok_or("INVALID_ADJUSTMENTS: masks must be an array")?;
+        let mask_id = if method == "mask_create" {
+            uuid::Uuid::new_v4().to_string()
+        } else {
+            required(params, "mask_id")?.to_string()
+        };
+        if method == "mask_create" {
+            let kind = required(params, "type")?;
+            if ![
+                "radial",
+                "linear",
+                "brush",
+                "flow",
+                "color",
+                "luminance",
+                "all",
+            ]
+            .contains(&kind)
+            {
+                return Err("INVALID_ARGUMENT: Use mask_generate for AI selections".into());
+            }
+            let mut local = params.get("adjustments").cloned().unwrap_or_else(||json!({}));
+            validation::resolve_curve_patch(&mut local, &params["adjustments"]);
+            masks.push(json!({"id":mask_id,"name":params["name"].as_str().unwrap_or("Agent mask"),"visible":true,"invert":flag(params,"invert",false)?,"opacity":number(params,"opacity",100.,0.,100.)?,"adjustments":local,"subMasks":[{"id":uuid::Uuid::new_v4().to_string(),"type":kind,"visible":true,"invert":false,"opacity":100,"mode":"additive","parameters":params.get("parameters").cloned().unwrap_or_else(||json!({}))}]}));
+        } else {
+            let index = masks
+                .iter()
+                .position(|m| m["id"].as_str() == Some(&mask_id))
+                .ok_or("MASK_NOT_FOUND: Unknown mask id")?;
+            if method == "mask_remove" {
+                masks.remove(index);
+            } else {
+                let patch = params
+                    .get("patch")
+                    .filter(|v| v.is_object())
+                    .ok_or("INVALID_ARGUMENT: patch must be an object")?;
+                if patch.get("id").is_some() {
+                    return Err("INVALID_ARGUMENT: A mask's id cannot be changed".into());
+                }
+                merge_object(&mut masks[index], patch);
+                validation::resolve_curve_patch(&mut masks[index]["adjustments"], &patch["adjustments"]);
+            }
+        }
+        let mut result = self.commit(
+            &session.id,
+            adjustments,
+            session.current().metadata.clone(),
+            method,
+        )?;
+        result["mask_id"] = json!(mask_id);
+        Ok(result)
+    }
+
+    pub(super) fn materialize_lut(&self, session: &Session, adjustments: &mut Value) -> Result<()> {
+        let Some(path) = adjustments["lutPath"].as_str().map(str::to_string) else {
+            return Ok(());
+        };
+        let source = Path::new(&path)
+            .canonicalize()
+            .map_err(|e| format!("LUT_NOT_FOUND: {e}"))?;
+        let parsed = crate::lut_processing::parse_lut_file(source.to_string_lossy().as_ref())
+            .map_err(|e| format!("INVALID_LUT: {e}"))?;
+        let bytes = fs::read(&source).map_err(|e| e.to_string())?;
+        let dir = self
+            .paths
+            .root
+            .join("sessions")
+            .join(&session.id)
+            .join("assets");
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let hash = blake3::hash(&bytes).to_hex().to_string();
+        let name = format!(
+            "{}.{}",
+            hash,
+            source
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("cube")
+        );
+        let target = dir.join(name);
+        if !target.exists() {
+            atomic_write(&target, &bytes, false)?;
+        }
+        adjustments["lutPath"] = json!(target);
+        adjustments["lutSize"] = json!(parsed.size);
+        adjustments["lutName"] = json!(source.file_name().unwrap_or_default().to_string_lossy());
+        self.handle
+            .state::<AppState>()
+            .lut_cache
+            .lock()
+            .unwrap()
+            .insert(target.to_string_lossy().into_owned(), Arc::new(parsed));
+        Ok(())
+    }
+
+    async fn batch_export(&mut self, params: &Value) -> Result<Value> {
+        let items = params["items"]
+            .as_array()
+            .filter(|a| !a.is_empty() && a.len() <= 500)
+            .ok_or("INVALID_ARGUMENT: items must contain 1..500 exports")?;
+        let options = params.get("options").cloned().unwrap_or_else(|| json!({}));
+        if !options.is_object() {
+            return Err("INVALID_ARGUMENT: options must be an object".into());
+        }
+        let mut results = Vec::new();
+        for item in items {
+            let mut args = options.clone();
+            args["session_id"] = item["session_id"].clone();
+            args["path"] = item["path"].clone();
+            let result = async {
+                let session = self.session(&args)?.clone();
+                self.activate(&session.id).await?;
+                self.export_photo(&session, &args)
+            }
+            .await;
+            results.push(match result {Ok(value)=>json!({"ok":true,"result":value}),Err(error)=>json!({"ok":false,"session_id":args["session_id"],"path":args["path"],"error":error})});
+        }
+        let failed = results.iter().filter(|r| r["ok"] == false).count();
+        Ok(
+            json!({"ok":failed==0,"total":results.len(),"succeeded":results.len()-failed,"failed":failed,"results":results}),
+        )
+    }
+}
+
+fn list_images(params: &Value) -> Result<Value> {
+    let directory = Path::new(required(params, "path")?)
+        .canonicalize()
+        .map_err(|e| format!("SOURCE_NOT_FOUND: {e}"))?;
+    if !directory.is_dir() {
+        return Err("INVALID_ARGUMENT: path must be a directory".into());
+    }
+    let recursive = flag(params, "recursive", false)?;
+    let offset = number(params, "offset", 0., 0., 1_000_000.)? as usize;
+    let limit = number(params, "limit", 50., 1., 500.)? as usize;
+    let mut paths = Vec::new();
+    let walk = walkdir::WalkDir::new(&directory)
+        .follow_links(false)
+        .max_depth(if recursive { usize::MAX } else { 1 })
+        .sort_by_file_name();
+    for entry in walk {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.file_type().is_file() && crate::formats::is_supported_image_file(entry.path()) {
+            paths.push(entry.into_path());
+        }
+    }
+    let total = paths.len();
+    let images=paths.into_iter().skip(offset).take(limit).map(|path|json!({"path":path,"bytes":fs::metadata(&path).map(|m|m.len()).unwrap_or(0),"is_raw":crate::formats::is_raw_file(&path),"has_sidecar":Path::new(&format!("{}.rrdata",path.display())).is_file()})).collect::<Vec<_>>();
+    let next = offset + images.len();
+    Ok(
+        json!({"images":images,"total_count":total,"offset":offset,"has_more":next<total,"next_offset":if next<total {Some(next)}else{None}}),
+    )
+}
+
+fn presets(handle: &tauri::AppHandle) -> Result<Vec<Preset>> {
+    let mut out = Vec::new();
+    for item in crate::file_management::load_presets(handle.clone())? {
+        match item {
+            PresetItem::Preset(p) => out.push(p),
+            PresetItem::Folder(f) => out.extend(f.children),
+        }
+    }
+    Ok(out)
+}
+
+/// Older installed presets retained controls for a removed inline negative engine.
+/// Only an explicitly disabled legacy section is safe to discard; ordinary edits
+/// and arbitrary unknown keys still use strict native schema validation.
+fn migrate_legacy_preset(patch: &mut Value) -> Result<Vec<String>> {
+    let Some(enabled) = patch.get("enableNegativeConversion") else {
+        return Ok(Vec::new());
+    };
+    if enabled != &Value::Bool(false) {
+        return Err("INVALID_PRESET: Active or malformed legacy negative conversion cannot be applied as a preset. Use negative_convert explicitly, then apply a preset without obsolete negative controls.".into());
+    }
+    let fields = [
+        "enableNegativeConversion",
+        "filmBaseColor",
+        "negativeRedBalance",
+        "negativeGreenBalance",
+        "negativeBlueBalance",
+    ];
+    let object = patch
+        .as_object_mut()
+        .ok_or("INVALID_PRESET: Adjustment object missing")?;
+    let removed = fields
+        .into_iter()
+        .filter(|field| object.remove(*field).is_some())
+        .collect::<Vec<_>>();
+    Ok(vec![format!(
+        "Ignored inactive legacy negative-conversion preset fields: {}",
+        removed.join(", ")
+    )])
+}
+
+fn merge_object(base: &mut Value, patch: &Value) {
+    if let Some(map) = patch.as_object() {
+        if !base.is_object() {
+            *base = json!({});
+        }
+        for (key, value) in map {
+            if value.is_null() {
+                base.as_object_mut().unwrap().remove(key);
+            } else {
+                merge_object(&mut base[key], value);
+            }
+        }
+    } else {
+        *base = patch.clone();
+    }
+}
+
+fn interpolate_patch(base: &Value, patch: &mut Value, intensity: f64) {
+    match patch {
+        Value::Number(n) => {
+            if let (Some(from), Some(to)) = (base.as_f64(), n.as_f64()) {
+                *patch = json!(from + (to - from) * intensity);
+            }
+        }
+        Value::Object(map) => {
+            for (key, value) in map {
+                interpolate_patch(&base[key], value, intensity);
+            }
+        }
+        // Arrays carry curve and mask topology; select them as a complete structure.
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn disabled_legacy_preset_controls_migrate_with_an_explicit_warning() {
+        let mut patch = json!({"exposure":0.4,"enableNegativeConversion":false,"filmBaseColor":"#ff8800","negativeRedBalance":0,"negativeGreenBalance":0,"negativeBlueBalance":0});
+        let warnings = migrate_legacy_preset(&mut patch).unwrap();
+        assert_eq!(patch, json!({"exposure":0.4}));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("enableNegativeConversion"));
+        assert!(warnings[0].contains("negativeBlueBalance"));
+        validation::merge_patch(&mut validation::default_adjustments(), &patch).unwrap();
+    }
+    #[test]
+    fn active_legacy_negative_preset_is_rejected_without_changing_patch() {
+        let mut patch = json!({"enableNegativeConversion":true,"filmBaseColor":"#ff8800"});
+        let before = patch.clone();
+        assert!(
+            migrate_legacy_preset(&mut patch)
+                .unwrap_err()
+                .contains("negative_convert")
+        );
+        assert_eq!(patch, before);
+    }
+    #[test]
+    fn legacy_preset_migration_does_not_accept_unrelated_unknown_controls() {
+        let mut patch = json!({"enableNegativeConversion":false,"unknownControl":7});
+        migrate_legacy_preset(&mut patch).unwrap();
+        assert!(validation::merge_patch(&mut validation::default_adjustments(), &patch).is_err());
+        let mut direct = json!({"enableNegativeConversion":false});
+        assert!(validation::merge_patch(&mut validation::default_adjustments(), &direct).is_err());
+        direct = json!({"filmBaseColor":"#ff8800"});
+        assert!(migrate_legacy_preset(&mut direct).unwrap().is_empty());
+        assert!(validation::merge_patch(&mut validation::default_adjustments(), &direct).is_err());
+    }
+
+    #[test]
+    fn image_discovery_filters_sorts_and_paginates_without_following_links() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("b.JPG"), b"placeholder").unwrap();
+        fs::write(dir.path().join("a.cr3"), b"placeholder").unwrap();
+        fs::write(dir.path().join("a.cr3.rrdata"), b"{}").unwrap();
+        fs::write(dir.path().join("notes.txt"), b"ignored").unwrap();
+        fs::create_dir(dir.path().join("nested")).unwrap();
+        fs::write(dir.path().join("nested/c.png"), b"placeholder").unwrap();
+        let first = list_images(&json!({"path":dir.path(),"limit":1})).unwrap();
+        assert_eq!(first["total_count"], 2);
+        assert_eq!(first["images"].as_array().unwrap().len(), 1);
+        assert_eq!(first["images"][0]["has_sidecar"], true);
+        assert_eq!(first["next_offset"], 1);
+        assert_eq!(first["has_more"], true);
+        let second = list_images(&json!({"path":dir.path(),"limit":1,"offset":1})).unwrap();
+        assert_eq!(second["has_more"], false);
+        assert!(second["next_offset"].is_null());
+        let recursive = list_images(&json!({"path":dir.path(),"recursive":true})).unwrap();
+        assert_eq!(recursive["total_count"], 3);
+        assert_eq!(fs::read(dir.path().join("a.cr3")).unwrap(), b"placeholder");
+        assert_eq!(fs::read(dir.path().join("a.cr3.rrdata")).unwrap(), b"{}");
+    }
+    #[test]
+    fn recursive_patch_deletion_preserves_siblings_and_replaces_arrays() {
+        let mut original = json!({"adjustments":{"exposure":1,"contrast":4},"subMasks":[{"id":"old"}],"visible":true});
+        merge_object(
+            &mut original,
+            &json!({"adjustments":{"exposure":null},"subMasks":[{"id":"new"}]}),
+        );
+        assert!(original["adjustments"].get("exposure").is_none());
+        assert_eq!(original["adjustments"]["contrast"], 4);
+        assert_eq!(original["subMasks"], json!([{"id":"new"}]));
+        assert_eq!(original["visible"], true);
+    }
+    #[test]
+    fn recursive_mask_patch_preserves_adjustments() {
+        let mut m = json!({"id":"a","adjustments":{"exposure":1,"contrast":4}});
+        merge_object(&mut m, &json!({"adjustments":{"exposure":0.5}}));
+        assert_eq!(m["adjustments"]["contrast"], 4);
+        assert_eq!(m["adjustments"]["exposure"], 0.5);
+    }
+    #[test]
+    fn interpolates_numeric_controls_without_corrupting_masks() {
+        let mut patch = json!({"exposure":2,"masks":[{"id":"new"}]});
+        interpolate_patch(&json!({"exposure":0,"masks":[]}), &mut patch, 0.5);
+        assert_eq!(patch["exposure"], 1.);
+        assert_eq!(patch["masks"][0]["id"], "new");
+    }
+}

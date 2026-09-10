@@ -42,3 +42,12 @@ src-tauri/libs/
 
 # bench/replay.js result dumps
 bench/out/
+
+# Local photo experiments and optional MCP runtime state
+cli-evaluation/
+.mcp-workspace/
+mcp-implementation-progress.md
+mcp/node_modules/
+mcp/dist/
+mcp/.cache/
+mcp/test-output/

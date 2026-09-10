@@ -104,7 +104,7 @@ fn analyze_bounds(log_data: &[f32], width: usize, height: usize) -> [ChannelBoun
     [get_bounds(r_vals), get_bounds(g_vals), get_bounds(b_vals)]
 }
 
-fn run_pipeline(
+pub(crate) fn run_pipeline(
     input: &DynamicImage,
     params: &NegativeConversionParams,
     override_bounds: Option<[ChannelBounds; 3]>,

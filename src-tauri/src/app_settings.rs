@@ -654,6 +654,10 @@ pub fn is_tethering_supported() -> bool {
 
 #[tauri::command]
 pub fn load_settings(app_handle: AppHandle) -> Result<AppSettings, String> {
+    #[cfg(feature = "mcp")]
+    if let Some(settings) = app_handle.try_state::<crate::mcp_bridge::EngineSettings>() {
+        return Ok(settings.0.clone());
+    }
     let path = get_settings_path(&app_handle)?;
 
     let mut settings: AppSettings = if path.exists() {

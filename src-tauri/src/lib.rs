@@ -32,6 +32,8 @@ mod lens_blur;
 mod lens_correction;
 mod lut_processing;
 mod mask_generation;
+#[cfg(feature = "mcp")]
+mod mcp_bridge;
 mod multi_exposure;
 mod negative_conversion;
 mod panorama_stitching;
@@ -48,7 +50,7 @@ use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::io::Write;
 use std::panic;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use std::borrow::Cow;
@@ -68,10 +70,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{Emitter, Manager, ipc::Response};
 use tempfile::NamedTempFile;
-use tokio::sync::Mutex as TokioMutex;
 
 use crate::cache_utils::{
-    DecodedImageCache, calculate_full_job_hash, calculate_geometry_hash, calculate_transform_hash,
+    calculate_full_job_hash, calculate_geometry_hash, calculate_transform_hash,
     calculate_visual_hash,
 };
 use crate::file_management::{parse_virtual_path, read_file_mapped};
@@ -112,6 +113,11 @@ pub fn register_exit_handler() {
 
 #[cfg(not(target_os = "macos"))]
 pub fn register_exit_handler() {}
+
+// Expand the context macro once: on macOS it embeds a global Info.plist symbol.
+fn application_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommunityPreset {
@@ -1675,6 +1681,11 @@ fn frontend_ready(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(feature = "mcp")]
+    if std::env::args().nth(1).as_deref() == Some("--mcp-bridge") {
+        mcp_bridge::run();
+        return;
+    }
     let _ = rayon::ThreadPoolBuilder::new()
         .stack_size(8 * 1024 * 1024)
         .build_global();
@@ -2052,44 +2063,7 @@ pub fn run() {
             crate::register_exit_handler();
             Ok(())
         })
-        .manage(AppState {
-            window_setup_complete: AtomicBool::new(false),
-            gpu_crash_flag_path: Mutex::new(None),
-            original_image: Mutex::new(None),
-            cached_preview: Mutex::new(None),
-            gpu_context: Mutex::new(None),
-            gpu_image_cache: Mutex::new(None),
-            gpu_processor: Mutex::new(None),
-            ai_state: Mutex::new(None),
-            ai_init_lock: TokioMutex::new(()),
-            export_task_token: Arc::new(Mutex::new(None)),
-            hdr_result: Arc::new(Mutex::new(None)),
-            panorama_result: Arc::new(Mutex::new(None)),
-            focus_stack_result: Arc::new(Mutex::new(None)),
-            denoise_result: Arc::new(Mutex::new(None)),
-            indexing_task_handle: Mutex::new(None),
-            lut_cache: Mutex::new(HashMap::new()),
-            initial_file_path: Mutex::new(None),
-            pending_edit_session: Mutex::new(None),
-            thumbnail_cancellation_token: Arc::new(AtomicBool::new(false)),
-            thumbnail_progress: Mutex::new(ThumbnailProgressTracker { total: 0, completed: 0 }),
-            preview_worker_tx: Mutex::new(None),
-            analytics_worker_tx: Mutex::new(None),
-            mask_cache: Mutex::new(HashMap::new()),
-            patch_cache: Mutex::new(HashMap::new()),
-            geometry_cache: Mutex::new(HashMap::new()),
-            thumbnail_geometry_cache: Mutex::new(HashMap::new()),
-            lens_db: Mutex::new(None),
-            load_image_generation: Arc::new(AtomicUsize::new(0)),
-            full_warped_cache: Mutex::new(None),
-            full_transformed_cache: Mutex::new(None),
-            decoded_image_cache: Mutex::new(DecodedImageCache::new(5)),
-            thumbnail_manager: ThumbnailManager::new(),
-            metadata_manager: MetadataManager::new(),
-            disks_cache: Mutex::new(None),
-            disks_cache_refreshing: AtomicBool::new(false),
-            camera_session: Mutex::new(camera_tethering::CameraSession::new()),
-        })
+        .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             apply_adjustments,
             generate_preview_for_path,
@@ -2208,7 +2182,7 @@ pub fn run() {
             camera_tethering::tether_autofocus,
             guided_perspective::calculate_guided_perspective,
         ])
-        .build(tauri::generate_context!())
+        .build(application_context())
         .expect("error while building tauri application")
         .run(#[allow(unused_variables)] |app_handle, event| {
             match event {

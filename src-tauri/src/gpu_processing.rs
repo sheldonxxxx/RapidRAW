@@ -432,7 +432,12 @@ fn read_texture_data_roi(
     origin: wgpu::Origin3d,
     size: wgpu::Extent3d,
 ) -> Result<Vec<u8>, String> {
-    let unpadded_bytes_per_row = 4 * size.width;
+    let bytes_per_pixel = match texture.format() {
+        wgpu::TextureFormat::Rgba8Unorm => 4,
+        wgpu::TextureFormat::Rgba32Float => 16,
+        format => return Err(format!("Unsupported GPU readback format: {format:?}")),
+    };
+    let unpadded_bytes_per_row = bytes_per_pixel * size.width;
     let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
     let padded_bytes_per_row = (unpadded_bytes_per_row + align - 1) & !(align - 1);
     let output_buffer_size = (padded_bytes_per_row * size.height) as u64;
@@ -500,6 +505,17 @@ fn to_rgba_f16(img: &DynamicImage) -> Vec<f16> {
     rgba_f32.into_raw().into_iter().map(f16::from_f32).collect()
 }
 
+// Fail explicitly if an upstream shader changes the integration points instead
+// of silently dropping back to an 8-bit output or an incompatible texture.
+fn replace_shader_token(source: &str, token: &str, replacement: &str) -> Result<String, String> {
+    if source.matches(token).count() != 1 {
+        return Err(format!(
+            "High-precision shader integration requires exactly one '{token}'"
+        ));
+    }
+    Ok(source.replacen(token, replacement, 1))
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct BlurParams {
@@ -528,6 +544,7 @@ struct FlareParams {
 
 pub struct GpuProcessor {
     context: GpuContext,
+    high_precision: bool,
     blur_bgl: wgpu::BindGroupLayout,
     h_blur_pipeline: wgpu::ComputePipeline,
     v_blur_pipeline: wgpu::ComputePipeline,
@@ -567,12 +584,39 @@ const FLARE_MAP_SIZE: u32 = 512;
 
 impl GpuProcessor {
     pub fn new(context: GpuContext, max_width: u32, max_height: u32) -> Result<Self, String> {
+        Self::new_with_precision(context, max_width, max_height, false)
+    }
+
+    // Keep the UI's textures and shader unchanged. The opt-in export path shares
+    // the processing algorithm, but avoids quantizing input, blurs and output.
+    fn new_with_precision(
+        context: GpuContext,
+        max_width: u32,
+        max_height: u32,
+        high_precision: bool,
+    ) -> Result<Self, String> {
         let device = &context.device;
         const MAX_MASK_BINDINGS: u32 = 1;
+        let output_format = if high_precision {
+            wgpu::TextureFormat::Rgba32Float
+        } else {
+            wgpu::TextureFormat::Rgba8Unorm
+        };
+        let blur_format = if high_precision {
+            wgpu::TextureFormat::Rgba32Float
+        } else {
+            wgpu::TextureFormat::Rgba16Float
+        };
+        let blur_source = include_str!("shaders/blur.wgsl");
+        let blur_source = if high_precision {
+            replace_shader_token(blur_source, "rgba16float", "rgba32float")?
+        } else {
+            blur_source.to_owned()
+        };
 
         let blur_shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Blur Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/blur.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(blur_source.into()),
         });
 
         let blur_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -593,7 +637,7 @@ impl GpuProcessor {
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: wgpu::TextureFormat::Rgba16Float,
+                        format: blur_format,
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
@@ -642,9 +686,22 @@ impl GpuProcessor {
             mapped_at_creation: false,
         });
 
+        let flare_source = include_str!("shaders/flare.wgsl");
+        let flare_source = if high_precision {
+            // rgba32float is intentionally unfilterable: manual bilinear
+            // sampling avoids requiring optional FLOAT32_FILTERABLE support.
+            let source = replace_shader_token(
+                flare_source,
+                "textureSampleLevel(input_texture, input_sampler, uv, 0.0)",
+                "sample_input_bilinear(uv)",
+            )?;
+            format!("{}\n{source}", include_str!("shaders/export_sampling.wgsl"))
+        } else {
+            flare_source.to_owned()
+        };
         let flare_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Flare Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/flare.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(flare_source.into()),
         });
 
         let flare_bgl_0 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -654,7 +711,9 @@ impl GpuProcessor {
                     binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float {
+                            filterable: !high_precision,
+                        },
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -786,9 +845,22 @@ impl GpuProcessor {
             ..Default::default()
         });
 
+        let main_source = include_str!("shaders/shader.wgsl");
+        let main_source = if high_precision {
+            let source = replace_shader_token(main_source, "rgba8unorm", "rgba32float")?;
+            let source = replace_shader_token(
+                &source,
+                "let dither_amount = 1.0 / 255.0;",
+                "let dither_amount = 1.0 / 65535.0;",
+            )?;
+            // A detail crop should match the same pixels in a full export.
+            replace_shader_token(&source, "dither(id.xy)", "dither(absolute_coord)")?
+        } else {
+            main_source.to_owned()
+        };
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Image Processing Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/shader.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(main_source.into()),
         });
 
         let mut bind_group_layout_entries = vec![
@@ -807,7 +879,7 @@ impl GpuProcessor {
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::StorageTexture {
                     access: wgpu::StorageTextureAccess::WriteOnly,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    format: output_format,
                     view_dimension: wgpu::TextureViewDimension::D2,
                 },
                 count: None,
@@ -974,8 +1046,9 @@ impl GpuProcessor {
         };
 
         let full_image_size = wgpu::Extent3d {
-            width: max_width,
-            height: max_height,
+            // Export reads tiles directly and never uses display textures.
+            width: if high_precision { 1 } else { max_width },
+            height: if high_precision { 1 } else { max_height },
             depth_or_array_layers: 1,
         };
 
@@ -985,7 +1058,7 @@ impl GpuProcessor {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba16Float,
+            format: blur_format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
             view_formats: &[],
         };
@@ -1026,7 +1099,7 @@ impl GpuProcessor {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: output_format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING
                 | wgpu::TextureUsages::STORAGE_BINDING
                 | wgpu::TextureUsages::COPY_SRC,
@@ -1064,6 +1137,7 @@ impl GpuProcessor {
 
         Ok(Self {
             context,
+            high_precision,
             blur_bgl,
             h_blur_pipeline,
             v_blur_pipeline,
@@ -1106,6 +1180,9 @@ impl GpuProcessor {
         skip_cpu_readback: bool,
         output_to_display: bool,
     ) -> Result<(Vec<u8>, u32, u32, u32, u32), String> {
+        if self.high_precision && output_to_display {
+            return Err("High-precision processors are for CPU export only".to_string());
+        }
         let device = &self.context.device;
         let queue = &self.context.queue;
         let scale = (width.min(height) as f32) / 1080.0;
@@ -1160,13 +1237,22 @@ impl GpuProcessor {
         let (lut_texture_view, lut_sampler) = if let Some(lut_arc) = &request.lut {
             let lut_data = &lut_arc.data;
             let size = lut_arc.size;
-            let mut rgba_lut_data_f16 = Vec::with_capacity(lut_data.len() / 3 * 4);
+            let mut rgba_lut_data = Vec::with_capacity(lut_data.len() / 3 * 4);
             for chunk in lut_data.as_chunks::<3>().0 {
-                rgba_lut_data_f16.push(f16::from_f32(chunk[0]));
-                rgba_lut_data_f16.push(f16::from_f32(chunk[1]));
-                rgba_lut_data_f16.push(f16::from_f32(chunk[2]));
-                rgba_lut_data_f16.push(f16::ONE);
+                rgba_lut_data.extend_from_slice(&[chunk[0], chunk[1], chunk[2], 1.0]);
             }
+            let (lut_format, lut_bytes) = if self.high_precision {
+                (
+                    wgpu::TextureFormat::Rgba32Float,
+                    bytemuck::cast_slice(&rgba_lut_data).to_vec(),
+                )
+            } else {
+                let rgba_f16: Vec<f16> = rgba_lut_data.into_iter().map(f16::from_f32).collect();
+                (
+                    wgpu::TextureFormat::Rgba16Float,
+                    bytemuck::cast_slice(&rgba_f16).to_vec(),
+                )
+            };
             let lut_texture = device.create_texture_with_data(
                 queue,
                 &wgpu::TextureDescriptor {
@@ -1179,12 +1265,12 @@ impl GpuProcessor {
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D3,
-                    format: wgpu::TextureFormat::Rgba16Float,
+                    format: lut_format,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                     view_formats: &[],
                 },
                 TextureDataOrder::MipMajor,
-                bytemuck::cast_slice(&rgba_lut_data_f16),
+                &lut_bytes,
             );
             let view = lut_texture.create_view(&Default::default());
             let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -1303,12 +1389,13 @@ impl GpuProcessor {
         const TILE_SIZE: u32 = 2048;
         const TILE_OVERLAP: u32 = 128;
 
+        let bytes_per_pixel = if self.high_precision { 16 } else { 4 };
         let mut final_pixels = vec![
             0u8;
             if skip_cpu_readback {
                 0
             } else {
-                (out_width * out_height * 4) as usize
+                out_width as usize * out_height as usize * bytes_per_pixel as usize
             }
         ];
 
@@ -1579,11 +1666,14 @@ impl GpuProcessor {
                     for row in 0..tile_height {
                         let final_y = y_start + row - bounds.y;
                         let final_x = x_start - bounds.x;
-                        let final_row_offset = (final_y * out_width + final_x) as usize * 4;
+                        let final_row_offset = (final_y as usize * out_width as usize
+                            + final_x as usize)
+                            * bytes_per_pixel as usize;
                         let source_y = crop_y_start + row;
-                        let source_row_offset =
-                            (source_y * input_width + crop_x_start) as usize * 4;
-                        let copy_bytes = (tile_width * 4) as usize;
+                        let source_row_offset = (source_y as usize * input_width as usize
+                            + crop_x_start as usize)
+                            * bytes_per_pixel as usize;
+                        let copy_bytes = (tile_width * bytes_per_pixel) as usize;
 
                         final_pixels[final_row_offset..final_row_offset + copy_bytes]
                             .copy_from_slice(
@@ -1597,6 +1687,135 @@ impl GpuProcessor {
 
         Ok((final_pixels, out_width, out_height, bounds.x, bounds.y))
     }
+}
+
+/// Render an export without the preview pipeline's half-float input or 8-bit
+/// output bottleneck. Input, tonal blur and main output use 32-bit floats; the
+/// final sRGB pixels are quantized once to RGBA16 for PNG/TIFF encoding.
+///
+/// This opt-in path does not touch the UI processor/image cache or its display.
+/// Flare's low-resolution effect maps and mask coverage retain their native
+/// formats. Callers must encode this image as 16-bit to retain the precision.
+pub fn process_and_get_dynamic_image_high_precision(
+    context: &GpuContext,
+    base_image: &DynamicImage,
+    request: RenderRequest,
+) -> Result<DynamicImage, String> {
+    let (width, height) = base_image.dimensions();
+    validate_precision_request(
+        width,
+        height,
+        context.limits.max_texture_dimension_2d,
+        &request,
+    )?;
+    let allocation_scope = context
+        .device
+        .push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+    let internal_scope = context.device.push_error_scope(wgpu::ErrorFilter::Internal);
+    let validation_scope = context
+        .device
+        .push_error_scope(wgpu::ErrorFilter::Validation);
+    let result = render_high_precision(context, base_image, request);
+    // Always drain every scope, including after a CPU-side validation failure.
+    let validation_error = pollster::block_on(validation_scope.pop());
+    let internal_error = pollster::block_on(internal_scope.pop());
+    let allocation_error = pollster::block_on(allocation_scope.pop());
+    if let Some(error) = validation_error.or(internal_error).or(allocation_error) {
+        return Err(format!("High-precision GPU render failed: {error}"));
+    }
+    result
+}
+
+fn render_high_precision(
+    context: &GpuContext,
+    base_image: &DynamicImage,
+    request: RenderRequest,
+) -> Result<DynamicImage, String> {
+    let (width, height) = base_image.dimensions();
+    let processor = GpuProcessor::new_with_precision(context.clone(), width, height, true)?;
+    let input = base_image.to_rgba32f();
+    if input.as_raw().iter().any(|channel| !channel.is_finite()) {
+        return Err("Input image contains non-finite pixels".to_string());
+    }
+    let texture = context.device.create_texture_with_data(
+        &context.queue,
+        &wgpu::TextureDescriptor {
+            label: Some("High-Precision Export Input"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        TextureDataOrder::MipMajor,
+        bytemuck::cast_slice(input.as_raw()),
+    );
+    drop(input);
+    let view = texture.create_view(&Default::default());
+    let (pixels, out_width, out_height, _, _) =
+        processor.run(&view, width, height, request, false, false)?;
+    rgba32_bytes_to_rgba16(out_width, out_height, &pixels)
+}
+
+fn validate_precision_request(
+    width: u32,
+    height: u32,
+    max_dimension: u32,
+    request: &RenderRequest,
+) -> Result<(), String> {
+    if width == 0 || height == 0 || width > max_dimension || height > max_dimension {
+        return Err(format!(
+            "Image dimensions {width}x{height} are outside GPU limits (1..={max_dimension})"
+        ));
+    }
+    if let Some(roi) = request.roi {
+        if roi.width == 0
+            || roi.height == 0
+            || roi.x.checked_add(roi.width).is_none_or(|end| end > width)
+            || roi.y.checked_add(roi.height).is_none_or(|end| end > height)
+        {
+            return Err("Render region must be nonempty and inside the image".to_string());
+        }
+    }
+    if request.mask_bitmaps.len() != request.adjustments.mask_count as usize
+        || request.mask_bitmaps.len() > MAX_MASKS
+        || request
+            .mask_bitmaps
+            .iter()
+            .any(|mask| mask.dimensions() != (width, height))
+    {
+        return Err(
+            "Every enabled mask requires a matching bitmap at the image dimensions".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn rgba32_bytes_to_rgba16(width: u32, height: u32, pixels: &[u8]) -> Result<DynamicImage, String> {
+    let expected_bytes = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|count| count.checked_mul(16))
+        .ok_or("GPU output dimensions overflow")?;
+    if pixels.len() != expected_bytes {
+        return Err("High-precision GPU output has an invalid byte count".to_string());
+    }
+    let mut channels = Vec::with_capacity(expected_bytes / 4);
+    for chunk in pixels.chunks_exact(4) {
+        let value = f32::from_le_bytes(chunk.try_into().unwrap());
+        if !value.is_finite() {
+            return Err("High-precision GPU output contains non-finite pixels".to_string());
+        }
+        channels.push((value.clamp(0.0, 1.0) * 65535.0).round() as u16);
+    }
+    let image = ImageBuffer::<Rgba<u16>, _>::from_raw(width, height, channels)
+        .ok_or("Failed to create high-precision image buffer")?;
+    Ok(DynamicImage::ImageRgba16(image))
 }
 
 pub fn process_and_get_dynamic_image(
@@ -2018,4 +2237,215 @@ fn process_and_get_dynamic_image_inner(
     let img_buf = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(out_w, out_h, processed_pixels)
         .ok_or("Failed to create image buffer from GPU data")?;
     Ok(DynamicImage::ImageRgba8(img_buf))
+}
+
+#[cfg(test)]
+mod precision_tests {
+    use super::*;
+
+    fn request(roi: Option<Roi>) -> RenderRequest<'static> {
+        RenderRequest {
+            adjustments: crate::image_processing::get_all_adjustments_from_json(
+                &serde_json::json!({}),
+                false,
+                None,
+            ),
+            mask_bitmaps: &[],
+            lut: None,
+            roi,
+        }
+    }
+
+    #[test]
+    fn quantization_retains_sub_eight_bit_steps() {
+        let input: Vec<f32> = (0..1024)
+            .flat_map(|i| {
+                let value = (32768 + i) as f32 / 65535.0;
+                [value, value, value, 1.0]
+            })
+            .collect();
+        let bytes: Vec<u8> = input.into_iter().flat_map(f32::to_le_bytes).collect();
+        let output = rgba32_bytes_to_rgba16(1024, 1, &bytes).unwrap().to_rgba16();
+        for (i, pixel) in output.pixels().enumerate() {
+            assert_eq!(
+                pixel.0,
+                [32768 + i as u16, 32768 + i as u16, 32768 + i as u16, 65535]
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_or_non_finite_readbacks_are_errors() {
+        assert!(rgba32_bytes_to_rgba16(1, 1, &[0; 15]).is_err());
+        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let bytes: Vec<u8> = [value, 0.0, 0.0, 1.0]
+                .into_iter()
+                .flat_map(f32::to_le_bytes)
+                .collect();
+            assert!(rgba32_bytes_to_rgba16(1, 1, &bytes).is_err());
+        }
+        let bytes: Vec<u8> = [-0.1f32, 1.1, 0.5, 1.0]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect();
+        assert_eq!(
+            rgba32_bytes_to_rgba16(1, 1, &bytes)
+                .unwrap()
+                .to_rgba16()
+                .get_pixel(0, 0)
+                .0,
+            [0, 65535, 32768, 65535]
+        );
+    }
+
+    #[test]
+    fn invalid_regions_and_missing_masks_fail_before_gpu_work() {
+        assert!(validate_precision_request(0, 10, 4096, &request(None)).is_err());
+        assert!(validate_precision_request(5000, 10, 4096, &request(None)).is_err());
+        for roi in [
+            Roi {
+                x: 9,
+                y: 0,
+                width: 2,
+                height: 1,
+            },
+            Roi {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 1,
+            },
+            Roi {
+                x: u32::MAX,
+                y: 0,
+                width: 2,
+                height: 1,
+            },
+        ] {
+            assert!(validate_precision_request(10, 10, 4096, &request(Some(roi))).is_err());
+        }
+        let mut missing = request(None);
+        missing.adjustments.mask_count = 1;
+        assert!(validate_precision_request(10, 10, 4096, &missing).is_err());
+        assert!(validate_precision_request(10, 10, 4096, &request(None)).is_ok());
+    }
+
+    #[test]
+    fn upstream_shader_changes_cannot_silently_disable_precision() {
+        assert!(replace_shader_token("", "rgba8unorm", "rgba32float").is_err());
+        assert!(
+            replace_shader_token("rgba8unorm rgba8unorm", "rgba8unorm", "rgba32float").is_err()
+        );
+        assert!(
+            replace_shader_token(
+                include_str!("shaders/shader.wgsl"),
+                "rgba8unorm",
+                "rgba32float"
+            )
+            .is_ok()
+        );
+        assert!(
+            replace_shader_token(
+                include_str!("shaders/shader.wgsl"),
+                "let dither_amount = 1.0 / 255.0;",
+                "let dither_amount = 1.0 / 65535.0;"
+            )
+            .is_ok()
+        );
+        assert!(
+            replace_shader_token(
+                include_str!("shaders/blur.wgsl"),
+                "rgba16float",
+                "rgba32float"
+            )
+            .is_ok()
+        );
+        assert!(
+            replace_shader_token(
+                include_str!("shaders/shader.wgsl"),
+                "dither(id.xy)",
+                "dither(absolute_coord)",
+            )
+            .is_ok()
+        );
+        assert!(
+            replace_shader_token(
+                include_str!("shaders/flare.wgsl"),
+                "textureSampleLevel(input_texture, input_sampler, uv, 0.0)",
+                "sample_input_bilinear(uv)"
+            )
+            .is_ok()
+        );
+    }
+
+    /// Run explicitly on a machine with a GPU adapter. This checks actual GPU
+    /// shader execution, row padding, tile/ROI assembly and effect bindings.
+    #[test]
+    #[ignore = "requires a GPU adapter; run with --ignored"]
+    fn gpu_precision_preserves_ramp_and_tile_boundaries() {
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("GPU adapter required for precision integration test");
+        let limits = adapter.limits();
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: limits.clone(),
+            ..Default::default()
+        }))
+        .unwrap();
+        let context = GpuContext {
+            device: Arc::new(device),
+            queue: Arc::new(queue),
+            limits,
+            display: Arc::new(std::sync::Mutex::new(None)),
+        };
+        let input = ImageBuffer::<Rgba<u16>, _>::from_fn(2055, 3, |x, y| {
+            let value = 32768 + (x + y * 2055) as u16;
+            Rgba([value, value, value, 65535])
+        });
+        let source = DynamicImage::ImageRgba16(input.clone());
+        let output = process_and_get_dynamic_image_high_precision(&context, &source, request(None))
+            .unwrap()
+            .to_rgba16();
+        let levels: std::collections::HashSet<u16> = output
+            .rows()
+            .next()
+            .unwrap()
+            .map(|pixel| pixel.0[0])
+            .collect();
+        assert!(
+            levels.len() > 1500,
+            "Only {} levels survived GPU rendering",
+            levels.len()
+        );
+        for (actual, expected) in output.pixels().zip(input.pixels()) {
+            assert!(
+                actual.0[0].abs_diff(expected.0[0]) <= 8,
+                "Ramp mismatch: {actual:?} != {expected:?}"
+            );
+            assert_eq!(actual.0[3], 65535);
+        }
+        let roi = Roi {
+            x: 2044,
+            y: 1,
+            width: 9,
+            height: 2,
+        };
+        let cropped =
+            process_and_get_dynamic_image_high_precision(&context, &source, request(Some(roi)))
+                .unwrap()
+                .to_rgba16();
+        assert_eq!(cropped.dimensions(), (9, 2));
+        for (x, y, pixel) in cropped.enumerate_pixels() {
+            assert_eq!(pixel, output.get_pixel(x + roi.x, y + roi.y));
+        }
+        let mut effects = request(None);
+        effects.adjustments.global.clarity = 0.2;
+        effects.adjustments.global.flare_amount = 0.2;
+        let effect_output =
+            process_and_get_dynamic_image_high_precision(&context, &source, effects).unwrap();
+        assert_eq!(effect_output.color(), image::ColorType::Rgba16);
+        assert_eq!(effect_output.dimensions(), source.dimensions());
+    }
 }

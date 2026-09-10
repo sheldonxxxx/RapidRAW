@@ -21,23 +21,23 @@ use tokio::sync::Mutex as TokioMutex;
 
 const ENCODER_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/sam_vit_b_01ec64_encoder.onnx?download=true";
 const DECODER_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/sam_vit_b_01ec64_decoder.onnx?download=true";
-const ENCODER_FILENAME: &str = "sam_vit_b_01ec64_encoder.onnx";
-const DECODER_FILENAME: &str = "sam_vit_b_01ec64_decoder.onnx";
+pub(crate) const ENCODER_FILENAME: &str = "sam_vit_b_01ec64_encoder.onnx";
+pub(crate) const DECODER_FILENAME: &str = "sam_vit_b_01ec64_decoder.onnx";
 const SAM_INPUT_SIZE: u32 = 1024;
-const ENCODER_SHA256: &str = "16ab73d9c824886f0de2938c19df22fb9ec3deebfd0de58e65177e479213d7d1";
-const DECODER_SHA256: &str = "85d0d672cf5b7fe763edcde429e5533e62f674af4b15c7d688b7673b0ef00bf7";
+pub(crate) const ENCODER_SHA256: &str = "16ab73d9c824886f0de2938c19df22fb9ec3deebfd0de58e65177e479213d7d1";
+pub(crate) const DECODER_SHA256: &str = "85d0d672cf5b7fe763edcde429e5533e62f674af4b15c7d688b7673b0ef00bf7";
 
 const U2NETP_URL: &str =
     "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/u2net.onnx?download=true";
-const U2NETP_FILENAME: &str = "u2net.onnx";
+pub(crate) const U2NETP_FILENAME: &str = "u2net.onnx";
 const U2NETP_INPUT_SIZE: u32 = 320;
-const U2NETP_SHA256: &str = "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491";
+pub(crate) const U2NETP_SHA256: &str = "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491";
 
 const SKYSEG_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/skyseg-u2net.onnx?download=true";
-const SKYSEG_FILENAME: &str = "skyseg_u2net.onnx";
-const SKYSEG_LEGACY_FILENAME: &str = "skyseg-u2net.onnx";
+pub(crate) const SKYSEG_FILENAME: &str = "skyseg_u2net.onnx";
+pub(crate) const SKYSEG_LEGACY_FILENAME: &str = "skyseg-u2net.onnx";
 const SKYSEG_INPUT_SIZE: u32 = 320;
-const SKYSEG_SHA256: &str = "ab9c34c64c3d821220a2886a4a06da4642ffa14d5b30e8d5339056a089aa1d39";
+pub(crate) const SKYSEG_SHA256: &str = "ab9c34c64c3d821220a2886a4a06da4642ffa14d5b30e8d5339056a089aa1d39";
 
 const CLIP_MODEL_URL: &str =
     "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/clip_model.onnx?download=true";
@@ -47,18 +47,18 @@ const CLIP_TOKENIZER_FILENAME: &str = "clip_tokenizer.json";
 const CLIP_MODEL_SHA256: &str = "57879bb1c23cdeb350d23569dd251ed4b740a96d747c529e94a2bb8040ac5d00";
 
 const DENOISE_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/nind_denoise_utnet_684.onnx?download=true";
-const DENOISE_FILENAME: &str = "nind_denoise_utnet_684.onnx";
-const DENOISE_SHA256: &str = "ee3586279d514df557ff3f7dec6df37fafc51ba5d3a3435b2cc9ac2d9017e7fe";
+pub(crate) const DENOISE_FILENAME: &str = "nind_denoise_utnet_684.onnx";
+pub(crate) const DENOISE_SHA256: &str = "ee3586279d514df557ff3f7dec6df37fafc51ba5d3a3435b2cc9ac2d9017e7fe";
 
 const LAMA_URL: &str =
     "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/lama_fp16.onnx?download=true";
-const LAMA_FILENAME: &str = "lama_fp16.onnx";
-const LAMA_SHA256: &str = "2d6be6277c400d6f1b91819737f7c3da935e5c63d1b521d393be1196a2bfa82c";
+pub(crate) const LAMA_FILENAME: &str = "lama_fp16.onnx";
+pub(crate) const LAMA_SHA256: &str = "2d6be6277c400d6f1b91819737f7c3da935e5c63d1b521d393be1196a2bfa82c";
 
 const DEPTH_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/depth_anything_v2_vits.onnx?download=true";
-const DEPTH_FILENAME: &str = "depth_anything_v2_vits.onnx";
+pub(crate) const DEPTH_FILENAME: &str = "depth_anything_v2_vits.onnx";
 const DEPTH_INPUT_SIZE: u32 = 518;
-const DEPTH_SHA256: &str = "d2b11a11c1d4a12b47608fa65a17ee9a4c605b55ee1730c8e3b526304f2562be";
+pub(crate) const DEPTH_SHA256: &str = "d2b11a11c1d4a12b47608fa65a17ee9a4c605b55ee1730c8e3b526304f2562be";
 
 pub struct AiModels {
     pub sam_encoder: Mutex<Session>,
@@ -307,6 +307,11 @@ pub fn fast_guided_filter(
 }
 
 fn get_models_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf> {
+    #[cfg(feature = "mcp")]
+    if let Some(paths) = app_handle.try_state::<crate::mcp_bridge::WorkspacePaths>() {
+        std::fs::create_dir_all(&paths.models)?;
+        return Ok(paths.models.clone());
+    }
     let models_dir = app_handle.path().app_data_dir()?.join("models");
     if !models_dir.exists() {
         fs::create_dir_all(&models_dir)?;
