@@ -4,6 +4,8 @@ A local, nondestructive interface to RapidRAW's native processing engine. It sup
 
 The MCP server uses the official TypeScript SDK v2 and stdio. One connection owns each workspace at a time through an exclusive native lock; use separate workspaces for simultaneous agents. It owns one persistent native bridge process; image processing and validation remain in Rust. The `mcp/` package and `src-tauri/src/mcp_bridge/` module are isolated so normal upstream development can be merged with a small integration surface. Build the fork with the `mcp` Cargo feature; an unmodified installed RapidRAW app does not provide this bridge.
 
+The [RapidRAW MCP skill](../skills/rapidraw-mcp/SKILL.md) provides agent guidance for editing, mask coordinates, derived sessions, recovery, and verified exports. Its self-contained folder can be installed as `rapidraw-mcp` in your agent's skills directory; invoke it with `$rapidraw-mcp` once available. The MCP connection is configured separately below.
+
 ## Build and connect
 
 Requirements: Node.js 22+, Rust 1.98 or later, this RapidRAW checkout's native system dependencies, and a GPU adapter supported by the renderer. The pinned Rust toolchain below leaves the machine's default unchanged. From the repository root:

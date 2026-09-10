@@ -1,0 +1,4 @@
+interface:
+  display_name: "RapidRAW MCP"
+  short_description: "Edit photos with RapidRAW MCP and verify exports"
+  default_prompt: "Use $rapidraw-mcp to edit this photo through the native MCP tools and deliver a visually verified export."

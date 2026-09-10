@@ -21,11 +21,23 @@
 
 > A beautiful, non-destructive, and GPU-accelerated RAW image editor built with performance in mind.
 
-This fork also provides an optional [local MCP photo-editing interface](mcp/README.md). See [MCP development and upstream merges](MCP.md) for the build, verification, and integration boundaries.
+Looking for **RapidRAW MCP**? This fork includes a [Model Context Protocol server for AI photo editing](#rapidraw-mcp--model-context-protocol-server-for-photo-editing).
 
 RapidRAW is a modern, high-performance alternative to Adobe Lightroom®. It delivers a simple, beautiful editing experience in a lightweight package (under 20MB) for Windows, macOS, Linux, and Android.
 
 I started developing this project as a personal challenge when I was 18. My goal was to create a high-performance tool for my own photography workflow while deepening my understanding of React, WGSL and Rust.
+
+## RapidRAW MCP — Model Context Protocol server for photo editing
+
+[sheldonxxxx/RapidRAW](https://github.com/sheldonxxxx/RapidRAW) adds an optional **MCP server for RAW photo editing** to RapidRAW. Compatible local MCP clients and vision-capable AI agents can use the native, GPU-accelerated engine to inspect photos, make nondestructive edits, review previews, and export finished images through 37 tools over stdio.
+
+- **RAW development:** exposure, color, curves, crop, lens corrections, presets, and LUTs.
+- **Selective and AI editing:** masks, subject/sky/depth selection, retouching, denoise, and HDR/focus/panorama merging, with the required local models installed.
+- **Editable workflows and delivery:** undo/redo, saved sessions and recipes, batch exports, and high-precision 16-bit TIFF output. Originals and existing sidecars are preserved through isolated working copies.
+
+Start with the **[MCP setup and connection guide](mcp/README.md#build-and-connect)**, then see the [tool reference and editing examples](mcp/README.md#capabilities), [optional agent skill](skills/rapidraw-mcp/SKILL.md), and [verification results and limitations](mcp/VERIFICATION.md). Contributors can read the [native integration and upstream merge guide](MCP.md).
+
+**Build this fork with the `mcp` Cargo feature to use the server.** The upstream application downloads below do not include this fork's MCP bridge. MCP support is experimental and remains in this fork while further testing continues; the verification report distinguishes tested macOS workflows from untested platforms and release packaging.
 
 <table width="100%">
   <tr>
