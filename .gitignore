@@ -44,6 +44,7 @@ src-tauri/libs/
 bench/out/
 
 # Local photo experiments and optional MCP runtime state
+/output/
 cli-evaluation/
 .mcp-workspace/
 mcp-implementation-progress.md
