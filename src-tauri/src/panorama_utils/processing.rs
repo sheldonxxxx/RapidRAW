@@ -309,6 +309,72 @@ fn are_points_collinear(p1: Point2<f64>, p2: Point2<f64>, p3: Point2<f64>) -> bo
     area.abs() < 1e-6
 }
 
+#[cfg(test)]
+mod homography_tests {
+    use super::compute_homography;
+    use nalgebra::{Matrix3, Point2, Vector3};
+
+    fn assert_recovers_transform(transform: Matrix3<f64>, sources: &[Point2<f64>]) {
+        let points: Vec<_> = sources
+            .iter()
+            .map(|source| {
+                let target = transform * Vector3::new(source.x, source.y, 1.0);
+                (*source, Point2::new(target.x / target.z, target.y / target.z))
+            })
+            .collect();
+        let actual = compute_homography(&points).expect("valid homography");
+        // Check an interior point as well as the supplied correspondences.
+        for source in sources.iter().copied().chain([Point2::new(200.0, 250.0)]) {
+            let source = Vector3::new(source.x, source.y, 1.0);
+            let expected = transform * source;
+            let result = actual * source;
+            assert!((result.x / result.z - expected.x / expected.z).abs() < 1e-5);
+            assert!((result.y / result.z - expected.y / expected.z).abs() < 1e-5);
+        }
+    }
+
+    fn corners() -> [Point2<f64>; 4] {
+        [
+            Point2::new(20.0, 40.0),
+            Point2::new(400.0, 80.0),
+            Point2::new(440.0, 500.0),
+            Point2::new(30.0, 520.0),
+        ]
+    }
+
+    #[test]
+    fn four_point_identity_preserves_nullspace() {
+        assert_recovers_transform(Matrix3::identity(), &corners());
+    }
+
+    #[test]
+    fn four_point_translation() {
+        assert_recovers_transform(
+            Matrix3::new(1.0, 0.0, 125.0, 0.0, 1.0, -48.0, 0.0, 0.0, 1.0),
+            &corners(),
+        );
+    }
+
+    #[test]
+    fn four_point_projective_transform() {
+        assert_recovers_transform(
+            Matrix3::new(1.1, 0.05, 30.0, 0.03, 0.9, -20.0, 0.0002, -0.0001, 1.0),
+            &corners(),
+        );
+    }
+
+    #[test]
+    fn overdetermined_projective_transform() {
+        let mut sources = corners().to_vec();
+        sources.push(Point2::new(150.0, 370.0));
+        sources.push(Point2::new(300.0, 200.0));
+        assert_recovers_transform(
+            Matrix3::new(1.1, 0.05, 30.0, 0.03, 0.9, -20.0, 0.0002, -0.0001, 1.0),
+            &sources,
+        );
+    }
+}
+
 pub fn compute_homography(points: &[(Point2<f64>, Point2<f64>)]) -> Option<Matrix3<f64>> {
     if points.len() < 4 {
         return None;
@@ -339,6 +405,12 @@ pub fn compute_homography(points: &[(Point2<f64>, Point2<f64>)]) -> Option<Matri
             y * yp,
             yp,
         ]));
+    }
+    // nalgebra returns a thin SVD. For the four-point RANSAC sample, an 8x9
+    // matrix would omit the ninth right singular vector (the nullspace we
+    // need). A zero equation preserves the solution and makes V_t square.
+    if a_rows.len() == 8 {
+        a_rows.push(nalgebra::RowDVector::zeros(9));
     }
     let a = nalgebra::DMatrix::from_rows(&a_rows);
     let svd = SVD::new(a, true, true);
