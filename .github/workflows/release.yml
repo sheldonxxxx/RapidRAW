@@ -52,11 +52,6 @@ jobs:
             target: ''
             args: '--features tethering'
             asset-prefix: '03_tethering'
-          - platform: 'ubuntu-latest'
-            mobile: 'android'
-            target: 'aarch64-linux-android'
-            args: '--target aarch64'
-            asset-prefix: '04'
     uses: ./.github/workflows/build.yml
     with:
       release-id: ${{ github.event.release.id }}
@@ -65,7 +60,6 @@ jobs:
       build-args: ${{ matrix.args }}
       asset-name-pattern: '[name]_v[version]_[platform]_[arch][ext]'
       asset-prefix: ${{ matrix.asset-prefix }}
-      mobile: ${{ matrix.mobile }}
     secrets: inherit
     permissions:
       contents: write
