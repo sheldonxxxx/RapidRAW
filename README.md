@@ -31,7 +31,7 @@ The upstream author started RapidRAW at 18 as a personal photography project and
 
 This fork adds an optional **MCP server for RAW photo editing** to RapidRAW. Compatible local MCP clients and vision-capable AI agents can use the native, GPU-accelerated engine to inspect photos, make nondestructive edits, review previews, and export finished images through 62 tools over stdio.
 
-- **RAW development:** exposure, color, curves, crop, lens corrections, presets, and LUTs.
+- **RAW development:** exposure, color, curves, crop, lens corrections, presets, and LUTs, including linear DNG files with constant repeated black-level grids.
 - **Selective and AI editing:** subject/sky/depth selections, point-guided refinement, additive/subtractive brush repairs, manual masks, retouching, denoise, and HDR/focus/panorama merging, with the required local models installed.
 - **Editable workflows and delivery:** undo/redo, durable named versions and diffs, independent session forks, portable bundles, temporary comparisons, recoverable denoise and operation jobs, saved sessions and recipes, batch exports, explicit sRGB profiles, and high-precision 16-bit TIFF output. Originals and existing sidecars are preserved through isolated working copies.
 
@@ -44,6 +44,8 @@ npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp
 Pair it with your preferred photo-editing art-direction skill or a direct photographic brief. The execution skill handles native operations, state, and delivery; MCP setup is a separate step. **This MCP workflow is tested on macOS with Metal. Windows has not been tested.** See the [macOS quick start](mcp/README.md#macos-quick-start) to build and connect this fork.
 
 For local edits, follow [guided masking](skills/rapidraw-mcp/references/guided-masking.md): start with a useful AI or manual selection, repair the areas that matter, and compare the actual adjustment at delivery size and native detail. A restrained tonal lift and a precise extraction have different boundary requirements; judge the mask against the requested result.
+
+For already stitched 360 photographs, follow the [spherical photo handoff](skills/rapidraw-mcp/references/spherical-photos.md) to preserve projection, review seams and poles, and verify the final delivery metadata. The same guide covers editing a flat view selected by an external spherical reframing workflow.
 
 Start with the **[MCP setup and connection guide](mcp/README.md#build-and-connect)**, then see the [tool reference and editing examples](mcp/README.md#capabilities), [optional agent skill](skills/rapidraw-mcp/SKILL.md), and [verification results and limitations](mcp/VERIFICATION.md). Contributors can read the [native integration and upstream merge guide](MCP.md).
 

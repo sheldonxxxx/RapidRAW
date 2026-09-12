@@ -27,9 +27,11 @@ The MCP interface grows from 47 to 62 public tools: 57 native methods and five h
 - Fresh-mask native-edge and real automatic lens-profile runners, with immutable first-attempt artifacts, explicit photographic criteria and independent calibration expectations.
 - Guided masking instructions for choosing an AI or manual starting selection, painting named additive/subtractive corrections, and judging the actual local adjustment at overview and native detail.
 - A photographic guided-mask regression runner covering preserved AI baselines, brush corrections, an independent manual mask, selected/protected-region effects, history and exact saved-state/rendering checks.
+- Spherical-photo skill guidance for preserving full-sphere geometry, reviewing longitude seams and poles, editing an independently selected flat view, and checking final projection metadata and colour assumptions.
 
 ### Fixed
 
+- Linear DNG files with constant repeated black-level grids could render almost entirely white. Equivalent spatial repeats now normalize to per-channel black levels before RAW development.
 - Incorrect ICC adaptation/tag layout and export profile labeling.
 - Invalid JPEG XL output for affected image dimensions/alpha paths. Lossless and transparent compatibility cases use a verified encoder; a transparent fallback reports its quality/file-size tradeoff.
 - Extreme-aspect export resizing that could return the wrong requested dimension or a zero-sized companion axis.

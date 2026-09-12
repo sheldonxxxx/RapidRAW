@@ -4,7 +4,7 @@ use image::{DynamicImage, ImageBuffer, Rgba};
 use rawler::{
     decoders::{Orientation, RawDecodeParams},
     imgop::develop::{DemosaicAlgorithm, Intermediate, ProcessingStep, RawDevelop},
-    rawimage::{RawImage, RawPhotometricInterpretation},
+    rawimage::{BlackLevel, RawImage, RawPhotometricInterpretation},
     rawsource::RawSource,
 };
 use std::sync::{
@@ -34,6 +34,26 @@ fn is_linear_raw_format(raw_image: &RawImage) -> bool {
         raw_image.photometric,
         RawPhotometricInterpretation::LinearRaw
     )
+}
+
+fn collapse_constant_linear_black_level(black_level: &mut BlackLevel) {
+    let channels = black_level.cpp;
+    if channels == 0 || black_level.levels.len() <= channels {
+        return;
+    }
+    let first = &black_level.levels[..channels];
+    if black_level.levels.len() % channels == 0
+        && black_level
+            .levels
+            .chunks_exact(channels)
+            .all(|pixel| pixel == first)
+    {
+        // A constant spatial repeat is equivalent to one per-channel black
+        // level. rawler's linear scaler needs that form to match WhiteLevel.
+        black_level.levels.truncate(channels);
+        black_level.width = 1;
+        black_level.height = 1;
+    }
 }
 
 #[inline]
@@ -77,6 +97,10 @@ fn develop_internal(
         .unwrap_or(Orientation::Normal);
 
     let is_linear_format = is_linear_raw_format(&raw_image);
+
+    if is_linear_format {
+        collapse_constant_linear_black_level(&mut raw_image.blacklevel);
+    }
 
     let (apply_ungamma, apply_calibration) = match linear_mode.as_str() {
         "gamma" => (true, true),
@@ -254,4 +278,33 @@ pub fn get_fast_demosaic_scale_factor(
         }
     }
     1.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constant_rgb_black_level_repeat_matches_channel_white_levels() {
+        let mut black_level = BlackLevel::new(
+            &[64_u16, 128, 256, 64, 128, 256, 64, 128, 256, 64, 128, 256],
+            2,
+            2,
+            3,
+        );
+        collapse_constant_linear_black_level(&mut black_level);
+        assert_eq!(
+            (black_level.width, black_level.height, black_level.cpp),
+            (1, 1, 3)
+        );
+        assert_eq!(black_level.as_vec(), vec![64.0, 128.0, 256.0]);
+    }
+
+    #[test]
+    fn spatially_varying_black_levels_are_not_collapsed() {
+        let mut black_level = BlackLevel::new(&[0_u16, 0, 0, 1, 0, 0], 2, 1, 3);
+        let original = black_level.clone();
+        collapse_constant_linear_black_level(&mut black_level);
+        assert_eq!(black_level, original);
+    }
 }

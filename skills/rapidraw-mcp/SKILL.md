@@ -25,6 +25,8 @@ For a collection, inspect each source at overview and relevant native detail bef
 
 When noise blocks the intended detail or tonal separation, read [dedicated denoising](references/advanced-editing.md#dedicated-denoising). Ordinary noise-reduction sliders do not exercise the AI/BM3D operation; an unsuccessful slider treatment does not establish the engine's limit.
 
+For a stitched full-sphere image or a flat view selected from it, read [spherical photo handoff](references/spherical-photos.md). Projection, colour assumptions, periodic seams and final metadata need their own checks before a normal image export qualifies as a 360 deliverable.
+
 ## Save and deliver
 
 - `save_session` writes editable `.rrdata` beside the isolated working copy. For transfer or independent alternatives, use portable bundles or `fork_session`; see [portable editing and workers](references/portable-and-workers.md). Save a recipe only when reuse is requested.
