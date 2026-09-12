@@ -29,11 +29,19 @@ I started developing this project as a personal challenge when I was 18. My goal
 
 ## RapidRAW MCP — Model Context Protocol server for photo editing
 
-[sheldonxxxx/RapidRAW](https://github.com/sheldonxxxx/RapidRAW) adds an optional **MCP server for RAW photo editing** to RapidRAW. Compatible local MCP clients and vision-capable AI agents can use the native, GPU-accelerated engine to inspect photos, make nondestructive edits, review previews, and export finished images through 37 tools over stdio.
+[sheldonxxxx/RapidRAW](https://github.com/sheldonxxxx/RapidRAW) adds an optional **MCP server for RAW photo editing** to RapidRAW. Compatible local MCP clients and vision-capable AI agents can use the native, GPU-accelerated engine to inspect photos, make nondestructive edits, review previews, and export finished images through 47 tools over stdio.
 
 - **RAW development:** exposure, color, curves, crop, lens corrections, presets, and LUTs.
 - **Selective and AI editing:** masks, subject/sky/depth selection, retouching, denoise, and HDR/focus/panorama merging, with the required local models installed.
-- **Editable workflows and delivery:** undo/redo, saved sessions and recipes, batch exports, and high-precision 16-bit TIFF output. Originals and existing sidecars are preserved through isolated working copies.
+- **Editable workflows and delivery:** undo/redo, durable named versions, temporary comparisons, recoverable denoise jobs, saved sessions and recipes, batch exports, and high-precision 16-bit TIFF output. Originals and existing sidecars are preserved through isolated working copies.
+
+Install the optional execution skill with the [Skills CLI](https://github.com/vercel-labs/skills):
+
+```sh
+npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp
+```
+
+Pair it with your preferred photo-editing art-direction skill or a direct photographic brief. The execution skill handles native operations, state, and delivery; MCP setup is a separate step. **This MCP workflow is tested on macOS with Metal. Windows has not been tested.** See the [macOS quick start](mcp/README.md#macos-quick-start) to build and connect this fork.
 
 Start with the **[MCP setup and connection guide](mcp/README.md#build-and-connect)**, then see the [tool reference and editing examples](mcp/README.md#capabilities), [optional agent skill](skills/rapidraw-mcp/SKILL.md), and [verification results and limitations](mcp/VERIFICATION.md). Contributors can read the [native integration and upstream merge guide](MCP.md).
 

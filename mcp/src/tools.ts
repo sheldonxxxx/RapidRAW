@@ -27,6 +27,17 @@ const exportOptions = {
   strip_gps: z.boolean().optional(), overwrite: z.boolean().optional(), preserve_timestamps: z.boolean().optional(),
   watermark: watermark.optional(), export_masks: z.boolean().optional(),
 };
+const comparisonOptions = { region: renderRegion.optional(), long_edge: z.number().int().min(1).max(2048).optional() };
+const disabledMasks = z.array(z.string().min(1)).max(32);
+const variant = z
+  .object({
+    label: z.string().trim().min(1).max(200),
+    version_id: z.uuid().optional(),
+    patch: adjustments.optional(),
+    disabled_masks: disabledMasks.optional(),
+  })
+  .strict();
+const job = { job_id: z.uuid() };
 export interface ToolDefinition {
   method: string;
   description: string;
@@ -40,6 +51,64 @@ function tool(method: string, description: string, shape: z.ZodRawShape, readOnl
   return { method, description, schema: z.object(shape).strict(), readOnly, ...extra };
 }
 export const toolDefinitions: ToolDefinition[] = [
+  tool(
+    'inspect_adjustments',
+    'Inspect aligned before/after previews, an actual rendered RGB difference and a combined local exposure map with row statistics. By default disable every enabled mask for the before view. Exposure influence excludes other tonal controls; inspect the actual difference too. Does not change the edit.',
+    {
+      ...session,
+      ...comparisonOptions,
+      disabled_masks: disabledMasks.optional(),
+      difference_gain: z.number().min(1).max(16).optional(),
+      exposure_range: z.number().min(0.01).max(20).optional(),
+    },
+    true,
+  ),
+  tool(
+    'render_compare',
+    'Render 2–4 labeled temporary alternatives with the same crop and output size. Each starts from current edits or a named version, then applies a patch and optional mask disabling. Rejects geometry changes. Never modifies saved edits, history or revision.',
+    { ...session, ...comparisonOptions, variants: z.array(variant).min(2).max(4) },
+    true,
+  ),
+  tool(
+    'save_version',
+    'Save an immutable named reference to the current edits and metadata. Survives undo-history truncation and engine restart. Returns version_id without changing session revision.',
+    { ...mutation, label: z.string().trim().min(1).max(200) },
+  ),
+  tool('list_versions', 'List this session’s named reference versions and their captured revisions.', session, true),
+  tool(
+    'restore_version',
+    'Restore a named version as a new undoable edit, increasing the current revision. Does not overwrite the saved reference.',
+    { ...mutation, version_id: z.uuid() },
+  ),
+  tool(
+    'start_denoise',
+    'Start a background native AI or BM3D denoise job after capturing the source and current edits. Returns job_id; use get_job for progress and result_session_id. One worker per workspace; editing remains available during computation. Requires installed AI assets. Result is a separate session retaining RAW interpretation.',
+    { ...mutation, intensity: percent.optional(), method: z.enum(['ai', 'bm3d']).optional() },
+  ),
+  tool(
+    'get_job',
+    'Read denoise job progress, status, failure and durable result session. Completed results persist even if never polled. Interrupted jobs can restart from captured input with resume_job.',
+    job,
+    true,
+  ),
+  tool(
+    'list_jobs',
+    'List denoise jobs, including completed and interrupted jobs recovered after an engine restart.',
+    {},
+    true,
+  ),
+  tool(
+    'cancel_job',
+    'Request cooperative cancellation between BM3D patches or AI tiles without stopping the editing engine. Poll until cancelled. If completion already won the race, returns the completed result.',
+    job,
+    false,
+    { idempotent: true },
+  ),
+  tool(
+    'resume_job',
+    'Restart an interrupted, failed or cancelled denoise job from its captured source and edits. Preserves job_id, increments attempt, and starts computation again; partial work is not a tile checkpoint.',
+    job,
+  ),
   tool('capabilities', 'Inspect engine version, available methods, edit schemas, coordinate rules, and feature limitations. Call before editing.', {}, true),
   tool('list_images', 'Discover supported local images with pagination. Reads source folders without changing images.', { path, recursive: z.boolean().optional(), offset: z.number().int().nonnegative().optional(), limit: z.number().int().min(1).max(500).optional() }, true),
   tool('open_photo', 'Create an isolated nondestructive editing session from a source image and optional existing sidecar. Returns session_id, revision and dimensions; source files remain unchanged.', { path, inherit_sidecar: z.boolean().optional() }),
@@ -56,7 +125,7 @@ export const toolDefinitions: ToolDefinition[] = [
   tool('mask_generate', 'Generate a local AI subject, foreground, sky or depth mask. Models must be installed. Inspect the returned mask before selective edits; region identifies a subject rectangle.', { ...mutation, kind: z.enum(['subject', 'foreground', 'sky', 'depth']), name: z.string().max(200).optional(), region: region.optional(), parameters: record.optional(), adjustments: adjustments.optional() }),
   tool('generate_depth', 'Generate an image depth map; optionally enable depth blur. Requires local mask models.', { ...mutation, enable_blur: z.boolean().optional() }),
   tool('retouch', 'Apply a reversible clone, heal, retouch, liquify, local inpaint or remote generative patch defined by native submasks. Generative mode sends image content to the configured provider only when explicitly selected; token is used only for that request.', { ...mutation, mode: z.enum(['clone', 'heal', 'retouch', 'liquify', 'inpaint', 'generative']), name: z.string().max(200).optional(), sub_masks: z.array(subMask).min(1).max(64), source_point: point.optional(), prompt: z.string().max(10000).optional(), token: z.string().max(4096).optional() }, false, { network: true }),
-  tool('denoise', 'Apply native AI or BM3D denoise with a source-preserving intensity blend; intensity 0 is a no-op. The original remains intact. Inspect native detail for lost texture and save the MCP session to preserve linear RAW interpretation after AI denoise.', { ...mutation, intensity: percent.optional(), method: z.enum(['ai', 'bm3d']).optional() }),
+  tool('denoise', 'Synchronous compatibility operation; prefer start_denoise for cancellable background work. Apply native AI or BM3D denoise with a source-preserving intensity blend; intensity 0 is a no-op. The original remains intact. Inspect native detail for lost texture and save the MCP session to preserve linear RAW interpretation after AI denoise.', { ...mutation, intensity: percent.optional(), method: z.enum(['ai', 'bm3d']).optional() }),
   tool('lens_profile', 'Find or automatically apply native lens correction data. Lookup mode inspects profiles; auto mode applies corrections with revision tracking.', { ...mutation, mode: z.enum(['auto', 'lookup']).optional(), maker: z.string().max(200).optional(), model: z.string().max(200).optional(), focal_length: z.number().positive().optional(), aperture: z.number().positive().optional(), distance: z.number().positive().optional() }),
   tool('history', 'Read edit history and current undo/redo position.', session, true),
   tool('undo', 'Undo one session edit and return the restored state/revision.', mutation),

@@ -1,5 +1,5 @@
 {
-  "fixture_version": 1,
+  "fixture_version": 2,
   "capabilities": {
     "adjustment_schema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -512,8 +512,29 @@
                               "minimum": -100000,
                               "type": "number"
                             },
+                            "fadeAfter": {
+                              "description": "Source-pixel distance from the boundary to full coverage on the negative perpendicular side (above a left-to-right horizontal line). Defaults to range.",
+                              "maximum": 100000,
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "fadeBefore": {
+                              "description": "Source-pixel distance from the boundary to zero coverage on the positive perpendicular side (below a left-to-right horizontal line). Defaults to range.",
+                              "maximum": 100000,
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "falloff": {
+                              "enum": [
+                                "linear",
+                                "smoothstep",
+                                "smootherstep"
+                              ],
+                              "type": "string"
+                            },
                             "range": {
-                              "maximum": 100,
+                              "description": "Half-width of the fade in source pixels, perpendicular to the boundary line; not a percentage.",
+                              "maximum": 100000,
                               "minimum": 0,
                               "type": "number"
                             },
@@ -3974,8 +3995,29 @@
                               "minimum": -100000,
                               "type": "number"
                             },
+                            "fadeAfter": {
+                              "description": "Source-pixel distance from the boundary to full coverage on the negative perpendicular side (above a left-to-right horizontal line). Defaults to range.",
+                              "maximum": 100000,
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "fadeBefore": {
+                              "description": "Source-pixel distance from the boundary to zero coverage on the positive perpendicular side (below a left-to-right horizontal line). Defaults to range.",
+                              "maximum": 100000,
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "falloff": {
+                              "enum": [
+                                "linear",
+                                "smoothstep",
+                                "smootherstep"
+                              ],
+                              "type": "string"
+                            },
                             "range": {
-                              "maximum": 100,
+                              "description": "Half-width of the fade in source pixels, perpendicular to the boundary line; not a percentage.",
+                              "maximum": 100000,
                               "minimum": 0,
                               "type": "number"
                             },
@@ -5989,18 +6031,31 @@
       "title": "RapidRAW adjustments",
       "type": "object"
     },
-    "bridge_version": "1.0.0",
+    "bridge_version": "1.1.0",
     "coordinate_space": {
       "masks": "oriented full-resolution pixels before user crop",
       "render_region": "output pixels after user crop, before preview resizing"
     },
     "engine": "RapidRAW",
     "limits": {
+      "comparison_long_edge": 2048,
+      "comparison_variants": 4,
+      "concurrent_denoise_jobs": 1,
       "history": 32,
       "masks": 32,
       "request_bytes": 67108864
     },
     "methods": [
+      "inspect_adjustments",
+      "render_compare",
+      "save_version",
+      "list_versions",
+      "restore_version",
+      "start_denoise",
+      "get_job",
+      "list_jobs",
+      "cancel_job",
+      "resume_job",
       "capabilities",
       "list_images",
       "open_photo",
@@ -6072,125 +6127,125 @@
     "copyPasteSettings": {
       "autoSync": false,
       "includedAdjustments": [
-        "hue",
-        "tint",
-        "parametricCurve",
-        "curves",
-        "shadows",
-        "grainRoughness",
-        "highlights",
         "brightness",
-        "blacks",
-        "lutIsSceneReferred",
-        "lutPath",
-        "temperature",
+        "curves",
         "saturation",
-        "structure",
-        "colorNoiseReduction",
-        "halationAmount",
-        "whites",
-        "flareAmount",
-        "vibrance",
-        "hsl",
-        "colorCalibration",
-        "lutSize",
-        "glowAmount",
-        "colorGrading",
         "centré",
-        "exposure",
-        "dehaze",
-        "contrast",
-        "lumaNoiseReduction",
-        "chromaticAberrationRedCyan",
-        "lutName",
-        "sharpnessThreshold",
-        "lutData",
-        "grainAmount",
-        "vignetteMidpoint",
-        "curveMode",
-        "vignetteAmount",
         "chromaticAberrationBlueYellow",
         "grainSize",
-        "lutIntensity",
-        "pointCurves",
-        "toneMapper",
-        "clarity",
-        "sharpness",
+        "halationAmount",
+        "contrast",
+        "shadows",
+        "colorGrading",
         "vignetteFeather",
-        "vignetteRoundness"
+        "colorNoiseReduction",
+        "sharpness",
+        "pointCurves",
+        "colorCalibration",
+        "hue",
+        "highlights",
+        "curveMode",
+        "vibrance",
+        "lutSize",
+        "clarity",
+        "whites",
+        "hsl",
+        "blacks",
+        "vignetteRoundness",
+        "lutData",
+        "flareAmount",
+        "dehaze",
+        "temperature",
+        "lutName",
+        "lumaNoiseReduction",
+        "sharpnessThreshold",
+        "lutIntensity",
+        "grainRoughness",
+        "lutPath",
+        "chromaticAberrationRedCyan",
+        "structure",
+        "grainAmount",
+        "exposure",
+        "vignetteAmount",
+        "parametricCurve",
+        "vignetteMidpoint",
+        "toneMapper",
+        "glowAmount",
+        "tint",
+        "lutIsSceneReferred"
       ],
       "knownAdjustments": [
-        "chromaticAberrationRedCyan",
-        "chromaticAberrationBlueYellow",
-        "lutIntensity",
-        "crop",
-        "flipVertical",
-        "transformHorizontal",
-        "transformXOffset",
-        "lensCorrectionMode",
-        "brightness",
-        "colorNoiseReduction",
-        "lutName",
-        "transformRotate",
-        "hsl",
-        "grainRoughness",
-        "orientationSteps",
-        "blacks",
-        "vignetteFeather",
-        "lensTcaAmount",
-        "lutPath",
-        "vignetteMidpoint",
-        "vignetteAmount",
-        "rotation",
-        "transformAspect",
-        "glowAmount",
-        "curveMode",
-        "transformYOffset",
-        "lutData",
-        "lensDistortionEnabled",
-        "transformDistortion",
-        "lensMaker",
-        "vignetteRoundness",
-        "lensModel",
-        "lensTcaEnabled",
-        "curves",
-        "grainSize",
-        "parametricCurve",
-        "colorGrading",
-        "vibrance",
-        "aspectRatio",
-        "lensVignetteAmount",
-        "lutSize",
-        "masks",
+        "lumaNoiseReduction",
         "transformVertical",
-        "temperature",
-        "toneMapper",
-        "centré",
-        "pointCurves",
-        "shadows",
+        "lensDistortionAmount",
+        "vibrance",
+        "hsl",
         "saturation",
         "structure",
-        "flipHorizontal",
-        "sharpnessThreshold",
-        "lumaNoiseReduction",
+        "whites",
+        "sharpness",
+        "chromaticAberrationRedCyan",
+        "aspectRatio",
+        "toneMapper",
+        "lutData",
+        "halationAmount",
+        "vignetteFeather",
+        "flipVertical",
+        "transformDistortion",
+        "lensVignetteAmount",
+        "lutSize",
+        "guidedPerspective",
+        "tint",
+        "transformHorizontal",
         "lutIsSceneReferred",
-        "dehaze",
+        "contrast",
+        "lensTcaEnabled",
         "grainAmount",
+        "colorCalibration",
+        "clarity",
+        "lensMaker",
+        "pointCurves",
+        "curveMode",
+        "exposure",
+        "vignetteRoundness",
+        "transformXOffset",
+        "orientationSteps",
+        "parametricCurve",
+        "sharpnessThreshold",
+        "centré",
+        "masks",
+        "chromaticAberrationBlueYellow",
+        "transformYOffset",
+        "vignetteAmount",
+        "lensTcaAmount",
+        "temperature",
+        "grainSize",
+        "highlights",
+        "lutName",
         "transformScale",
         "hue",
-        "whites",
-        "lensDistortionAmount",
-        "sharpness",
-        "contrast",
-        "highlights",
-        "halationAmount",
         "flareAmount",
-        "colorCalibration",
+        "transformAspect",
+        "crop",
+        "blacks",
+        "rotation",
+        "lensCorrectionMode",
+        "shadows",
+        "curves",
+        "lutIntensity",
+        "glowAmount",
+        "dehaze",
+        "brightness",
+        "colorGrading",
+        "vignetteMidpoint",
+        "grainRoughness",
+        "transformRotate",
         "lensVignetteEnabled",
-        "guidedPerspective",
-        "exposure",
-        "tint",
-        "clarity"
+        "flipHorizontal",
+        "lensDistortionEnabled",
+        "lensModel",
+        "lutPath",
+        "colorNoiseReduction"
       ],
       "mode": "merge"
     },
@@ -6353,6 +6408,520 @@
     "zoomSpeedMultiplier": 1
   },
   "tools": [
+    {
+      "name": "rapidraw_inspect_adjustments",
+      "title": "Inspect Adjustments",
+      "description": "Inspect aligned before/after previews, an actual rendered RGB difference and a combined local exposure map with row statistics. By default disable every enabled mask for the before view. Exposure influence excludes other tonal controls; inspect the actual difference too. Does not change the edit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
+          },
+          "region": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "y": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "width": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "height": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "additionalProperties": false,
+            "description": "Rectangle in full-resolution rendered image pixels AFTER user crop and geometry. Extracted before long_edge resizing; read rendered dimensions first."
+          },
+          "long_edge": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2048
+          },
+          "disabled_masks": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "difference_gain": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 16
+          },
+          "exposure_range": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "rapidraw_render_compare",
+      "title": "Render Compare",
+      "description": "Render 2–4 labeled temporary alternatives with the same crop and output size. Each starts from current edits or a named version, then applies a patch and optional mask disabling. Rejects geometry changes. Never modifies saved edits, history or revision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
+          },
+          "region": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "y": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "width": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "height": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "additionalProperties": false,
+            "description": "Rectangle in full-resolution rendered image pixels AFTER user crop and geometry. Extracted before long_edge resizing; read rendered dimensions first."
+          },
+          "long_edge": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2048
+          },
+          "variants": {
+            "minItems": 2,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "version_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "patch": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {},
+                  "description": "Native RapidRAW adjustment object. Read rapidraw://adjustment-schema first; unknown keys and invalid values are rejected by the engine."
+                },
+                "disabled_masks": {
+                  "maxItems": 32,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "session_id",
+          "variants"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "rapidraw_save_version",
+      "title": "Save Version",
+      "description": "Save an immutable named reference to the current edits and metadata. Survives undo-history truncation and engine restart. Returns version_id without changing session revision.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
+          },
+          "expected_revision": {
+            "description": "Reject the mutation if the session revision changed since inspection.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "session_id",
+          "label"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "rapidraw_list_versions",
+      "title": "List Versions",
+      "description": "List this session’s named reference versions and their captured revisions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "rapidraw_restore_version",
+      "title": "Restore Version",
+      "description": "Restore a named version as a new undoable edit, increasing the current revision. Does not overwrite the saved reference.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
+          },
+          "expected_revision": {
+            "description": "Reject the mutation if the session revision changed since inspection.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "session_id",
+          "version_id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "rapidraw_start_denoise",
+      "title": "Start Denoise",
+      "description": "Start a background native AI or BM3D denoise job after capturing the source and current edits. Returns job_id; use get_job for progress and result_session_id. One worker per workspace; editing remains available during computation. Requires installed AI assets. Result is a separate session retaining RAW interpretation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
+          },
+          "expected_revision": {
+            "description": "Reject the mutation if the session revision changed since inspection.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "intensity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "bm3d"
+            ]
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "rapidraw_get_job",
+      "title": "Get Job",
+      "description": "Read denoise job progress, status, failure and durable result session. Completed results persist even if never polled. Interrupted jobs can restart from captured input with resume_job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "rapidraw_list_jobs",
+      "title": "List Jobs",
+      "description": "List denoise jobs, including completed and interrupted jobs recovered after an engine restart.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "rapidraw_cancel_job",
+      "title": "Cancel Job",
+      "description": "Request cooperative cancellation between BM3D patches or AI tiles without stopping the editing engine. Poll until cancelled. If completion already won the race, returns the completed result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "rapidraw_resume_job",
+      "title": "Resume Job",
+      "description": "Restart an interrupted, failed or cancelled denoise job from its captured source and edits. Preserves job_id, increments attempt, and starts computation again; partial work is not a tile checkpoint.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
     {
       "name": "rapidraw_capabilities",
       "title": "Capabilities",
@@ -7300,7 +7869,7 @@
     {
       "name": "rapidraw_denoise",
       "title": "Denoise",
-      "description": "Apply native AI or BM3D denoise with a source-preserving intensity blend; intensity 0 is a no-op. The original remains intact. Inspect native detail for lost texture and save the MCP session to preserve linear RAW interpretation after AI denoise.",
+      "description": "Synchronous compatibility operation; prefer start_denoise for cancellable background work. Apply native AI or BM3D denoise with a source-preserving intensity blend; intensity 0 is a no-op. The original remains intact. Inspect native detail for lost texture and save the MCP session to preserve linear RAW interpretation after AI denoise.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -8458,5 +9027,5 @@
       }
     }
   ],
-  "workflow": "# Automatic professional photo editing\n\nUse the native engine as a nondestructive editor. Choose treatment from the photo and the user's intent, then verify the actual rendered result. Professional quality is a visual judgment, not a histogram target or the successful completion of a tool call.\n\n1. Read rapidraw_capabilities and rapidraw_models. Open the source with rapidraw_open_photo; keep the returned session_id and revision. Source photos and sidecars stay unchanged. Read rapidraw://adjustment-schema before constructing native adjustments or masks.\n2. Render an original overview and inspect the subject, composition, light, white balance, texture and distractions. Use rapidraw_analyze for exposure/clipping context. Record a short edit intention appropriate to the image. Do not blindly neutralize intentional warm light or dramatic shadows.\n3. Set restrained global exposure, tone, white balance, color and crop adjustments. Use expected_revision on edits to catch stale state. Auto-adjust and presets are starting points that require review.\n4. Generate or construct selective masks when they improve the subject/background relationship. Render each mask, inspect edge spill and feathering, then apply local adjustments. Use geometric masks when an AI model is unavailable and the shape is adequate; do not claim semantic masking succeeded.\n5. Render the result and native-detail regions. Check texture, noise, sharpening halos, skin/plumage neutrality, clipping, mask edges, geometry, crop intent and distracting artifacts. Revisit a weak edit using history/undo. Compare the original when needed. Statistics complement visual judgment.\n6. Retouch only when the user requested or clearly authorized content removal. Choose local clone/heal/inpaint where suitable. Remote generative mode requires explicit selection and sends image content to the configured service. Do not remove truthful scene content just to improve a numerical score.\n7. Stop iterating when the result meets the stated intent without new defects; if the source cannot support the desired result, state the specific limitation. Save the session and reusable recipe. Export a full-resolution master and an appropriately sized delivery file inside the workspace. Inspect the exported image, dimensions, format, bit depth and metadata results.\n8. For a batch, inspect each source and review each output. Share a style only where the lighting and subject justify it. Check every batch item outcome; partial success is not completion.\n\nCoordinates: use the coordinate_space and mask schemas returned by capabilities. A crop, a preview pixel coordinate and the full source pixel coordinate are different spaces; scale measurements explicitly. Original RAW working copies with their saved .rrdata can be opened in the RapidRAW GUI for manual continuation. Linear denoised TIFF working copies require the saved MCP session to retain matching RAW interpretation; reopening those TIFFs directly in the GUI can change their appearance.\n\nReliability: a failed tool is an error, not a blank edit. Missing models, invalid masks and unsupported formats must be resolved explicitly. After a bridge timeout or crash, reconnect and inspect saved state before retrying; mutations are never automatically replayed.\n"
+  "workflow": "# Automatic professional photo editing\n\nUse the native engine as a nondestructive editor. Choose treatment from the photo and the user's intent, then verify the actual rendered result. Professional quality is a visual judgment, not a histogram target or the successful completion of a tool call.\n\n1. Read rapidraw_capabilities and rapidraw_models. Open the source with rapidraw_open_photo; keep the returned session_id and revision. Source photos and sidecars stay unchanged. Read rapidraw://adjustment-schema before constructing native adjustments or masks.\n2. Render an original overview and inspect the subject, composition, light, white balance, texture and distractions. Use rapidraw_analyze for exposure/clipping context. Record a short edit intention appropriate to the image. Do not blindly neutralize intentional warm light or dramatic shadows.\n3. Set restrained global exposure, tone, white balance, color and crop adjustments. Use expected_revision on edits to catch stale state. Auto-adjust and presets are starting points that require review.\n4. Generate or construct selective masks when they improve the subject/background relationship. Render each mask, inspect edge spill and feathering, then apply local adjustments. Use geometric masks when an AI model is unavailable and the shape is adequate; do not claim semantic masking succeeded.\n5. Render the result and native-detail regions. Check texture, noise, sharpening halos, skin/plumage neutrality, clipping, mask edges, geometry, crop intent and distracting artifacts. Save a user-valued reference with rapidraw_save_version. Use rapidraw_render_compare for temporary temperature and mask-off alternatives with matching geometry; use rapidraw_inspect_adjustments to inspect combined local exposure and actual rendered differences without changing the edit. Revisit a weak edit using history/undo. Compare the original when needed. Statistics complement visual judgment.\n6. Retouch only when the user requested or clearly authorized content removal. Choose local clone/heal/inpaint where suitable. Remote generative mode requires explicit selection and sends image content to the configured service. Do not remove truthful scene content just to improve a numerical score.\n7. Stop iterating when the result meets the stated intent without new defects; if the source cannot support the desired result, state the specific limitation. Save the session and reusable recipe. Export a full-resolution master and an appropriately sized delivery file inside the workspace. Inspect the exported image, dimensions, format, bit depth and metadata results.\n8. For a batch, inspect each source and review each output. Share a style only where the lighting and subject justify it. Check every batch item outcome; partial success is not completion.\n\nCoordinates: use the coordinate_space and mask schemas returned by capabilities. A crop, a preview pixel coordinate and the full source pixel coordinate are different spaces; scale measurements explicitly. Original RAW working copies with their saved .rrdata can be opened in the RapidRAW GUI for manual continuation. Linear denoised TIFF working copies require the saved MCP session to retain matching RAW interpretation; reopening those TIFFs directly in the GUI can change their appearance.\n\nFor long denoising, use rapidraw_start_denoise and keep job_id. Poll rapidraw_get_job and inspect result_session_id after success; its edits were captured when the job started. rapidraw_cancel_job cooperatively stops the worker without killing the engine. After restart inspect rapidraw_list_jobs; rapidraw_resume_job restarts interrupted work from captured input, not a tile checkpoint.\n\nReliability: a failed tool is an error, not a blank edit. Missing models, invalid masks and unsupported formats must be resolved explicitly. After a bridge timeout or crash, reconnect and inspect saved state before retrying; mutations are never automatically replayed.\n"
 }

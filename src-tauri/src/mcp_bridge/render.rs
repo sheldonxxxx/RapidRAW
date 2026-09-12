@@ -2,6 +2,7 @@
 //! all transformations, masks, color processing and export options reuse the
 //! native engine. Initially previews render at source resolution then resize, so
 //! detail-dependent effects match final exports exactly.
+mod comparison;
 use super::sessions::{Bridge, Session, atomic_write};
 use super::{Result, flag, number, required, validation};
 use crate::app_state::AppState;

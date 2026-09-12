@@ -12,6 +12,16 @@ export function toolResult(result: JsonObject): CallToolResult {
     structuredContent.image = imageMetadata;
     content.push({ type: 'image', data, mimeType: result.image.mimeType });
   }
+  if (Array.isArray(result.images)) {
+    structuredContent.images = result.images.map((entry) => {
+      if (!isObject(entry) || typeof entry.data !== 'string' || typeof entry.mimeType !== 'string') return entry;
+      const { data, ...metadata } = entry;
+      // content[0] will be the text summary; indexes identify the corresponding native image blocks.
+      const contentIndex = content.length + 1;
+      content.push({ type: 'image', data, mimeType: entry.mimeType });
+      return { ...metadata, content_index: contentIndex };
+    });
+  }
   content.unshift({ type: 'text', text: JSON.stringify(structuredContent) });
   const failed = result.ok === false || (typeof result.failed === 'number' && result.failed > 0);
   return { content, structuredContent, ...(failed ? { isError: true } : {}) };

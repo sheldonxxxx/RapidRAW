@@ -22,7 +22,44 @@ An MCP host configuration uses this shape, with real absolute paths:
 {"mcpServers":{"rapidraw":{"command":"node","args":["/absolute/RapidRAW/mcp/dist/index.js","--binary","/absolute/RapidRAW/src-tauri/target/debug/RapidRAW","--workspace","/absolute/rapidraw-photo-jobs"]}}}
 ```
 
-If a configured host cannot expose the tools during the current task, an official MCP client using the installed server dependencies can communicate over stdio. Reuse repository client examples where available. Keep source files outside a new isolated test workspace; do not bypass the server with GUI internals, direct `.rrdata` writes, or the legacy export CLI. Otherwise report the concrete missing connection or binary.
+## Persistent fallback client
+
+If tools are not exposed, use the bundled [mcp-client.mjs](../scripts/mcp-client.mjs). It resolves the official SDK from the server's installed dependencies, keeps one stdio connection, and saves large responses and native image blocks to files. Do not write a new one-shot client for every task.
+
+```sh
+node /absolute/skill/scripts/mcp-client.mjs \
+  --server /absolute/RapidRAW/mcp/dist/index.js \
+  --binary /absolute/RapidRAW/src-tauri/target/debug/RapidRAW \
+  --workspace /absolute/rapidraw-photo-jobs
+```
+
+Run as an interactive terminal process; retain its execution session ID. `ready` means MCP transport connected, not that the native engine is ready. First send:
+
+```json
+{"tool":"capabilities","timeout_ms":30000}
+```
+
+Send one request, inspect the response, then send the next. Input uses `arguments`, matching MCP. For long masks write a JSON request file with the filesystem tool and submit `{"file":"/absolute/request.json"}`; long terminal lines can be truncated. On completion send `{"close":true}`. Keep the connection alive between related operations; if the host closes it, reconnect and resume the saved session.
+
+Keep exact operations in a JSON array when useful. Select one without copying its large patch, and attach live state using shallow `arguments` overrides:
+
+```json
+{"file":"/absolute/job/operations.json","index":0,"arguments":{"session_id":"SESSION_ID","expected_revision":3}}
+```
+
+The index is zero-based. Read the returned revision before selecting the next operation. This executes one operation, not an automatic batch.
+
+The client prints compact state, `response_path` and image paths. Full structured data is under `data` in the saved response. Inspect only relevant branches rather than loading the entire capabilities schema. For example:
+
+```json
+{"tool":"capabilities","pick":["adjustment_schema.properties.temperature","adjustment_schema.properties.colorGrading"]}
+{"list_tools":["render","mask_create","mask_update"]}
+{"tool":"render","arguments":{"session_id":"SESSION_ID","long_edge":1600}}
+```
+
+It supports `resource` for MCP resource reads and `timeout_ms` for tool calls. For a longer native operation, launch this client with `--timeout-ms 900000` and give that request a larger client wait, for example `"timeout_ms": 960000`. These are separate limits: the launch flag is forwarded to the server and controls native processing; the JSON field controls how long the client waits. Both default to 300000 ms. The launch flag accepts a positive safe integer; request waits accept 100–1800000 ms. Raising only the request wait does not extend native processing. This client's SDK transport does not forward arbitrary shell environment variables, so use the launch flag rather than relying on `RAPIDRAW_TIMEOUT_MS` set in the parent shell.
+
+Image files are raw MCP result bytes, not a substitute renderer. On an MCP/transport error it stops and closes rather than running queued edits or retrying. Inspect its response and persisted state before reconnecting. Keep request secrets out of durable files. If the server SDK dependencies or native binary are missing, report the exact path/error; install/build only when needed and authorized.
 
 Only one connection can own a workspace at a time. Use separate workspaces for concurrent clients; do not delete an active `.bridge.lock` or interrupt another editing session to claim its workspace.
 
@@ -32,6 +69,7 @@ Success returns `structuredContent`; a render additionally returns an MCP image 
 
 | Symptom | Next action |
 | --- | --- |
+| macOS startup hangs with LaunchServices/XPC warnings | Treat as a possible graphics sandbox restriction. Close this task's client/child, then relaunch through the host's permission mechanism when authorized. Do not keep waiting through repeated five-minute timeouts or delete another session's lock. List sessions after reconnecting. |
 | `REVISION_CONFLICT` | Get the current session including adjustments. Reconcile the patch against it and use the current revision. |
 | Invalid argument, mask, or crop | Read the live schema and coordinate metadata; correct the input. Repeating the same invalid request will not help. |
 | Missing model | Inspect `rapidraw_models`; install the required kind when within scope or choose a suitable available method. |

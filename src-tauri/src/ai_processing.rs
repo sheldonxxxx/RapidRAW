@@ -889,6 +889,7 @@ fn run_native_denoise(
     height: usize,
     app_handle: &tauri::AppHandle,
     params: TileParams,
+    control: Option<&crate::denoising::DenoiseControl>,
 ) -> Result<()> {
     let w = width as i32;
     let h = height as i32;
@@ -898,6 +899,10 @@ fn run_native_denoise(
     let total = (iperhl + 1) * (ipervl + 1);
 
     for i in 0..total {
+        if let Some(c) = control {
+            c.check().map_err(anyhow::Error::msg)?;
+            c.report(i as f32 / total as f32, "AI tiles");
+        }
         let yi = i / (iperhl + 1);
         let xi = i % (iperhl + 1);
         let x0 =
@@ -982,6 +987,14 @@ pub fn run_ai_denoise(
     session: &Mutex<Session>,
     app_handle: &tauri::AppHandle,
 ) -> Result<DynamicImage> {
+    run_ai_denoise_controlled(rgb_img, intensity, session, app_handle, None)
+}
+
+pub(crate) fn run_ai_denoise_controlled(
+    rgb_img: &Rgb32FImage, intensity: f32, session: &Mutex<Session>,
+    app_handle: &tauri::AppHandle, control: Option<&crate::denoising::DenoiseControl>,
+) -> Result<DynamicImage> {
+    if let Some(c) = control { c.check().map_err(anyhow::Error::msg)?; }
     let (width, height) = rgb_img.dimensions();
     let params = select_tile_params(intensity);
 
@@ -995,7 +1008,9 @@ pub fn run_ai_denoise(
         height as usize,
         app_handle,
         params,
+        control,
     )?;
+    if let Some(c) = control { c.check().map_err(anyhow::Error::msg)?; c.report(1.0, "AI complete"); }
 
     let out_img_buffer = accumulator_to_rgb32f(&accumulator, width, height);
     Ok(DynamicImage::ImageRgb32F(out_img_buffer))

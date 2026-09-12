@@ -5,6 +5,8 @@ mod operations;
 mod render;
 mod sessions;
 mod validation;
+mod versions;
+mod jobs;
 
 use std::io::{BufRead, Read, Write};
 use std::path::PathBuf;
@@ -48,7 +50,7 @@ fn start() -> Result<()> {
         models: root.join("models"),
         root,
     };
-    for dir in ["sessions", "exports", "recipes", "cache", "models"] {
+    for dir in ["sessions", "exports", "recipes", "cache", "models", "jobs"] {
         let path = paths.root.join(dir);
         if std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err(format!(

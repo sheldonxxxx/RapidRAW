@@ -24,7 +24,7 @@ async function connect(t) {
 test('real SDK stdio handshake exposes comprehensive strict tools, resources and workflow prompt', async (t) => {
   const { client, diagnostics } = await connect(t);
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 37);
+  assert.equal(tools.length, 47);
   for (const tool of tools) {
     assert.ok(tool.name.startsWith('rapidraw_'));
     assert.equal(tool.inputSchema.additionalProperties, false);
@@ -107,7 +107,7 @@ test('official legacy SDK v1 client interoperates through the MCP 2025 initializ
   t.after(() => client.close());
   await client.connect(transport);
   assert.match(offeredVersion, /^2025-/);
-  assert.equal((await client.listTools()).tools.length, 37);
+  assert.equal((await client.listTools()).tools.length, 47);
   const preview = await client.callTool({ name: 'rapidraw_render', arguments: { session_id: 'legacy-test', long_edge: 1600 } });
   assert.ok(preview.content.some((item) => item.type === 'image'));
   assert.equal(preview.structuredContent.width, 1);
@@ -125,4 +125,47 @@ test('export resize options validate dimensions and default to no enlargement', 
   assert.deepEqual(result.structuredContent.params.resize, { mode: 'width', value: 1200, dont_enlarge: true });
   const invalid = await client.callTool({ name: 'rapidraw_export', arguments: { session_id: 'test-session', path: '/tmp/resize.jpg', resize: { mode: 'height', value: 0 } } });
   assert.equal(invalid.isError, true);
+});
+
+test('comparison tools keep image arrays in ordered MCP blocks with metadata only in text', async (t) => {
+  const { toolResult } = await import('../dist/server.js');
+  const native = { session_id: 'test', images: [
+    { label: 'Reference', mimeType: 'image/png', data: 'AAA' },
+    { label: 'Cooler', mimeType: 'image/png', data: 'BBB' },
+  ] };
+  const response = toolResult(native);
+  assert.deepEqual(response.content.slice(1).map((b) => b.data), ['AAA', 'BBB']);
+  assert.deepEqual(response.structuredContent.images.map((b) => b.content_index), [1, 2]);
+  assert.ok(response.structuredContent.images.every((b) => b.data === undefined));
+  assert.ok(!response.content[0].text.includes('AAA'));
+  assert.equal(native.images[0].data, 'AAA', 'Conversion must not mutate the engine response');
+  const { client } = await connect(t);
+  for (const args of [
+    { variants: [{ label: 'one' }] },
+    { variants: [{ label: 'one', typo: true }, { label: 'two' }] },
+    { variants: [{ label: 'one' }, { label: 'two' }], long_edge: 2049 },
+  ]) {
+    const result = await client.callTool({ name: 'rapidraw_render_compare', arguments: { session_id: 'test', ...args } });
+    assert.equal(result.isError, true);
+  }
+  const accepted = await client.callTool({ name: 'rapidraw_render_compare', arguments: {
+    session_id: 'test', variants: [{ label: 'Reference' }, { label: 'Cooler', patch: { temperature: -10 }, disabled_masks: ['mask-1'] }],
+  } });
+  assert.ok(!accepted.isError);
+});
+
+test('job and named-version contracts reject invalid identifiers and expose correct annotations', async (t) => {
+  const { client } = await connect(t);
+  for (const name of ['get_job','cancel_job','resume_job']) {
+    const result = await client.callTool({ name: `rapidraw_${name}`, arguments: { job_id: '../escape' } });
+    assert.equal(result.isError, true);
+  }
+  const invalid = await client.callTool({ name: 'rapidraw_save_version', arguments: { session_id: 'test', label: '   ' } });
+  assert.equal(invalid.isError, true);
+  const { tools } = await client.listTools();
+  for (const name of ['render_compare','inspect_adjustments','list_versions','get_job','list_jobs']) {
+    assert.equal(tools.find((tool) => tool.name === `rapidraw_${name}`).annotations.readOnlyHint, true);
+  }
+  assert.equal(tools.find((tool) => tool.name === 'rapidraw_cancel_job').annotations.idempotentHint, true);
+  assert.equal(tools.find((tool) => tool.name === 'rapidraw_start_denoise').annotations.readOnlyHint, false);
 });

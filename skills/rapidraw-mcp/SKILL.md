@@ -1,53 +1,43 @@
 ---
 name: rapidraw-mcp
-description: Edit, mask, retouch, and export photos through RapidRAW's native MCP server, including saved sessions, recipes, and batch delivery. Use when the user requests RapidRAW MCP or photo work with connected rapidraw_* tools. For explicit desktop UI control, use the separate rapidraw skill.
+description: Edit, mask, retouch, and export photos through RapidRAW's native MCP engine, including saved sessions, recipes, and verified delivery. Use for RapidRAW MCP requests or photo work with connected rapidraw_* tools. For explicit desktop UI control, use the separate rapidraw skill.
 ---
 
 # RapidRAW MCP
 
-Use the native photo engine to achieve the user's requested look and deliverable. Inspect the actual images; successful tool calls and good histograms do not establish visual quality.
-
-## Connect and inspect
-
-- Discover the connected tools whose names end in `rapidraw_*`; the host may prepend a namespace. Use their actual exposed names. If unavailable, read [connection and recovery](references/connection.md).
-- Call `rapidraw_capabilities`. Read `rapidraw://adjustment-schema` before constructing adjustments or masks; the same schema is in the capabilities result if resource access is unavailable. Live tool inputs and native schemas take precedence over these examples.
-- Resume a known session with `rapidraw_list_sessions` and `rapidraw_get_session` (`include_adjustments: true`). Otherwise use `rapidraw_list_images` when the source is unclear, then `rapidraw_open_photo` with its absolute path. Existing sidecar edits are inherited by default; use `inherit_sidecar: false` only for an intended fresh treatment.
-- Keep the returned `session_id`, `revision`, working path, and dimensions. `open_photo` creates an isolated copy; source files and adjacent `.rrdata` stay unchanged.
+Use native RAW processing. Follow a supplied edit plan, or choose edits from the inspected photo and the user's requested result. Judge the pixels, not just successful calls or histograms.
 
 ## Edit and review
 
-1. Render the current overview, plus `original: true` when a baseline helps. Start around `long_edge: 1600`. Inspect composition, light, color, subject detail, and distractions before choosing changes. An original render bypasses edits; it does not represent the inherited edited starting state.
-2. Apply targeted `rapidraw_set_adjustments` patches with `mode: "merge"` and the last observed `expected_revision`. Use exact native names and units. `temperature` is a relative control, not Kelvin. Replace mode resets the adjustment recipe and is appropriate only when a replacement is intended.
-3. Render after each meaningful group of edits. `rapidraw_analyze` can show clipping, histogram, and scopes; these measure rendered pixels, not sensor RAW headroom. `rapidraw_auto_adjust` with `apply: false` provides suggestions. Review auto adjustments, presets, and LUTs against the photo before accepting them.
-4. Use selective edits when they help the requested result. Read [selective and advanced editing](references/advanced-editing.md) for masks, coordinates, retouching, denoise, negatives, or merges. Inspect the grayscale mask and the edited image to catch empty coverage, spill, and halos.
-5. Inspect important detail with a bounded integer `region` and omit `long_edge` for native 1:1 review. Check texture, sharpening, noise, crop edges, and mask transitions. Use history/undo for an unsuccessful edit; keep the revision returned by undo/redo.
-6. Stop when the requested result is achieved. Do not impose one aesthetic, automatically remove scene content, or create extra deliverables the user did not request.
+1. **Connect once.** Discover exposed `rapidraw_*` tools. Otherwise follow [connection and recovery](references/connection.md), using the bundled persistent client. Keep one owner of the workspace.
+2. **Inspect the starting image.** Call `capabilities` and read only the needed adjustment/mask schema fields. Resume a known session with `get_session(include_adjustments: true)`, or open the source if no session exists. Sidecar edits are inherited unless a fresh treatment is intended. Record session, revision, dimensions and working path. Render an overview around 1600 px and relevant native detail before choosing changes. Render inherited edits as the starting state; `original: true` bypasses them.
+3. **Apply targeted changes.** Use native names, `mode: "merge"`, and the latest returned `expected_revision`. Execute sequentially; inspect each result before the next mutation. With the fallback client, put large patches and masks in request files and submit by **file** or **file/index**, attaching live session/revision; do not paste large payloads into terminal input. Keep returned mask IDs. `temperature` is relative, not Kelvin. Measure geometry from the image and check uncertain fields against the live schema.
+4. **Check the affected pixels.** After each meaningful edit group, render an overview. For selective edits, render the grayscale mask and a bounded native detail region without `long_edge`. Read [selective editing](references/advanced-editing.md) for coordinates and geometry. **A sky mask must select the sky; a shirt mask must exclude skin, backpack and scenery. Nonzero coverage alone is not a pass.** Check for spill, halos, untouched strips and lost texture. Soft edges alone do not establish success: compare the subject’s apparent extent and continuity with the unmasked source, and reject a spotlight or closed shape imposed by the combined masks.
+5. **Compare and refine.** Check that the requested look or accent is visible at overview/delivery size and still believable at native detail. Use `save_version` to retain a user-valued reference and `render_compare` for temporary temperature or mask-off variants when these methods are available. Use `inspect_adjustments` to diagnose combined masks without changing history. Keep the source reference and the version/qualities the user valued; the latest candidate is not automatically the best baseline. Fix the named defect and compare both the affected area and the whole frame against that reference. For a suspected edit artefact, compare equivalent renders with the relevant adjustment isolated before asserting its cause. Reuse the session and review only changed views. If an operation remains blocked, report the exact issue and current state rather than calling an incomplete edit finished.
+6. **Save and deliver.** `save_session` at useful checkpoints and before export. Keep session/revision, mask IDs, review images and known defects available for continuation. Complete only the requested scope; an inspection-only request does not require edits or exports.
 
-Example tone patch; replace `SESSION_ID` and the illustrative revision with actual returned values. Numeric adjustments are examples, not a universal preset.
+Keep bulky schemas and tool responses in files and read only relevant branches. A supplied plan can use exact native requests in an `operations.json` array, but a separate plan file is not required for ordinary edits.
 
-```json
-{"tool":"rapidraw_set_adjustments","arguments":{"session_id":"SESSION_ID","expected_revision":0,"mode":"merge","patch":{"exposure":0.25,"highlights":-18,"shadows":12}}}
-```
+For revisions after user review, follow [feedback comparisons](references/review-and-jobs.md#revise-from-user-feedback) to isolate the requested change and retain decisions against the version actually reviewed.
+
+For a collection, inspect each source at overview and relevant native detail before assigning its adjustments. A successful export is not a visual review. Keep per-image source, session, revision, baseline and selected-export provenance; a resumable runner should stop on an uncertain result and require reconciliation before another mutation. In a held-out evaluation, freeze skill and engine revisions before inspecting the held-out photographs, and retain first attempts separately from repairs.
+
+When noise blocks the intended detail or tonal separation, read [dedicated denoising](references/advanced-editing.md#dedicated-denoising). Ordinary noise-reduction sliders do not exercise the AI/BM3D operation; an unsuccessful slider treatment does not establish the engine's limit.
 
 ## Save and deliver
 
-- Call `rapidraw_save_session` at useful checkpoints and before finishing. It writes native `.rrdata` beside the isolated working copy. Save a recipe with `rapidraw_save_recipe` when reuse or a reproducible recipe is part of the task; its default filename includes the session and revision.
-- Export the requested format and size with `rapidraw_export`. Absolute paths must be under the workspace's `exports` directory; relative names resolve there. Recipes belong under `recipes`. Read the returned path instead of assuming the caller's current directory is the destination.
-- For a typical web JPEG, quality 92 and a 2400-pixel long edge are reasonable starting values if the user gives no specification. Choose dimensions from the actual delivery need. Supply either `long_edge` or `resize`, never both. Enlargement is disabled by default; permit it with `resize.dont_enlarge: false` only when intended. Confirm supported format and bit depth from the live engine.
-
-```json
-{"tool":"rapidraw_export","arguments":{"session_id":"SESSION_ID","path":"delivery.jpg","format":"jpeg","quality":92,"long_edge":2400,"strip_gps":true}}
-```
-
-- Inspect the exported file visually and verify returned dimensions, format, size, and relevant metadata/bit depth. Return a clickable output path and a short description of the treatment. If pixel inspection is unavailable, state that visual quality is unverified.
-- For batches, inspect each source, adapt shared styling to the lighting, and read every `rapidraw_batch_export` item result. Partial failure sets `isError: true` even when some files were written. Continue from the failed items after inspecting successes; do not blindly replay the full batch.
+- `save_session` writes editable `.rrdata` beside the isolated working copy. Save a recipe only when reuse is requested.
+- `export` paths belong under workspace `exports`; relative names resolve there. Use returned paths. Never overwrite an existing export unless replacement is intended.
+- Original size: **omit both `long_edge` and `resize`**. Typical web delivery: JPEG quality 92, long edge 2400, unless the user specifies otherwise. Supply at most one resize option; enlargement requires explicit intent. Confirm supported format/bit depth from capabilities.
+- Make comparisons easy to judge: use side-by-side or an aligned slider when useful, with matching geometry, dimensions and crop regions. Verify the delivered image links or embedded bytes; file decoding does not verify browser interaction. Label a tested candidate separately from a user-approved result.
+- Inspect the actual exported file against the brief, verify dimensions/format/size, and deliver a clickable path. An export is not finished merely because it decodes. If image inspection is unavailable, label visual quality unverified.
+- Batch failures can include completed exports. Inspect each result; retry only failed items after reconciliation.
 
 ## State and boundaries
 
-- Use `structuredContent` for state and inspect `isError` before treating a result as successful. Rendered pixels are separate MCP `image` blocks; forward or view those blocks rather than looking for base64 in the JSON. If the host cannot display them, save the returned bytes as a temporary image and inspect that file.
-- Operations can return a new session. Nonzero denoise, film-negative conversion, and merges require continuing with the returned `session_id`; inspect the new adjustments and revision before proceeding.
-- On `REVISION_CONFLICT`, reread the session and reconcile the intended change. On timeout, crash, or active cancellation, reconnect and inspect persisted state before retrying any mutation. See [connection and recovery](references/connection.md).
-- Keep source images, source sidecars, and generated mask/retouch data intact. Use MCP operations instead of hand-editing `.rrdata`, `patchData`, or `maskDataBase64`.
-- Inspect `rapidraw_models` before AI work. Model installation is a separate, potentially large download. Remote generative retouch sends image content to the configured provider; use it only when that remote operation is authorized. Never silently switch a local edit to remote generation.
-- Existing export replacement requires `overwrite: true`; recipe saves never overwrite. Use new names unless replacement is intended. GPS stripping defaults on; metadata changes affect the session and its exports.
-- For long or multi-photo work, keep short task-local notes with source/session IDs, latest revisions, checkpoint paths, outstanding defects, and verified outputs.
+- Read `structuredContent` and `isError`. Images are separate MCP image blocks: display them or save the bytes and view the saved file.
+- A derived operation (denoise, negative conversion, merge) may return a **new session**. Continue with it; recheck dimensions and geometry before applying remaining masks.
+- Prefer `start_denoise` for long filtering, then `get_job`; keep the job ID. `cancel_job` stops its worker without ending the editing engine. After reconnect, inspect `list_jobs`; explicitly `resume_job` only when restarting captured work is intended. See [review and background jobs](references/review-and-jobs.md).
+- On stale revisions, reread state. On timeout/crash/cancellation, reconnect and inspect persisted sessions/output before retrying; never blindly replay a mutation.
+- Source photos and sidecars stay intact. Do not hand-edit `.rrdata`, `patchData`, or `maskDataBase64`, or substitute another renderer.
+- Inspect `models` before AI work. A configured remote provider is not permission to upload; generative retouch requires authorization. Ordinary grading and geometric masks need no remote generation.

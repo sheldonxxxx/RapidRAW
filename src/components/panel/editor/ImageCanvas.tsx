@@ -792,7 +792,7 @@ const MaskOverlay = memo(
     );
 
     const handleLinearRangeDragMove = useCallback(
-      (e: any) => {
+      (e: any, side: 'fadeBefore' | 'fadeAfter') => {
         const stage = e.target.getStage();
         const pointerPos = getPointer(stage);
         if (!pointerPos) return;
@@ -813,7 +813,8 @@ const MaskOverlay = memo(
           newRange = Math.max(0.1, dist / scale);
         }
 
-        const newP = { ...pRef.current, range: newRange };
+        const asymmetric = pRef.current.fadeBefore != null || pRef.current.fadeAfter != null;
+        const newP = asymmetric ? { ...pRef.current, [side]: newRange } : { ...pRef.current, range: newRange };
         updateP(newP);
         if (onPreviewUpdate) onPreviewUpdate(subMask.id, { parameters: newP });
 
@@ -1118,7 +1119,8 @@ const MaskOverlay = memo(
       const sY = (startY - cropY) * scale;
       const eX = (endX - cropX) * scale;
       const eY = (endY - cropY) * scale;
-      const r = range * scale;
+      const before = (p.fadeBefore ?? range) * scale;
+      const after = (p.fadeAfter ?? range) * scale;
 
       const idx = endX - startX;
       const idy = endY - startY;
@@ -1135,16 +1137,16 @@ const MaskOverlay = memo(
 
       const EXT = 5000;
       const topRangePts = [
-        sX + nx * r - dx_norm * EXT,
-        sY + ny * r - dy_norm * EXT,
-        eX + nx * r + dx_norm * EXT,
-        eY + ny * r + dy_norm * EXT,
+        sX + nx * before - dx_norm * EXT,
+        sY + ny * before - dy_norm * EXT,
+        eX + nx * before + dx_norm * EXT,
+        eY + ny * before + dy_norm * EXT,
       ];
       const botRangePts = [
-        sX - nx * r - dx_norm * EXT,
-        sY - ny * r - dy_norm * EXT,
-        eX - nx * r + dx_norm * EXT,
-        eY - ny * r + dy_norm * EXT,
+        sX - nx * after - dx_norm * EXT,
+        sY - ny * after - dy_norm * EXT,
+        eX - nx * after + dx_norm * EXT,
+        eY - ny * after + dy_norm * EXT,
       ];
 
       const lineProps = {
@@ -1191,7 +1193,7 @@ const MaskOverlay = memo(
                 draggable={!isToolActive}
                 dragBoundFunc={lockDragBoundFunc}
                 onDragStart={handleLinearPointDragStart}
-                onDragMove={handleLinearRangeDragMove}
+                onDragMove={(e) => handleLinearRangeDragMove(e, 'fadeBefore')}
                 onDragEnd={handleLinearPointDragEnd}
                 onTouchEnd={handleMaskTouchEnd}
                 onTouchStart={handleMaskTouchStart}
@@ -1210,7 +1212,7 @@ const MaskOverlay = memo(
                 draggable={!isToolActive}
                 dragBoundFunc={lockDragBoundFunc}
                 onDragStart={handleLinearPointDragStart}
-                onDragMove={handleLinearRangeDragMove}
+                onDragMove={(e) => handleLinearRangeDragMove(e, 'fadeAfter')}
                 onDragEnd={handleLinearPointDragEnd}
                 onTouchEnd={handleMaskTouchEnd}
                 onTouchStart={handleMaskTouchStart}

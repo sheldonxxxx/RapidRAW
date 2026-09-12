@@ -172,7 +172,7 @@ impl Bridge {
         )
     }
 
-    async fn ensure_models(&self, kind: &str, allow_download: bool) -> Result<()> {
+    pub(super) async fn ensure_models(&self, kind: &str, allow_download: bool) -> Result<()> {
         let model_directory = self
             .paths
             .models

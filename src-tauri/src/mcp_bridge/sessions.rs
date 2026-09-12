@@ -43,7 +43,7 @@ impl Session {
         value
     }
     /// Validate persisted data before any history snapshot can become active.
-    fn validate_restored(&self, directory: &Path) -> Result<()> {
+    pub(super) fn validate_restored(&self, directory: &Path) -> Result<()> {
         if uuid::Uuid::parse_str(&self.id).is_err()
             || directory.file_name().and_then(|s| s.to_str()) != Some(self.id.as_str())
         {
@@ -123,6 +123,7 @@ pub(super) struct Bridge {
     pub paths: WorkspacePaths,
     pub sessions: BTreeMap<String, Session>,
     pub active: Option<String>,
+    pub jobs: super::jobs::Jobs,
 }
 
 impl Bridge {
@@ -139,9 +140,11 @@ impl Bridge {
                 sessions.insert(session.id.clone(), session);
             }
         }
+        let jobs = super::jobs::Jobs::load(&paths.root)?;
         Ok(Self {
             handle,
             paths,
+            jobs,
             sessions,
             active: None,
         })
@@ -416,7 +419,7 @@ fn resolve_output_path(root: &Path, path: &str, category: &str) -> Result<PathBu
     Ok(canonical_parent.join(target.file_name().ok_or("INVALID_PATH: Missing filename")?))
 }
 
-fn validate_metadata(metadata: &Value) -> Result<()> {
+pub(super) fn validate_metadata(metadata: &Value) -> Result<()> {
     let map = metadata
         .as_object()
         .ok_or("INVALID_METADATA: Expected an object")?;
@@ -452,7 +455,7 @@ fn validate_metadata(metadata: &Value) -> Result<()> {
     Ok(())
 }
 
-fn restore_session(directory: &Path) -> Result<Session> {
+pub(super) fn restore_session(directory: &Path) -> Result<Session> {
     let manifest = directory.join("session.json");
     let file_type = fs::symlink_metadata(&manifest)
         .map_err(|e| e.to_string())?

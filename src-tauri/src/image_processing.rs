@@ -2380,7 +2380,7 @@ fn get_global_adjustments_from_json(
     }
 }
 
-fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
+pub(crate) fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
     if adj.is_null() {
         return MaskAdjustments::default();
     }

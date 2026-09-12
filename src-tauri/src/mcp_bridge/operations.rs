@@ -12,6 +12,16 @@ use std::{fs, path::Path, sync::Arc};
 use tauri::Manager;
 
 pub(super) const METHODS: &[&str] = &[
+    "inspect_adjustments",
+    "render_compare",
+    "save_version",
+    "list_versions",
+    "restore_version",
+    "start_denoise",
+    "get_job",
+    "list_jobs",
+    "cancel_job",
+    "resume_job",
     "capabilities",
     "list_images",
     "open_photo",
@@ -56,10 +66,16 @@ impl Bridge {
         if !params.is_object() {
             return Err("INVALID_ARGUMENT: params must be an object".into());
         }
+        self.refresh_job_results()?;
         match method {
+            "get_job" => return self.jobs.get(&params),
+            "list_jobs" => return self.jobs.list(),
+            "cancel_job" => return self.jobs.cancel(&params),
+            "start_denoise" => return self.start_denoise_job(&params, false).await,
+            "resume_job" => return self.start_denoise_job(&params, true).await,
             "capabilities" => {
                 return Ok(
-                    json!({"protocol_version":1,"engine":"RapidRAW","bridge_version":"1.0.0","methods":METHODS,"workspace":self.paths.root,"adjustment_schema":validation::adjustment_schema(),"coordinate_space":{"masks":"oriented full-resolution pixels before user crop","render_region":"output pixels after user crop, before preview resizing"},"precision":{"render":"float32 GPU / 16-bit readback","formats_16bit":["png","tiff"]},"persistence":"Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.","originals":"Never overwritten. All source files copied to session workspace.","limits":{"masks":32,"history":32,"request_bytes":67108864},"model_policy":"Local generation copies and verifies installed model assets. Only install_model can download missing assets. Only explicitly selected generative retouch can send image data to a connector."}),
+                    json!({"protocol_version":1,"engine":"RapidRAW","bridge_version":"1.1.0","methods":METHODS,"workspace":self.paths.root,"adjustment_schema":validation::adjustment_schema(),"coordinate_space":{"masks":"oriented full-resolution pixels before user crop","render_region":"output pixels after user crop, before preview resizing"},"precision":{"render":"float32 GPU / 16-bit readback","formats_16bit":["png","tiff"]},"persistence":"Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.","originals":"Never overwritten. All source files copied to session workspace.","limits":{"masks":32,"history":32,"comparison_variants":4,"comparison_long_edge":2048,"concurrent_denoise_jobs":1,"request_bytes":67108864},"model_policy":"Local generation copies and verifies installed model assets. Only install_model can download missing assets. Only explicitly selected generative retouch can send image data to a connector."}),
                 );
             }
             "get_engine_settings" => {
@@ -87,6 +103,9 @@ impl Bridge {
         let session = self.session(&params)?.clone();
         let id = session.id.clone();
         match method {
+            "save_version" => return self.save_version(&session, &params),
+            "list_versions" => return self.list_versions(&session),
+            "restore_version" => return self.restore_version(&session, &params),
             "get_session" => return Ok(session.info(flag(&params, "include_adjustments", false)?)),
             "get_metadata" => {
                 return Ok(
@@ -134,6 +153,8 @@ impl Bridge {
         session.check_revision(&params)?;
         self.activate(&id).await?;
         match method {
+            "render_compare" => self.render_compare(&session, &params),
+            "inspect_adjustments" => self.inspect_adjustments(&session, &params),
             "render" => self.render_response(&session, &params),
             "analyze" => self.analyze(&session, &params),
             "export" => self.export_photo(&session, &params),

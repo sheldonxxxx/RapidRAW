@@ -608,7 +608,13 @@
         "feather": "Feather",
         "globalFeather": "Global Feather",
         "grow": "Grow",
-        "tolerance": "Tolerance"
+        "tolerance": "Tolerance",
+        "falloff": "Fade curve",
+        "linearFalloff": "Linear",
+        "smoothFalloff": "Smooth",
+        "smootherFalloff": "Extra smooth",
+        "fadeBefore": "Zero edge distance",
+        "fadeAfter": "Full edge distance"
       },
       "patches": {
         "copyName": "{{name}} Copy",

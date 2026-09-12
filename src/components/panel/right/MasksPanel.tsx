@@ -1975,7 +1975,7 @@ function SettingsPanel({
     updateContainer(container.id, { [key]: value });
   };
 
-  const handleSubMaskParametersChange = (changes: Record<string, number>) => {
+  const handleSubMaskParametersChange = (changes: Record<string, number | string>) => {
     if (!isActive || !activeSubMask) return;
     const newParams = { ...activeSubMask.parameters, ...changes };
     updateSubMask(activeSubMask.id, { parameters: newParams });
@@ -2205,6 +2205,47 @@ function SettingsPanel({
                   onChange={handleDepthRangeChange}
                   onDragStateChange={onDragStateChange}
                 />
+              )}
+
+              {activeSubMask.type === Mask.Linear && (
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between gap-2 text-sm">
+                    {t('editor.masks.params.falloff', { defaultValue: 'Fade curve' })}
+                    <select
+                      className="bg-surface rounded px-2 py-1"
+                      value={activeSubMask.parameters.falloff ?? 'linear'}
+                      onChange={(e) => handleSubMaskParametersChange({ falloff: e.target.value })}
+                    >
+                      <option value="linear">
+                        {t('editor.masks.params.linearFalloff', { defaultValue: 'Linear' })}
+                      </option>
+                      <option value="smoothstep">
+                        {t('editor.masks.params.smoothFalloff', { defaultValue: 'Smooth' })}
+                      </option>
+                      <option value="smootherstep">
+                        {t('editor.masks.params.smootherFalloff', { defaultValue: 'Extra smooth' })}
+                      </option>
+                    </select>
+                  </label>
+                  {(['fadeBefore', 'fadeAfter'] as const).map((key) => (
+                    <Slider
+                      key={key}
+                      label={
+                        key === 'fadeBefore'
+                          ? t('editor.masks.params.fadeBefore', { defaultValue: 'Zero edge distance' })
+                          : t('editor.masks.params.fadeAfter', { defaultValue: 'Full edge distance' })
+                      }
+                      min={0}
+                      max={Math.max(10000, activeSubMask.parameters[key] ?? 0)}
+                      step={1}
+                      defaultValue={activeSubMask.parameters.range ?? 50}
+                      value={activeSubMask.parameters[key] ?? activeSubMask.parameters.range ?? 50}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => handleSubMaskParametersChange({ [key]: parseFloat(e.target.value) })}
+                      fillOrigin="min"
+                      onDragStateChange={onDragStateChange}
+                    />
+                  ))}
+                </div>
               )}
 
               {subMaskConfig.parameters?.map((param: any) => (

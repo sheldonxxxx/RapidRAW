@@ -119,6 +119,22 @@ struct LinearMaskParameters {
     end_y: f64,
     #[serde(default = "default_range")]
     range: f32,
+    /// Optional asymmetric distances from the boundary in source pixels.
+    #[serde(default)]
+    fade_before: Option<f32>,
+    #[serde(default)]
+    fade_after: Option<f32>,
+    #[serde(default)]
+    falloff: LinearFalloff,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum LinearFalloff {
+    #[default]
+    Linear,
+    Smoothstep,
+    Smootherstep,
 }
 
 fn default_range() -> f32 {
@@ -133,6 +149,9 @@ impl Default for LinearMaskParameters {
             end_x: 0.0,
             end_y: 0.0,
             range: default_range(),
+            fade_before: None,
+            fade_after: None,
+            falloff: LinearFalloff::Linear,
         }
     }
 }
@@ -610,6 +629,8 @@ fn generate_linear_bitmap(
     let perp_vec_y = line_vec_x / len_sq.sqrt();
 
     let half_width = range.max(0.01);
+    let before = params.fade_before.map(|v| v * scale).unwrap_or(half_width);
+    let after = params.fade_after.map(|v| v * scale).unwrap_or(half_width);
 
     for y_u in 0..height {
         for x_u in 0..width {
@@ -621,11 +642,17 @@ fn generate_linear_bitmap(
 
             let dist_perp = pixel_vec_x * perp_vec_x + pixel_vec_y * perp_vec_y;
 
-            let t = dist_perp / half_width;
-
-            let intensity = 0.5 - t * 0.5;
-
-            let clamped_intensity = intensity.clamp(0.0, 1.0);
+            // Keep the legacy arithmetic byte-identical for old recipes.
+            let t = if params.fade_before.is_none() && params.fade_after.is_none() {
+                (0.5 - (dist_perp / half_width) * 0.5).clamp(0.0, 1.0)
+            } else {
+                ((before - dist_perp) / (before + after).max(0.01)).clamp(0.0, 1.0)
+            };
+            let clamped_intensity = match params.falloff {
+                LinearFalloff::Linear => t,
+                LinearFalloff::Smoothstep => t * t * (3.0 - 2.0 * t),
+                LinearFalloff::Smootherstep => t * t * t * (t * (t * 6.0 - 15.0) + 10.0),
+            };
 
             mask.put_pixel(x_u, y_u, Luma([(clamped_intensity * 255.0) as u8]));
         }
@@ -1508,4 +1535,37 @@ pub fn get_cached_or_generate_mask(
     }
 
     generated
+}
+
+#[cfg(test)]
+mod linear_falloff_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn legacy_linear_is_byte_identical_and_scaled_crop_matches() {
+        let params=json!({"startX":0,"startY":100,"endX":100,"endY":100,"range":40});
+        let full=generate_linear_bitmap(&params,100,200,1.0,(0.0,0.0));
+        for y in 0..200 {
+            let expected=((0.5-((y as f32-100.0)/40.0)*0.5).clamp(0.0,1.0)*255.0) as u8;
+            assert_eq!(full[(20,y)][0],expected);
+        }
+        let preview=generate_linear_bitmap(&params,50,100,0.5,(0.0,0.0));
+        let crop=generate_linear_bitmap(&params,50,50,0.5,(0.0,25.0));
+        for y in 0..50 { assert_eq!(crop[(10,y)],preview[(10,y+25)]); }
+    }
+    #[test]
+    fn asymmetric_smooth_fades_have_correct_endpoints_and_monotonic_interior() {
+        for curve in ["linear","smoothstep","smootherstep"] {
+            let params=json!({"startX":0,"startY":100,"endX":100,"endY":100,"range":50,"fadeBefore":20,"fadeAfter":60,"falloff":curve});
+            let bitmap=generate_linear_bitmap(&params,100,200,1.0,(0.0,0.0));
+            assert_eq!(bitmap[(0,40)][0],255); assert_eq!(bitmap[(0,120)][0],0);
+            assert_eq!(bitmap[(0,80)][0],127);
+            for y in 1..200 { assert!(bitmap[(0,y)][0]<=bitmap[(0,y-1)][0]); }
+            let scaled=generate_linear_bitmap(&params,50,100,0.5,(0.0,0.0));
+            for y in 0..100 { assert_eq!(scaled[(10,y)],bitmap[(20,y*2)]); }
+            if curve!="linear" {
+                assert!(bitmap[(0,110)][0]<31); assert!(bitmap[(0,50)][0]>223);
+            }
+        }
+    }
 }

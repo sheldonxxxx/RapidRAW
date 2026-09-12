@@ -11,14 +11,28 @@ use std::cmp::Ordering;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
-use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
+
+/// Cooperative cancellation at native work boundaries; never publishes partial pixels.
+#[derive(Clone)]
+pub(crate) struct DenoiseControl {
+    pub cancelled: Arc<AtomicBool>,
+    pub progress: Arc<dyn Fn(f32, &str) + Send + Sync>,
+}
+impl DenoiseControl {
+    pub fn check(&self) -> Result<(), String> {
+        if self.cancelled.load(AtomicOrdering::Acquire) { Err("JOB_CANCELLED: Denoising cancelled".into()) } else { Ok(()) }
+    }
+    pub fn report(&self, fraction: f32, stage: &str) { (self.progress)(fraction.clamp(0.0, 1.0), stage); }
+}
 
 struct ProgressReporter<'a> {
     counter: &'a Arc<AtomicUsize>,
     total_work: usize,
     app_handle: &'a AppHandle,
+    control: Option<&'a DenoiseControl>,
 }
 
 const BLOCK_SIZE: usize = 8;
@@ -249,6 +263,13 @@ fn run_bm3d(
     intensity: f32,
     app_handle: &AppHandle,
 ) -> Result<DynamicImage, String> {
+    run_bm3d_controlled(rgb_img, intensity, app_handle, None)
+}
+
+fn run_bm3d_controlled(
+    rgb_img: &Rgb32FImage, intensity: f32, app_handle: &AppHandle, control: Option<&DenoiseControl>,
+) -> Result<DynamicImage, String> {
+    if let Some(c) = control { c.check()?; }
     let (width, height) = rgb_img.dimensions();
     let params = Bm3dParams::from_intensity(intensity);
     let dct_tables = Arc::new(DctTables::new());
@@ -269,9 +290,11 @@ fn run_bm3d(
         counter: &progress_counter,
         total_work: total_work_units,
         app_handle,
+        control,
     };
     let mut denoised_channels =
         bm3d_process_joint(&channels, width, height, &params, &dct_tables, &progress);
+    if let Some(c) = control { c.check()?; c.report(1.0, "blending"); }
 
     {
         let _ = app_handle.emit("denoise-progress", "Blending detail...");
@@ -306,6 +329,15 @@ pub(crate) fn denoise_source_image(
     app_handle: &AppHandle,
     ai_session: Option<Arc<Mutex<ort::session::Session>>>,
 ) -> Result<(DynamicImage, (f32, f32)), String> {
+    denoise_source_image_controlled(source, strength, method, app_handle, ai_session, None)
+}
+
+#[cfg(feature = "mcp")]
+pub(crate) fn denoise_source_image_controlled(
+    source: &DynamicImage, strength: f32, method: &str, app_handle: &AppHandle,
+    ai_session: Option<Arc<Mutex<ort::session::Session>>>, control: Option<&DenoiseControl>,
+) -> Result<(DynamicImage, (f32, f32)), String> {
+    if let Some(c) = control { c.check()?; }
     if !strength.is_finite() || !(0.0..=1.0).contains(&strength) {
         return Err("Denoise strength must be finite and within 0..1".into());
     }
@@ -319,12 +351,13 @@ pub(crate) fn denoise_source_image(
             let session = ai_session.ok_or("AI Session not provided")?;
             // The native AI argument selects tile overlap, not noise strength.
             // Keep balanced inference quality fixed; strength blends pixels.
-            crate::ai_processing::run_ai_denoise(&normalized, 0.5, &session, app_handle)
+            crate::ai_processing::run_ai_denoise_controlled(&normalized, 0.5, &session, app_handle, control)
                 .map_err(|e| e.to_string())?
         }
-        "bm3d" => run_bm3d(&normalized, strength, app_handle)?,
+        "bm3d" => run_bm3d_controlled(&normalized, strength, app_handle, control)?,
         _ => return Err("Denoise method must be ai or bm3d".into()),
     };
+    if let Some(c) = control { c.check()?; }
     let output = restore_denoise_source(&original, &filtered.to_rgb32f(), range, strength)?;
     Ok((DynamicImage::ImageRgb32F(output), range))
 }
@@ -578,12 +611,14 @@ fn run_bm3d_step_joint(
     }
 
     ref_patches.par_iter().for_each(|&(rx, ry)| {
+        if progress.control.is_some_and(|c| c.check().is_err()) { return; }
         let c = progress.counter.fetch_add(1, AtomicOrdering::Relaxed);
         if c.is_multiple_of(200) {
             let pct = (c as f32 / progress.total_work as f32) * 100.0;
             let step_str = if is_step_1 { "Step 1/2" } else { "Step 2/2" };
             let msg = format!("{} - {:.0}%", step_str, pct);
             let _ = progress.app_handle.emit("denoise-progress", msg);
+            if let Some(control) = progress.control { control.report(pct / 100.0, step_str); }
         }
 
         let mut group_locs_buf = [(0, 0); MAX_GROUP_SIZE];

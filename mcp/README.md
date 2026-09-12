@@ -4,7 +4,27 @@ A local, nondestructive interface to RapidRAW's native processing engine. It sup
 
 The MCP server uses the official TypeScript SDK v2 and stdio. One connection owns each workspace at a time through an exclusive native lock; use separate workspaces for simultaneous agents. It owns one persistent native bridge process; image processing and validation remain in Rust. The `mcp/` package and `src-tauri/src/mcp_bridge/` module are isolated so normal upstream development can be merged with a small integration surface. Build the fork with the `mcp` Cargo feature; an unmodified installed RapidRAW app does not provide this bridge.
 
-The [RapidRAW MCP skill](../skills/rapidraw-mcp/SKILL.md) provides agent guidance for editing, mask coordinates, derived sessions, recovery, and verified exports. Its self-contained folder can be installed as `rapidraw-mcp` in your agent's skills directory; invoke it with `$rapidraw-mcp` once available. The MCP connection is configured separately below.
+The [RapidRAW MCP skill](../skills/rapidraw-mcp/SKILL.md) provides agent guidance for editing, mask coordinates, derived sessions, recovery, and verified exports. Install it with `npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp`, or place its complete folder in your agent's skills directory. Pair it with a generic photo-editing planning skill or your own brief. The MCP connection is configured separately below.
+
+## macOS quick start
+
+The tested environment is macOS with Metal and a debug build of this fork. **Windows has not been tested for the MCP workflow.** Linux and packaged MCP releases are also untested.
+
+Use macOS 13+, Node.js 22.12+, [Rust via rustup](https://www.rust-lang.org/tools/install), and [Apple Command Line Tools](https://v2.tauri.app/start/prerequisites/#macos). If the Apple tools are missing, run `xcode-select --install` and finish installation first.
+
+```sh
+git clone https://github.com/sheldonxxxx/RapidRAW.git
+cd RapidRAW
+rustup toolchain install 1.98.1 --profile minimal
+npm ci
+npm run build
+CARGO_PROFILE_DEV_DEBUG=0 cargo +1.98.1 build \
+  --manifest-path src-tauri/Cargo.toml --features mcp --locked
+npm ci --prefix mcp
+npm run build --prefix mcp
+```
+
+This produces `src-tauri/target/debug/RapidRAW` and `mcp/dist/index.js`. Use those absolute paths in the host configuration below, replacing its release binary path with the debug path. Use `command -v node` to find an absolute Node path if your GUI agent does not inherit the shell's PATH. Reconnect the host and call `rapidraw_capabilities` to verify native startup; a successful skill installation alone does not connect the editor.
 
 ## Build and connect
 
@@ -60,10 +80,11 @@ Every tool starts with `rapidraw_`; the table shows the suffixes. The engine's l
 | Area | Tools |
 | --- | --- |
 | Discovery and state | `capabilities`, `list_images`, `open_photo`, `list_sessions`, `get_session`, `close_session` |
-| Editing and review | `set_adjustments`, `render`, `analyze`, `auto_adjust` |
+| Editing and review | `set_adjustments`, `render`, `render_compare`, `inspect_adjustments`, `analyze`, `auto_adjust` |
 | Selective edits | `mask_create`, `mask_update`, `mask_remove`, `mask_generate`, `generate_depth` |
+| Background processing | `start_denoise`, `get_job`, `list_jobs`, `cancel_job`, `resume_job` |
 | Detail and corrections | `retouch`, `denoise`, `lens_profile`, `negative_convert` |
-| History and persistence | `history`, `undo`, `redo`, `save_session`, `load_recipe`, `save_recipe` |
+| History and persistence | `history`, `undo`, `redo`, `save_version`, `list_versions`, `restore_version`, `save_session`, `load_recipe`, `save_recipe` |
 | Presets and assets | `list_presets`, `apply_preset`, `list_luts`, `apply_lut`, `models`, `install_model` |
 | Delivery and composition | `export`, `batch_export`, `merge` |
 | Metadata and configuration | `get_metadata`, `set_metadata`, `get_engine_settings` |
@@ -115,6 +136,16 @@ Save and deliver after visual review:
 
 Inspect the exported image and returned output metadata. Supported formats depend on the native engine build. A successful preview or export call alone does not prove a professional-quality edit. Batch outputs need per-item review.
 
+## Comparison and job tools
+
+Use `save_version` to retain a named reference independently of the 32-entry undo history. `render_compare` renders 2–4 labeled temporary patches, named versions or mask-off variants without changing saved state. One crop/region and delivery size apply to every variant; incompatible geometry is rejected. `inspect_adjustments` returns matched before/after images, an amplified actual RGB difference, and a native local-exposure influence map with EV statistics and row means. Exposure influence does not account for other tonal controls. Multiple images use ordered MCP image blocks with `images[].content_index` metadata, never duplicated base64 in text.
+
+Linear masks accept `falloff: "linear" | "smoothstep" | "smootherstep"`, plus independent source-pixel `fadeBefore` (zero edge) and `fadeAfter` (full edge). Omitted ends use `range`. Old recipes remain byte-compatible. The desktop mask panel exposes these controls and draws each transition edge at its actual distance.
+
+Prefer `start_denoise` over the synchronous compatibility `denoise` tool. After source capture and local asset verification it returns `job_id`; computation runs on a background worker while editing/rendering remain available. Poll `get_job` for progress and the separate `result_session_id`. One worker runs per workspace. Results inherit the input snapshot, not subsequent parent edits. `cancel_job` cooperatively stops at BM3D patch/AI tile boundaries without terminating the bridge. Completed results persist even without polling. Engine exit interrupts unfinished work; after reconnect use `list_jobs` and explicitly `resume_job` to recompute from the captured input. There are no partial-tile checkpoints. Intensity zero skips filtering but still creates a separate result session in the background API.
+
+See the skill's [review and job reference](../skills/rapidraw-mcp/references/review-and-jobs.md) for complete semantics and examples.
+
 ## Preservation and error behavior
 
 Source images and their sidecars are read-only to the workflow. `open_photo` creates an isolated working copy under `workspace/sessions/<id>`; edits, retouch intermediates and native `.rrdata` state stay with that copy. Exports must remain under `workspace/exports`, and recipes under `workspace/recipes`; relative output paths resolve inside their respective category. Exporting over a source is prohibited, and replacing an existing export requires `overwrite: true`. Recipe saves never overwrite an existing file; choose a new recipe path or revision. GPS stripping defaults on. Metadata edits affect the isolated session and its exports.
@@ -123,7 +154,7 @@ Installed presets containing explicitly disabled legacy negative-conversion cont
 
 Tool inputs reject unknown top-level fields. Native validation checks the actual adjustment/mask records against RapidRAW's schemas, so a misspelled adjustment cannot silently become a no-op. Mutations accept `expected_revision` to reject stale changes. Success returns `structuredContent`; previews also return native MCP image blocks without repeating their base64 in the JSON/text result. Engine failures return `isError: true` with a stable code and actionable message.
 
-Native requests are serialized, and the server never automatically retries a mutation. A timeout, crash, protocol mismatch or active cancellation terminates or invalidates the bridge; reconnect and inspect saved state before retrying. A request cancelled while queued is skipped without invalidating the engine. Closing the MCP connection closes stdin and then terminates an unresponsive native child. Save sessions at meaningful checkpoints for crash recovery.
+Native requests are serialized; denoise job computation runs on a separate worker. The server never automatically retries a mutation. A timeout, crash, protocol mismatch or cancellation of an active MCP request terminates or invalidates the bridge; reconnect and inspect saved state before retrying. `cancel_job` is a separate cooperative operation and leaves the bridge usable. A request cancelled while queued is skipped without invalidating the engine. Closing the MCP connection closes stdin and then terminates an unresponsive native child. Save sessions at meaningful checkpoints for crash recovery.
 
 The MCP process runs with your local account's filesystem permissions. Use it only with trusted local hosts. It is stdio-only: no network listener or authentication service is installed.
 
@@ -160,3 +191,16 @@ npm run test:assets --prefix mcp
 ```
 
 ImageMagick (`magick`, or `RAPIDRAW_MAGICK`) supplies an independent metadata/dimension inspection and watermark pixel comparison for this acceptance test. Installed presets and the sample source are read-only. If no installed preset exists, that single case is explicitly recorded as skipped. JSONL records capture every operation and a final summary records both verified checks and any external-decoder limitations.
+
+The comparison/job acceptance test uses a source image at least 512 pixels wide (a 2400-pixel native export is suitable). It creates a smaller test input with the native exporter and exercises temporary variants, mask diagnostics, independent gradient fades, reference persistence beyond undo history, editing during BM3D, cancellation, completed-result recovery, process interruption, and explicit restart:
+
+```sh
+RAPIDRAW_BINARY=/absolute/RapidRAW/src-tauri/target/debug/RapidRAW \
+RAPIDRAW_TEST_IMAGE=/absolute/native-export.jpg \
+RAPIDRAW_WORKSPACE=/absolute/separate-review-job-workspace \
+npm run test:review-jobs --prefix mcp
+```
+
+The script writes JSONL evidence, review PNGs and `summary.json`. It does not imply AI model quality, star preservation, or desktop pointer interaction was tested.
+
+Set `RAPIDRAW_TEST_AI=1` to include completion and cancellation during real AI inference on a 64-pixel test input using already installed assets; the acceptance script never downloads models.

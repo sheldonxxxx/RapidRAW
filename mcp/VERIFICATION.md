@@ -1,5 +1,41 @@
 # MCP verification record
 
+## 2026-09-12 publication checks
+
+Rebuilt the source checkout on macOS after reinstalling both Node dependency sets with `npm ci`. The native debug executable, frontend production build, and native check with the MCP feature disabled passed. The MCP TypeScript build and all 25 protocol/client tests passed; native library tests passed 70 cases with the existing GPU-specific test left ignored.
+
+The real `test:review-jobs` acceptance script passed through the rebuilt binary on a local CR3 original in an isolated workspace. It checked native comparison output, exposure diagnostics, named-version restoration, asymmetric gradients, BM3D completion/cancellation, editing during a worker job, captured-edit inheritance, restart/resume, result persistence, and unchanged original SHA-256. The optional AI-model branch was not rerun; its earlier evidence remains below. This run verifies execution and persistence, not a new aesthetic evaluation.
+
+Targeted MCP/client ESLint passed. Frontend typecheck still reports 76 diagnostics, and ESLint on the two changed frontend files still reports 120 diagnostics. A fresh archive of the unchanged base revision produces the same normalized diagnostic sets; this update adds none. The frontend checks are not globally clean.
+
+The public setup documentation now includes Skills CLI installation, a macOS debug-build quick start, and explicit Windows/other-platform limits. Installing a skill does not configure a host connection. Windows, Linux, packaged releases, and a fresh machine installation were not tested in this run. Local acceptance evidence remains ignored under `.mcp-workspace/public-release-check/`.
+
+## 2026-09-11 comparison and background-job update
+
+Native bridge 1.1.0 now advertises 47 tools. Implemented combined local exposure diagnostics and actual RGB differences, temporary matched comparisons, durable named references, smooth/asymmetric gradient fades (native engine, schema and desktop controls), and recoverable AI/BM3D jobs. The maintained and installed execution skills were updated and validated.
+
+| Check | Result |
+| --- | --- |
+| Native MCP library tests | 70 passed; 1 existing GPU test remains intentionally ignored |
+| MCP TypeScript build and protocol/schema tests | 25 passed |
+| Native debug executable and frontend production build | Passed |
+| ESLint on changed MCP source, protocol tests and new acceptance script | Passed |
+| Real MCP comparison/job acceptance, including AI | Passed |
+| Saved night-photo review regression | Both sessions retained identical state, source and sidecar hashes |
+| Execution skill validation and installed-file matching | Passed |
+| Frontend TypeScript diagnostics | 76, identical to unchanged HEAD after normalizing line positions and generated translation-key union counts |
+| Translation runtime diagnostics | 88, identical to unchanged HEAD |
+
+The real acceptance script tests four distinct native comparison images with matched geometry and unchanged manifests/sidecars, geometry rejection, native gradient output, version restoration after the 32-entry undo history is exceeded, stale-revision rejection, AI/BM3D completion and cancellation, editing/rendering while a worker runs, captured-edit inheritance, result persistence without polling, interruption detection, explicit restart, and preservation of explicitly closed result sessions. AI tests use a 64-pixel native export and verified already-installed assets. They validate worker behavior, not full-resolution denoise quality or star preservation. BM3D tests use a 512-pixel native export for completion and a 2400-pixel source for interruption/cancellation.
+
+Read-only inspection and temperature comparisons also ran on the two prior night-photo sessions: photo 1 revision 11 (2400×1600) and photo 2 revision 59 (6960×4640, retained RAW interpretation). Their unchanged edits rendered successfully at 1000 pixels; diagnostic and comparison outputs were visually inspected. These are compatibility checks, not newly accepted photo edits. Desktop controls passed the production build; pointer interactions were not automated.
+
+Local evidence is under `battle-test/2026-09-11/rapidraw-features/` in the parent photo-edit workspace, including `final-acceptance/{summary.json,evidence.jsonl}` and `saved-sessions/verification.json`. Reproduce with `npm run test:review-jobs --prefix mcp`; add `RAPIDRAW_TEST_AI=1` for installed-model AI coverage. The version-2 read-only contract fixture has ten checked reference answers; no autonomous language-model benchmark was run.
+
+A workspace permits one denoise worker. Cancellation waits for native work boundaries; process interruption requires explicit restart from the captured input, with recomputation. Windows, Linux and a packaged release were not tested in this update.
+
+## Earlier validation record
+
 Verified on 2026-09-10 on macOS with Metal, Rust 1.98.1 and the optional `mcp` feature. The tested native executable was a debug build. Evidence and private photos remain in ignored local workspaces; no source photos, generated images, model binaries or credentials are included in the repository.
 
 ## Build and protocol
@@ -46,7 +82,7 @@ JPEG, PNG and WebP metadata were independently inspected with ImageMagick, inclu
 
 A restrained wildlife edit of `0F6A8842.cr3` was reviewed at overview and native head-detail scale, with the local mask inspected separately. It was refined and exported as a 2700×1800 JPEG at quality 95 and a full-resolution RGB16 TIFF. The editable recipe and working `.rrdata` were retained. This demonstrates one completed host-agent workflow, not guaranteed professional results for arbitrary photographs.
 
-The server exposes 37 tools and the `pro_photo_edit` workflow prompt. A vision-capable host model must still inspect images and make artistic decisions; the MCP server does not run its own language model. Previews currently render at full resolution before resizing, so large RAW files can take several seconds per review.
+The earlier server exposed 37 tools and the `pro_photo_edit` workflow prompt. A vision-capable host model must still inspect images and make artistic decisions; the MCP server does not run its own language model. Previews currently render at full resolution before resizing, so large RAW files can take several seconds per review.
 
 Original RAW working copies and ordinary sidecars support GUI continuation. Linear denoised TIFF intermediates require their saved MCP session to preserve RAW interpretation; opening one directly in the GUI can change its appearance. Use MCP export for a portable display image.
 

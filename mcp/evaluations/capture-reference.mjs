@@ -11,6 +11,6 @@ try {
   const settings=await client.callTool({name:'rapidraw_get_engine_settings',arguments:{}});
   const tools=await client.listTools();
   const workflow=await client.readResource({uri:'rapidraw://workflow'});
-  await writeFile(fileURLToPath(new URL('./reference.json',import.meta.url)),JSON.stringify({fixture_version:1,capabilities:capabilities.structuredContent,settings:settings.structuredContent,tools:tools.tools,workflow:workflow.contents[0].text},null,2));
+  await writeFile(fileURLToPath(new URL('./reference.json',import.meta.url)),JSON.stringify({fixture_version:2,capabilities:capabilities.structuredContent,settings:settings.structuredContent,tools:tools.tools,workflow:workflow.contents[0].text},null,2));
   console.log('Captured live read-only engine reference.');
 } finally {await client.close();}

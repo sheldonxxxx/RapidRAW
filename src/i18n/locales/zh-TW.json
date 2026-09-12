@@ -606,7 +606,13 @@
         "feather": "羽化",
         "globalFeather": "全域羽化",
         "grow": "擴張",
-        "tolerance": "容差"
+        "tolerance": "容差",
+        "falloff": "漸變曲線",
+        "linearFalloff": "線性",
+        "smoothFalloff": "平滑",
+        "smootherFalloff": "更平滑",
+        "fadeBefore": "零強度邊緣距離",
+        "fadeAfter": "完整強度邊緣距離"
       },
       "patches": {
         "copyName": "{{name}} 副本",

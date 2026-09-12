@@ -236,7 +236,13 @@ fn submask_parameter_schema(kind: &str) -> Value {
                 "startX startY endX endY",
                 number(-100000.0, 100000.0),
             ));
-            props.insert("range".into(), number(0.0, 100.0));
+            let mut range = number(0.0, 100000.0);
+            range["description"] = json!("Half-width of the fade in source pixels, perpendicular to the boundary line; not a percentage.");
+            props.insert("range".into(), range);
+            props.extend(fields("fadeBefore fadeAfter", number(0.0, 100000.0)));
+            props.insert("falloff".into(), enumeration(&["linear", "smoothstep", "smootherstep"]));
+            props.get_mut("fadeBefore").unwrap()["description"] = json!("Source-pixel distance from the boundary to zero coverage on the positive perpendicular side (below a left-to-right horizontal line). Defaults to range.");
+            props.get_mut("fadeAfter").unwrap()["description"] = json!("Source-pixel distance from the boundary to full coverage on the negative perpendicular side (above a left-to-right horizontal line). Defaults to range.");
             required.extend(["startX", "startY", "endX", "endY"]);
         }
         "brush" | "flow" | "clone" | "heal" | "liquify" | "retouch" => {
@@ -912,6 +918,31 @@ pub fn resolve_curves(value: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn linear_gradient_accepts_source_pixel_fades_and_preserves_preview_mapping() {
+        let mut definition = mask();
+        definition["subMasks"][0]["type"] = json!("linear");
+        definition["subMasks"][0]["parameters"] = json!({
+            "startX":0,"startY":2000,"endX":6960,"endY":2000,"range":1600
+        });
+        validate_adjustments(&json!({"masks":[definition.clone()]}), (6960, 4640)).unwrap();
+        let parsed = serde_json::from_value(definition.clone()).unwrap();
+        let preview = crate::mask_generation::generate_mask_bitmap(
+            &parsed, 16, 400, 0.1, (0.0, 0.0), None,
+        ).unwrap();
+        for (y, expected) in [(40, 255), (120, 191), (200, 127), (280, 63), (360, 0)] {
+            assert_eq!(preview.get_pixel(0, y)[0], expected);
+        }
+        let crop = crate::mask_generation::generate_mask_bitmap(
+            &parsed, 16, 100, 0.1, (0.0, 120.0), None,
+        ).unwrap();
+        assert_eq!(crop.get_pixel(0, 0), preview.get_pixel(0, 120));
+        for invalid in [-1, 100001] {
+            definition["subMasks"][0]["parameters"]["range"] = json!(invalid);
+            assert!(validate_adjustments(&json!({"masks":[definition.clone()]}), (6960, 4640)).is_err());
+        }
+    }
 
     #[test]
     fn local_curve_updates_compile_new_ui_controls_and_preserve_explicit_native_curves() {
