@@ -1774,14 +1774,13 @@ fn validate_precision_request(
             "Image dimensions {width}x{height} are outside GPU limits (1..={max_dimension})"
         ));
     }
-    if let Some(roi) = request.roi {
-        if roi.width == 0
+    if let Some(roi) = request.roi
+        && (roi.width == 0
             || roi.height == 0
             || roi.x.checked_add(roi.width).is_none_or(|end| end > width)
-            || roi.y.checked_add(roi.height).is_none_or(|end| end > height)
-        {
-            return Err("Render region must be nonempty and inside the image".to_string());
-        }
+            || roi.y.checked_add(roi.height).is_none_or(|end| end > height))
+    {
+        return Err("Render region must be nonempty and inside the image".to_string());
     }
     if request.mask_bitmaps.len() != request.adjustments.mask_count as usize
         || request.mask_bitmaps.len() > MAX_MASKS
@@ -1806,8 +1805,8 @@ fn rgba32_bytes_to_rgba16(width: u32, height: u32, pixels: &[u8]) -> Result<Dyna
         return Err("High-precision GPU output has an invalid byte count".to_string());
     }
     let mut channels = Vec::with_capacity(expected_bytes / 4);
-    for chunk in pixels.chunks_exact(4) {
-        let value = f32::from_le_bytes(chunk.try_into().unwrap());
+    for chunk in pixels.as_chunks::<4>().0 {
+        let value = f32::from_le_bytes(*chunk);
         if !value.is_finite() {
             return Err("High-precision GPU output contains non-finite pixels".to_string());
         }

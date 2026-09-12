@@ -106,13 +106,13 @@ impl Session {
         Ok(())
     }
     pub fn check_revision(&self, params: &Value) -> Result<()> {
-        if let Some(value) = params.get("expected_revision") {
-            if value.as_u64() != Some(self.revision) {
-                return Err(format!(
-                    "REVISION_CONFLICT: Expected revision {value}, current revision is {}. Read the session and retry.",
-                    self.revision
-                ));
-            }
+        if let Some(value) = params.get("expected_revision")
+            && value.as_u64() != Some(self.revision)
+        {
+            return Err(format!(
+                "REVISION_CONFLICT: Expected revision {value}, current revision is {}. Read the session and retry.",
+                self.revision
+            ));
         }
         Ok(())
     }
@@ -207,7 +207,10 @@ impl Bridge {
         let state = self.handle.state::<AppState>();
         if self.active.as_deref() == Some(id) {
             let mut original = state.original_image.lock().map_err(|e| e.to_string())?;
-            if let Some(loaded) = original.as_mut().filter(|loaded| loaded.path == session.working_path) {
+            if let Some(loaded) = original
+                .as_mut()
+                .filter(|loaded| loaded.path == session.working_path)
+            {
                 // A float TIFF derived from RAW retains its linear RAW domain.
                 // The filename's raster extension cannot carry this distinction.
                 loaded.is_raw = session.is_raw;
@@ -221,7 +224,12 @@ impl Bridge {
             self.handle.clone(),
         )
         .await?;
-        if let Some(loaded) = state.original_image.lock().map_err(|e| e.to_string())?.as_mut() {
+        if let Some(loaded) = state
+            .original_image
+            .lock()
+            .map_err(|e| e.to_string())?
+            .as_mut()
+        {
             loaded.is_raw = session.is_raw;
         }
         // GUI loading already resets image caches; AI embeddings are path keyed.
@@ -432,25 +440,22 @@ pub(super) fn validate_metadata(metadata: &Value) -> Result<()> {
     {
         return Err("INVALID_METADATA: rating must be an integer from 0 to 5".into());
     }
-    if let Some(tags) = map.get("tags").filter(|v| !v.is_null()) {
-        if tags.as_array().is_none_or(|a| {
+    if let Some(tags) = map.get("tags").filter(|v| !v.is_null())
+        && tags.as_array().is_none_or(|a| {
             a.len() > 1000 || a.iter().any(|v| v.as_str().is_none_or(|s| s.len() > 256))
-        }) {
-            return Err(
-                "INVALID_METADATA: tags must contain at most 1000 strings of at most 256 bytes"
-                    .into(),
-            );
-        }
+        })
+    {
+        return Err(
+            "INVALID_METADATA: tags must contain at most 1000 strings of at most 256 bytes".into(),
+        );
     }
-    if let Some(exif) = map.get("exif").filter(|v| !v.is_null()) {
-        if exif.as_object().is_none_or(|m| {
+    if let Some(exif) = map.get("exif").filter(|v| !v.is_null())
+        && exif.as_object().is_none_or(|m| {
             m.values()
                 .any(|v| v.as_str().is_none_or(|s| s.len() > 4096))
-        }) {
-            return Err(
-                "INVALID_METADATA: EXIF must map keys to strings of at most 4096 bytes".into(),
-            );
-        }
+        })
+    {
+        return Err("INVALID_METADATA: EXIF must map keys to strings of at most 4096 bytes".into());
     }
     Ok(())
 }

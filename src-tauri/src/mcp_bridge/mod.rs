@@ -1,12 +1,12 @@
 //! Optional local automation bridge. The public MCP transport lives in `mcp/`.
 //! All image operations reuse RapidRAW's engine; originals are copied, never edited.
 mod advanced;
+mod jobs;
 mod operations;
 mod render;
 mod sessions;
 mod validation;
 mod versions;
-mod jobs;
 
 use std::io::{BufRead, Read, Write};
 use std::path::PathBuf;
@@ -59,15 +59,17 @@ fn start() -> Result<()> {
         }
         std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     }
-    let mut settings = crate::app_settings::AppSettings::default();
-    settings.tonemapper_override_enabled = Some(false);
-    settings.use_wgpu_renderer = Some(false);
+    let mut settings = crate::app_settings::AppSettings {
+        tonemapper_override_enabled: Some(false),
+        use_wgpu_renderer: Some(false),
+        ..Default::default()
+    };
     // Optional process-local settings; never migrate or overwrite GUI preferences.
     let settings_path = paths.root.join("engine-settings.json");
     if settings_path.exists() {
-        let overrides: Value = serde_json::from_slice(
-            &std::fs::read(&settings_path).map_err(|e| e.to_string())?,
-        ).map_err(|e| format!("Invalid engine-settings.json: {e}"))?;
+        let overrides: Value =
+            serde_json::from_slice(&std::fs::read(&settings_path).map_err(|e| e.to_string())?)
+                .map_err(|e| format!("Invalid engine-settings.json: {e}"))?;
         settings = merge_settings(settings, &overrides)?;
     }
     let _ = rayon::ThreadPoolBuilder::new()
@@ -89,11 +91,11 @@ fn start() -> Result<()> {
                 handle.path().resource_dir().unwrap_or_default().join("resources").join(library),
                 PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources").join(library),
             ];
-            if std::env::var_os("ORT_DYLIB_PATH").is_none() {
-                if let Some(path) = candidates.iter().find(|p| p.is_file()) {
-                    // No worker has initialized ONNX before bridge startup.
-                    unsafe { std::env::set_var("ORT_DYLIB_PATH", path); }
-                }
+            if std::env::var_os("ORT_DYLIB_PATH").is_none()
+                && let Some(path) = candidates.iter().find(|p| p.is_file())
+            {
+                // No worker has initialized ONNX before bridge startup.
+                unsafe { std::env::set_var("ORT_DYLIB_PATH", path); }
             }
             jxl_oxide::integration::register_image_decoding_hook();
             std::thread::spawn(move || {
@@ -113,7 +115,9 @@ fn start() -> Result<()> {
             // bypass ONNX's unsafe C++ atexit teardown on macOS, but preserve the
             // actual requested status so failures cannot become success.
             #[cfg(target_os = "macos")]
-            unsafe { libc::_exit(code.unwrap_or(0)); }
+            unsafe {
+                libc::_exit(code.unwrap_or(0));
+            }
             #[cfg(not(target_os = "macos"))]
             std::process::exit(code.unwrap_or(0));
         }
@@ -121,13 +125,20 @@ fn start() -> Result<()> {
     Ok(())
 }
 
-fn merge_settings(settings: crate::app_settings::AppSettings, overrides: &Value) -> Result<crate::app_settings::AppSettings> {
-    let overrides = overrides.as_object().ok_or("INVALID_SETTINGS: engine-settings.json must be an object")?;
+fn merge_settings(
+    settings: crate::app_settings::AppSettings,
+    overrides: &Value,
+) -> Result<crate::app_settings::AppSettings> {
+    let overrides = overrides
+        .as_object()
+        .ok_or("INVALID_SETTINGS: engine-settings.json must be an object")?;
     let mut effective = serde_json::to_value(settings).map_err(|e| e.to_string())?;
     let map = effective.as_object_mut().unwrap();
     for (key, value) in overrides {
         if !map.contains_key(key) {
-            return Err(format!("INVALID_SETTINGS: Unknown engine setting {key}; use names returned by get_engine_settings"));
+            return Err(format!(
+                "INVALID_SETTINGS: Unknown engine setting {key}; use names returned by get_engine_settings"
+            ));
         }
         map.insert(key.clone(), value.clone());
     }
@@ -256,10 +267,18 @@ mod tests {
     fn partial_engine_settings_keep_defaults_and_reject_typoes() {
         let settings = crate::app_settings::AppSettings::default();
         let expected_resolution = settings.editor_preview_resolution;
-        let merged = merge_settings(settings, &json!({"aiProvider":"ai-connector","aiConnectorAddress":"127.0.0.1:8188"})).unwrap();
+        let merged = merge_settings(
+            settings,
+            &json!({"aiProvider":"ai-connector","aiConnectorAddress":"127.0.0.1:8188"}),
+        )
+        .unwrap();
         assert_eq!(merged.ai_provider.as_deref(), Some("ai-connector"));
         assert_eq!(merged.editor_preview_resolution, expected_resolution);
-        assert!(merge_settings(Default::default(), &json!({"aiProvidr":"cloud"})).unwrap_err().starts_with("INVALID_SETTINGS:"));
+        assert!(
+            merge_settings(Default::default(), &json!({"aiProvidr":"cloud"}))
+                .unwrap_err()
+                .starts_with("INVALID_SETTINGS:")
+        );
     }
 
     #[test]

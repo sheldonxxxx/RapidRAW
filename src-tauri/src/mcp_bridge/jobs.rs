@@ -221,31 +221,31 @@ impl Jobs {
         }
     }
     fn finish_error(&self, id: &str, error: String) {
-        if let Ok(mut entries) = self.entries.lock() {
-            if let Some(entry) = entries.get_mut(id) {
-                if entry.job.status == Status::Succeeded {
-                    entry.job.error = Some(error);
-                    let _ = save(&self.root, &entry.job);
-                    return;
-                }
-                entry.job.status =
-                    if entry.cancel.load(Ordering::Acquire) && entry.job.error.is_none() {
-                        Status::Cancelled
-                    } else {
-                        Status::Failed
-                    };
-                entry.job.stage = if entry.job.status == Status::Cancelled {
-                    "cancelled"
-                } else {
-                    "failed"
-                }
-                .into();
-                if entry.job.error.is_none() {
-                    entry.job.error = Some(error);
-                }
-                if let Err(e) = save(&self.root, &entry.job) {
-                    entry.job.error = Some(format!("JOB_PERSIST_FAILED: {e}"));
-                }
+        if let Ok(mut entries) = self.entries.lock()
+            && let Some(entry) = entries.get_mut(id)
+        {
+            if entry.job.status == Status::Succeeded {
+                entry.job.error = Some(error);
+                let _ = save(&self.root, &entry.job);
+                return;
+            }
+            entry.job.status = if entry.cancel.load(Ordering::Acquire) && entry.job.error.is_none()
+            {
+                Status::Cancelled
+            } else {
+                Status::Failed
+            };
+            entry.job.stage = if entry.job.status == Status::Cancelled {
+                "cancelled"
+            } else {
+                "failed"
+            }
+            .into();
+            if entry.job.error.is_none() {
+                entry.job.error = Some(error);
+            }
+            if let Err(e) = save(&self.root, &entry.job) {
+                entry.job.error = Some(format!("JOB_PERSIST_FAILED: {e}"));
             }
         }
     }

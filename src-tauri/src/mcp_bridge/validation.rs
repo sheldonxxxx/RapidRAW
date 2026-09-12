@@ -237,12 +237,21 @@ fn submask_parameter_schema(kind: &str) -> Value {
                 number(-100000.0, 100000.0),
             ));
             let mut range = number(0.0, 100000.0);
-            range["description"] = json!("Half-width of the fade in source pixels, perpendicular to the boundary line; not a percentage.");
+            range["description"] = json!(
+                "Half-width of the fade in source pixels, perpendicular to the boundary line; not a percentage."
+            );
             props.insert("range".into(), range);
             props.extend(fields("fadeBefore fadeAfter", number(0.0, 100000.0)));
-            props.insert("falloff".into(), enumeration(&["linear", "smoothstep", "smootherstep"]));
-            props.get_mut("fadeBefore").unwrap()["description"] = json!("Source-pixel distance from the boundary to zero coverage on the positive perpendicular side (below a left-to-right horizontal line). Defaults to range.");
-            props.get_mut("fadeAfter").unwrap()["description"] = json!("Source-pixel distance from the boundary to full coverage on the negative perpendicular side (above a left-to-right horizontal line). Defaults to range.");
+            props.insert(
+                "falloff".into(),
+                enumeration(&["linear", "smoothstep", "smootherstep"]),
+            );
+            props.get_mut("fadeBefore").unwrap()["description"] = json!(
+                "Source-pixel distance from the boundary to zero coverage on the positive perpendicular side (below a left-to-right horizontal line). Defaults to range."
+            );
+            props.get_mut("fadeAfter").unwrap()["description"] = json!(
+                "Source-pixel distance from the boundary to full coverage on the negative perpendicular side (above a left-to-right horizontal line). Defaults to range."
+            );
             required.extend(["startX", "startY", "endX", "endY"]);
         }
         "brush" | "flow" | "clone" | "heal" | "liquify" | "retouch" => {
@@ -464,15 +473,15 @@ fn parametric_defaults() -> Value {
 // A small validator for exactly the JSON Schema vocabulary emitted above.
 // Keeping the schema executable prevents documentation/validation divergence.
 fn validate_schema(value: &Value, schema: &Value, path: &str) -> Result<(), String> {
-    if let Some(expected) = schema.get("const") {
-        if value != expected {
-            return Err(format!("{path}: expected {expected}"));
-        }
+    if let Some(expected) = schema.get("const")
+        && value != expected
+    {
+        return Err(format!("{path}: expected {expected}"));
     }
-    if let Some(choices) = schema.get("enum").and_then(Value::as_array) {
-        if !choices.contains(value) {
-            return Err(format!("{path}: expected one of {}", json!(choices)));
-        }
+    if let Some(choices) = schema.get("enum").and_then(Value::as_array)
+        && !choices.contains(value)
+    {
+        return Err(format!("{path}: expected one of {}", json!(choices)));
     }
     for combinator in ["anyOf", "oneOf"] {
         if let Some(variants) = schema.get(combinator).and_then(Value::as_array) {
@@ -743,10 +752,10 @@ pub fn validate_adjustments(value: &Value, dimensions: (u32, u32)) -> Result<(),
                 .into(),
         );
     }
-    if let Some(path) = value["lutPath"].as_str() {
-        if path.trim().is_empty() {
-            return Err("adjustments.lutPath: use null to remove a LUT, not an empty path".into());
-        }
+    if let Some(path) = value["lutPath"].as_str()
+        && path.trim().is_empty()
+    {
+        return Err("adjustments.lutPath: use null to remove a LUT, not an empty path".into());
     }
     let mut ids = HashSet::new();
     for collection in ["masks", "aiPatches"] {
@@ -856,7 +865,9 @@ pub fn merge_patch(base: &mut Value, patch: &Value) -> Result<(), String> {
 /// in the same patch is authoritative, including in older saved recipes.
 pub fn resolve_curve_patch(value: &mut Value, patch: &Value) {
     if patch.get("curves").is_none()
-        && ["pointCurves", "parametricCurve", "curveMode"].iter().any(|key| patch.get(*key).is_some())
+        && ["pointCurves", "parametricCurve", "curveMode"]
+            .iter()
+            .any(|key| patch.get(*key).is_some())
     {
         resolve_curves(value);
     }
@@ -928,19 +939,21 @@ mod tests {
         });
         validate_adjustments(&json!({"masks":[definition.clone()]}), (6960, 4640)).unwrap();
         let parsed = serde_json::from_value(definition.clone()).unwrap();
-        let preview = crate::mask_generation::generate_mask_bitmap(
-            &parsed, 16, 400, 0.1, (0.0, 0.0), None,
-        ).unwrap();
+        let preview =
+            crate::mask_generation::generate_mask_bitmap(&parsed, 16, 400, 0.1, (0.0, 0.0), None)
+                .unwrap();
         for (y, expected) in [(40, 255), (120, 191), (200, 127), (280, 63), (360, 0)] {
             assert_eq!(preview.get_pixel(0, y)[0], expected);
         }
-        let crop = crate::mask_generation::generate_mask_bitmap(
-            &parsed, 16, 100, 0.1, (0.0, 120.0), None,
-        ).unwrap();
+        let crop =
+            crate::mask_generation::generate_mask_bitmap(&parsed, 16, 100, 0.1, (0.0, 120.0), None)
+                .unwrap();
         assert_eq!(crop.get_pixel(0, 0), preview.get_pixel(0, 120));
         for invalid in [-1, 100001] {
             definition["subMasks"][0]["parameters"]["range"] = json!(invalid);
-            assert!(validate_adjustments(&json!({"masks":[definition.clone()]}), (6960, 4640)).is_err());
+            assert!(
+                validate_adjustments(&json!({"masks":[definition.clone()]}), (6960, 4640)).is_err()
+            );
         }
     }
 
@@ -951,15 +964,22 @@ mod tests {
         let patch = json!({"curveMode":"parametric","parametricCurve":{"luma":{"shadows":50}}});
         rfc_merge(&mut local, &patch);
         resolve_curve_patch(&mut local, &patch);
-        assert_ne!(local["curves"], identity, "a local UI curve edit must change native rendered curves");
-        let point_patch = json!({"curveMode":"point","pointCurves":{"luma":[{"x":0,"y":0},{"x":255,"y":180}]}});
+        assert_ne!(
+            local["curves"], identity,
+            "a local UI curve edit must change native rendered curves"
+        );
+        let point_patch =
+            json!({"curveMode":"point","pointCurves":{"luma":[{"x":0,"y":0},{"x":255,"y":180}]}});
         rfc_merge(&mut local, &point_patch);
         resolve_curve_patch(&mut local, &point_patch);
         assert_eq!(local["curves"]["luma"][1]["y"], 180);
         let explicit = json!({"curveMode":"parametric","parametricCurve":{"luma":{"shadows":-50}},"curves":identity});
         rfc_merge(&mut local, &explicit);
         resolve_curve_patch(&mut local, &explicit);
-        assert_eq!(local["curves"], identity, "explicit native curves remain authoritative");
+        assert_eq!(
+            local["curves"], identity,
+            "explicit native curves remain authoritative"
+        );
     }
 
     fn bitmap(width: u32, height: u32) -> String {

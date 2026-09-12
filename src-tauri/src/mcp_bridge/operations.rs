@@ -347,7 +347,10 @@ impl Bridge {
             {
                 return Err("INVALID_ARGUMENT: Use mask_generate for AI selections".into());
             }
-            let mut local = params.get("adjustments").cloned().unwrap_or_else(||json!({}));
+            let mut local = params
+                .get("adjustments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
             validation::resolve_curve_patch(&mut local, &params["adjustments"]);
             masks.push(json!({"id":mask_id,"name":params["name"].as_str().unwrap_or("Agent mask"),"visible":true,"invert":flag(params,"invert",false)?,"opacity":number(params,"opacity",100.,0.,100.)?,"adjustments":local,"subMasks":[{"id":uuid::Uuid::new_v4().to_string(),"type":kind,"visible":true,"invert":false,"opacity":100,"mode":"additive","parameters":params.get("parameters").cloned().unwrap_or_else(||json!({}))}]}));
         } else {
@@ -366,7 +369,10 @@ impl Bridge {
                     return Err("INVALID_ARGUMENT: A mask's id cannot be changed".into());
                 }
                 merge_object(&mut masks[index], patch);
-                validation::resolve_curve_patch(&mut masks[index]["adjustments"], &patch["adjustments"]);
+                validation::resolve_curve_patch(
+                    &mut masks[index]["adjustments"],
+                    &patch["adjustments"],
+                );
             }
         }
         let mut result = self.commit(

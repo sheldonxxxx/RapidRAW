@@ -1543,28 +1543,37 @@ mod linear_falloff_tests {
     use serde_json::json;
     #[test]
     fn legacy_linear_is_byte_identical_and_scaled_crop_matches() {
-        let params=json!({"startX":0,"startY":100,"endX":100,"endY":100,"range":40});
-        let full=generate_linear_bitmap(&params,100,200,1.0,(0.0,0.0));
+        let params = json!({"startX":0,"startY":100,"endX":100,"endY":100,"range":40});
+        let full = generate_linear_bitmap(&params, 100, 200, 1.0, (0.0, 0.0));
         for y in 0..200 {
-            let expected=((0.5-((y as f32-100.0)/40.0)*0.5).clamp(0.0,1.0)*255.0) as u8;
-            assert_eq!(full[(20,y)][0],expected);
+            let expected =
+                ((0.5 - ((y as f32 - 100.0) / 40.0) * 0.5).clamp(0.0, 1.0) * 255.0) as u8;
+            assert_eq!(full[(20, y)][0], expected);
         }
-        let preview=generate_linear_bitmap(&params,50,100,0.5,(0.0,0.0));
-        let crop=generate_linear_bitmap(&params,50,50,0.5,(0.0,25.0));
-        for y in 0..50 { assert_eq!(crop[(10,y)],preview[(10,y+25)]); }
+        let preview = generate_linear_bitmap(&params, 50, 100, 0.5, (0.0, 0.0));
+        let crop = generate_linear_bitmap(&params, 50, 50, 0.5, (0.0, 25.0));
+        for y in 0..50 {
+            assert_eq!(crop[(10, y)], preview[(10, y + 25)]);
+        }
     }
     #[test]
     fn asymmetric_smooth_fades_have_correct_endpoints_and_monotonic_interior() {
-        for curve in ["linear","smoothstep","smootherstep"] {
-            let params=json!({"startX":0,"startY":100,"endX":100,"endY":100,"range":50,"fadeBefore":20,"fadeAfter":60,"falloff":curve});
-            let bitmap=generate_linear_bitmap(&params,100,200,1.0,(0.0,0.0));
-            assert_eq!(bitmap[(0,40)][0],255); assert_eq!(bitmap[(0,120)][0],0);
-            assert_eq!(bitmap[(0,80)][0],127);
-            for y in 1..200 { assert!(bitmap[(0,y)][0]<=bitmap[(0,y-1)][0]); }
-            let scaled=generate_linear_bitmap(&params,50,100,0.5,(0.0,0.0));
-            for y in 0..100 { assert_eq!(scaled[(10,y)],bitmap[(20,y*2)]); }
-            if curve!="linear" {
-                assert!(bitmap[(0,110)][0]<31); assert!(bitmap[(0,50)][0]>223);
+        for curve in ["linear", "smoothstep", "smootherstep"] {
+            let params = json!({"startX":0,"startY":100,"endX":100,"endY":100,"range":50,"fadeBefore":20,"fadeAfter":60,"falloff":curve});
+            let bitmap = generate_linear_bitmap(&params, 100, 200, 1.0, (0.0, 0.0));
+            assert_eq!(bitmap[(0, 40)][0], 255);
+            assert_eq!(bitmap[(0, 120)][0], 0);
+            assert_eq!(bitmap[(0, 80)][0], 127);
+            for y in 1..200 {
+                assert!(bitmap[(0, y)][0] <= bitmap[(0, y - 1)][0]);
+            }
+            let scaled = generate_linear_bitmap(&params, 50, 100, 0.5, (0.0, 0.0));
+            for y in 0..100 {
+                assert_eq!(scaled[(10, y)], bitmap[(20, y * 2)]);
+            }
+            if curve != "linear" {
+                assert!(bitmap[(0, 110)][0] < 31);
+                assert!(bitmap[(0, 50)][0] > 223);
             }
         }
     }

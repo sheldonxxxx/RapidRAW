@@ -736,10 +736,10 @@ fn optional_long_edge(params: &Value) -> Result<Option<u32>> {
 }
 
 fn resize_long_edge(image: DynamicImage, long_edge: Option<u32>) -> Result<DynamicImage> {
-    if let Some(max) = long_edge {
-        if image.width().max(image.height()) > max {
-            return Ok(image.resize(max, max, imageops::FilterType::Lanczos3));
-        }
+    if let Some(max) = long_edge
+        && image.width().max(image.height()) > max
+    {
+        return Ok(image.resize(max, max, imageops::FilterType::Lanczos3));
     }
     Ok(image)
 }
@@ -1002,7 +1002,9 @@ fn verify_avif_container(bytes: &[u8], expected: (u32, u32), depth: u32) -> Resu
                         result.avif_brand |= &data[..4] == b"avif"
                             || &data[..4] == b"avis"
                             || data[8..]
-                                .chunks_exact(4)
+                                .as_chunks::<4>()
+                                .0
+                                .iter()
                                 .any(|brand| brand == b"avif" || brand == b"avis");
                     }
                 }

@@ -357,7 +357,10 @@ impl Bridge {
             parameters[key] = value.clone();
         }
         let id = uuid::Uuid::new_v4().to_string();
-        let mut local = params.get("adjustments").cloned().unwrap_or_else(||json!({}));
+        let mut local = params
+            .get("adjustments")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
         validation::resolve_curve_patch(&mut local, &params["adjustments"]);
         let mask = json!({"id":id,"name":params["name"].as_str().unwrap_or(kind),"visible":true,"invert":false,"opacity":100,"adjustments":local,"subMasks":[{"id":uuid::Uuid::new_v4().to_string(),"type":format!("ai-{kind}"),"visible":true,"invert":false,"mode":"additive","opacity":100,"parameters":parameters}]});
         validation::validate_adjustments(&json!({"masks":[mask.clone()]}), session.dimensions)?;
@@ -578,8 +581,14 @@ impl Bridge {
         }
         self.activate(&parent.id).await?;
         let state = self.handle.state::<AppState>();
-        let source = state.original_image.lock().unwrap().as_ref()
-            .ok_or("IMAGE_NOT_LOADED: No pristine source available for denoising")?.image.clone();
+        let source = state
+            .original_image
+            .lock()
+            .unwrap()
+            .as_ref()
+            .ok_or("IMAGE_NOT_LOADED: No pristine source available for denoising")?
+            .image
+            .clone();
         let ai_session = if method == "ai" {
             self.ensure_models("denoise", false).await?;
             Some(
@@ -621,7 +630,8 @@ impl Bridge {
         result["source_domain_preserved"] = json!(true);
         result["normalization_range"] = json!(normalization_range);
         result["changed"] = json!(true);
-        let mut warnings = vec!["Denoising can alter fine texture and local color; compare the result at 100%."];
+        let mut warnings =
+            vec!["Denoising can alter fine texture and local color; compare the result at 100%."];
         if parent.is_raw {
             warnings.push("This derived linear TIFF retains RAW rendering through the saved MCP session. Opening it independently in the RapidRAW GUI or another editor will not reproduce that interpretation from the rrdata alone; use MCP export for a portable display image.");
         }
