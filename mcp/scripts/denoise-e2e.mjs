@@ -9,6 +9,7 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createNativeHarness } from './coverage-evidence.mjs';
 
 const binary = process.env.RAPIDRAW_BINARY;
 assert.ok(binary, 'Set RAPIDRAW_BINARY');
@@ -43,16 +44,21 @@ function readFloatTiff(buffer) {
   return {width:tags.get(256)[0],height:tags.get(257)[0],values:Array.from({length:bytes.length/4},(_,i)=>bytes.readFloatLE(i*4))};
 }
 await writeFile(fixture,writeFloatTiff());
-let client;
+let client, coverage, failure;
 const records=[];
 async function connect(){
+  if (process.env.RAPIDRAW_COVERAGE === '1') {
+    if (coverage) await coverage.reconnect();
+    else { coverage = await createNativeHarness({ suite: 'denoise-linear-domain', workspace, binary, timeout: 600000 }); await coverage.fixture(fixture, 'Synthetic float32 TIFF with isolated session RAW flag; not a photographic RAW inference benchmark'); }
+    client = coverage.client; return;
+  }
   client=new Client({name:'denoise-domain-e2e',version:'1.0.0'});
   await client.connect(new StdioClientTransport({command:process.execPath,args:[fileURLToPath(new URL('../dist/index.js',import.meta.url)),'--binary',binary,'--workspace',workspace],stderr:'inherit'}));
 }
 async function call(method,args){
   console.log(method,args.method??'');
   const started=performance.now();
-  const result=await client.callTool({name:`rapidraw_${method}`,arguments:args},{timeout:600000});
+  const result=coverage ? (await coverage.call(method,args)).result : await client.callTool({name:`rapidraw_${method}`,arguments:args},{timeout:600000});
   assert.ok(!result.isError,JSON.stringify(result));
   records.push({method,args,elapsed_ms:Math.round(performance.now()-started),data:result.structuredContent});
   return result;
@@ -74,6 +80,7 @@ try {
   const zero=(await call('denoise',{session_id:session.id,method:'ai',intensity:0,expected_revision:before.revision})).structuredContent;
   assert.equal(zero.session_id,session.id);assert.equal(zero.revision,before.revision);assert.equal(zero.changed,false);
   assert.deepEqual(zero.adjustments,before.adjustments);assert.equal(await render(session.id),baseline);
+  if(coverage) await coverage.check('zero_intensity_preserves_state_and_render', ['tool:denoise','parameter:denoise.intensity'], async()=>({changed:false,identical_render:true,fixture:'synthetic_float_tiff_marked_raw'}),'pixel_assertion');
   const original=readFloatTiff(await readFile(fixture));
   const results=[];
   for(const method of ['bm3d','ai']){
@@ -106,6 +113,7 @@ try {
     assert.equal(restored.is_raw,true);assert.deepEqual(restored.adjustments,before.adjustments);
     assert.equal(await render(denoised.session_id),preview,'Rendering changed after reconnect');
     results.push({method,session_id:denoised.session_id,max_linear_value:max,mean_source_deltas:means,flat_field_noise:noise});
+    if(coverage) await coverage.check(`linear_domain_${method}_headroom_drift_and_persistence`, ['tool:denoise',`parameter:denoise.method=${JSON.stringify(method)}`], async()=>results.at(-1),'pixel_assertion');
   }
   assert.equal((await call('get_session',{session_id:session.id})).structuredContent.revision,before.revision);
   assert.deepEqual(await readFile(fixture),writeFloatTiff(),'Fixture source changed');
@@ -120,4 +128,4 @@ try {
   const elapsed_ms=Math.round(performance.now()-started);
   await writeFile(join(workspace,'denoise-domain-evidence.json'),JSON.stringify({status:'passed',elapsed_ms,results,records},null,2));
   console.log(JSON.stringify({status:'passed',workspace,elapsed_ms,calls:records.length,results},null,2));
-} finally {await client?.close();}
+} catch(error) { failure=error; throw error; } finally {if(coverage)await coverage.close(failure);else await client?.close();}

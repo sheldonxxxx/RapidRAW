@@ -19,6 +19,9 @@ use tauri::Manager;
 use tokenizers::Tokenizer;
 use tokio::sync::Mutex as TokioMutex;
 
+#[cfg(feature = "mcp")]
+pub(crate) mod sam_refinement;
+
 const ENCODER_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/sam_vit_b_01ec64_encoder.onnx?download=true";
 const DECODER_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/sam_vit_b_01ec64_decoder.onnx?download=true";
 pub(crate) const ENCODER_FILENAME: &str = "sam_vit_b_01ec64_encoder.onnx";
@@ -372,6 +375,24 @@ async fn download_model(url: &str, dest: &Path) -> Result<()> {
     persist_downloaded_asset(dest, &bytes)
 }
 
+/// Model hashes are checked before a downloaded payload can replace a published
+/// asset. Failed requests, cancelled bodies and mismatches preserve any old file.
+async fn download_verified_model(url: &str, dest: &Path, expected_hash: &str) -> Result<()> {
+    let response = reqwest::get(url).await?.error_for_status()?;
+    let bytes = response.bytes().await?;
+    let actual_hash = hex::encode(Sha256::digest(&bytes));
+    if actual_hash != expected_hash {
+        return Err(anyhow::anyhow!(
+            "Downloaded model hash mismatch; the existing asset was not replaced"
+        ));
+    }
+    persist_downloaded_asset(dest, &bytes)
+}
+
+#[cfg(test)]
+#[path = "ai_processing_download_tests.rs"]
+mod download_fault_tests;
+
 fn verify_sha256(path: &Path, expected_hash: &str) -> Result<bool> {
     if !path.exists() {
         return Ok(false);
@@ -442,7 +463,7 @@ async fn download_and_verify_model(
             fs::remove_file(&dest_path)?;
         }
         let _ = app_handle.emit("ai-model-download-start", model_name);
-        let download_result = download_model(url, &dest_path).await;
+        let download_result = download_verified_model(url, &dest_path, expected_hash).await;
         let _ = app_handle.emit("ai-model-download-finish", model_name);
         download_result?;
 

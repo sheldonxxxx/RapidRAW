@@ -20,6 +20,8 @@ use std::{
 };
 use tauri::Manager;
 
+mod subject_refinement;
+
 fn model_assets(kind: &str) -> Result<Vec<(&'static str, &'static str)>> {
     Ok(match kind {
         "masks" => vec![
@@ -142,7 +144,7 @@ impl Bridge {
         }
     }
 
-    fn models_status(&self) -> Result<Value> {
+    pub(super) fn models_status(&self) -> Result<Value> {
         let installed = self
             .handle
             .path()
@@ -283,6 +285,9 @@ impl Bridge {
             }
         }
         let bbox = region(params, oriented_dimensions(&session))?;
+        let subject_request = subject_refinement::prepare(params, &session)?;
+        number(&controls, "grow", 0.0, -100.0, 100.0)?;
+        number(&controls, "feather", 0.0, 0.0, 100.0)?;
         self.ensure_models("masks", false).await?;
         self.activate(&session.id).await?;
         let state = self.handle.state::<AppState>();
@@ -291,68 +296,84 @@ impl Bridge {
         let flip_h = adjustments["flipHorizontal"].as_bool().unwrap_or(false);
         let flip_v = adjustments["flipVertical"].as_bool().unwrap_or(false);
         let orientation = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
-        let generated = match kind {
-            "subject" => serde_json::to_value(
-                crate::ai_commands::generate_ai_subject_mask(
-                    adjustments.clone(),
-                    session.working_path.clone(),
-                    bbox.0,
-                    bbox.1,
-                    rotation,
-                    flip_h,
-                    flip_v,
-                    orientation,
-                    state.clone(),
-                    self.handle.clone(),
-                )
-                .await?,
-            ),
-            "foreground" => serde_json::to_value(
-                crate::ai_commands::generate_ai_foreground_mask(
-                    adjustments.clone(),
-                    rotation,
-                    flip_h,
-                    flip_v,
-                    orientation,
-                    state.clone(),
-                    self.handle.clone(),
-                )
-                .await?,
-            ),
-            "sky" => serde_json::to_value(
-                crate::ai_commands::generate_ai_sky_mask(
-                    adjustments.clone(),
-                    rotation,
-                    flip_h,
-                    flip_v,
-                    orientation,
-                    state.clone(),
-                    self.handle.clone(),
-                )
-                .await?,
-            ),
-            "depth" => serde_json::to_value(
-                crate::ai_commands::generate_ai_depth_mask(
-                    adjustments.clone(),
-                    session.working_path.clone(),
-                    number(&controls, "minDepth", 0.0, 0.0, 100.0)? as f32,
-                    number(&controls, "maxDepth", 100.0, 0.0, 100.0)? as f32,
-                    number(&controls, "minFade", 15.0, 0.0, 100.0)? as f32,
-                    number(&controls, "maxFade", 15.0, 0.0, 100.0)? as f32,
-                    number(&controls, "feather", 15.0, 0.0, 100.0)? as f32,
-                    rotation,
-                    flip_h,
-                    flip_v,
-                    orientation,
-                    state.clone(),
-                    self.handle.clone(),
-                )
-                .await?,
-            ),
-            _ => unreachable!(),
+        let mut refinement = None;
+        let generated = if let Some(request) = &subject_request {
+            let (parameters, info) = request.generate(self, &session)?;
+            refinement = Some(info);
+            Ok(parameters)
+        } else {
+            match kind {
+                "subject" => serde_json::to_value(
+                    crate::ai_commands::generate_ai_subject_mask(
+                        adjustments.clone(),
+                        session.working_path.clone(),
+                        bbox.0,
+                        bbox.1,
+                        rotation,
+                        flip_h,
+                        flip_v,
+                        orientation,
+                        state.clone(),
+                        self.handle.clone(),
+                    )
+                    .await?,
+                ),
+                "foreground" => serde_json::to_value(
+                    crate::ai_commands::generate_ai_foreground_mask(
+                        adjustments.clone(),
+                        rotation,
+                        flip_h,
+                        flip_v,
+                        orientation,
+                        state.clone(),
+                        self.handle.clone(),
+                    )
+                    .await?,
+                ),
+                "sky" => serde_json::to_value(
+                    crate::ai_commands::generate_ai_sky_mask(
+                        adjustments.clone(),
+                        rotation,
+                        flip_h,
+                        flip_v,
+                        orientation,
+                        state.clone(),
+                        self.handle.clone(),
+                    )
+                    .await?,
+                ),
+                "depth" => serde_json::to_value(
+                    crate::ai_commands::generate_ai_depth_mask(
+                        adjustments.clone(),
+                        session.working_path.clone(),
+                        number(&controls, "minDepth", 0.0, 0.0, 100.0)? as f32,
+                        number(&controls, "maxDepth", 100.0, 0.0, 100.0)? as f32,
+                        number(&controls, "minFade", 15.0, 0.0, 100.0)? as f32,
+                        number(&controls, "maxFade", 15.0, 0.0, 100.0)? as f32,
+                        number(&controls, "feather", 15.0, 0.0, 100.0)? as f32,
+                        rotation,
+                        flip_h,
+                        flip_v,
+                        orientation,
+                        state.clone(),
+                        self.handle.clone(),
+                    )
+                    .await?,
+                ),
+                _ => unreachable!(),
+            }
         }
-        .map_err(|e| e.to_string())?;
-        let mut parameters = generated;
+        .map_err(|e: serde_json::Error| e.to_string())?;
+        let target = subject_request.as_ref().and_then(|r| r.target);
+        let mut parameters = if let Some((mi, si)) = target {
+            let mut previous = adjustments["masks"][mi]["subMasks"][si]["parameters"].clone();
+            for (key, value) in generated.as_object().unwrap() {
+                previous[key] = value.clone();
+            }
+            previous
+        } else {
+            generated
+        };
         for (key, value) in controls_map {
             parameters[key] = value.clone();
         }
@@ -362,7 +383,21 @@ impl Bridge {
             .cloned()
             .unwrap_or_else(|| json!({}));
         validation::resolve_curve_patch(&mut local, &params["adjustments"]);
-        let mask = json!({"id":id,"name":params["name"].as_str().unwrap_or(kind),"visible":true,"invert":false,"opacity":100,"adjustments":local,"subMasks":[{"id":uuid::Uuid::new_v4().to_string(),"type":format!("ai-{kind}"),"visible":true,"invert":false,"mode":"additive","opacity":100,"parameters":parameters}]});
+        let mask = if let Some((mi, si)) = target {
+            let mut mask = adjustments["masks"][mi].clone();
+            mask["subMasks"][si]["parameters"] = parameters;
+            if let Some(name) = params.get("name") {
+                mask["name"] = name.clone();
+            }
+            if params.get("adjustments").is_some() {
+                validation::merge_patch(&mut mask["adjustments"], &local)?;
+            }
+            mask
+        } else {
+            json!({"id":id,"name":params["name"].as_str().unwrap_or(kind),"visible":true,"invert":false,"opacity":100,"adjustments":local,"subMasks":[{"id":uuid::Uuid::new_v4().to_string(),"type":format!("ai-{kind}"),"visible":true,"invert":false,"mode":"additive","opacity":100,"parameters":parameters}]})
+        };
+        let id = mask["id"].as_str().unwrap().to_string();
+        let sub_mask_id = mask["subMasks"][target.map_or(0, |(_, si)| si)]["id"].clone();
         validation::validate_adjustments(&json!({"masks":[mask.clone()]}), session.dimensions)?;
         let definition: MaskDefinition =
             serde_json::from_value(mask.clone()).map_err(|e| e.to_string())?;
@@ -374,17 +409,27 @@ impl Bridge {
             1.0,
             (0.0, 0.0),
             None,
-        )
-        .ok_or("MASK_GENERATION_FAILED: Generated mask could not be rasterized")?;
+        );
+        let bitmap = if target.is_some() {
+            // The model selection was checked before applying preserved parent
+            // visibility, opacity and sibling add/subtract/intersect operations.
+            bitmap.unwrap_or_else(|| GrayImage::new(width, height))
+        } else {
+            bitmap.ok_or("MASK_GENERATION_FAILED: Generated mask could not be rasterized")?
+        };
         let statistics = mask_statistics(&bitmap);
-        if statistics["empty"] == true {
+        if target.is_none() && statistics["empty"] == true {
             return Err("EMPTY_MASK: Model selected no pixels. Adjust the subject region or mask parameters and retry.".into());
         }
         let mut next = adjustments.clone();
         if !next["masks"].is_array() {
             next["masks"] = json!([]);
         }
-        next["masks"].as_array_mut().unwrap().push(mask);
+        if let Some((mi, _)) = target {
+            next["masks"][mi] = mask;
+        } else {
+            next["masks"].as_array_mut().unwrap().push(mask);
+        }
         let mut result = self.commit(
             &session.id,
             next,
@@ -392,6 +437,10 @@ impl Bridge {
             &format!("Generated {kind} mask"),
         )?;
         result["mask_id"] = json!(id);
+        result["sub_mask_id"] = sub_mask_id;
+        if let Some(refinement) = refinement {
+            result["refinement"] = refinement;
+        }
         result["mask_statistics"] = statistics;
         result["coordinate_space"] = json!("oriented image pixels before crop");
         result["image"] = image_reply(&bitmap)?;
@@ -692,19 +741,12 @@ impl Bridge {
                     .ok_or("MERGE_FAILED: Focus stack produced no image")?
             }
             "panorama" => {
-                *state.panorama_result.lock().unwrap() = None;
-                crate::panorama_stitching::stitch_panorama(
-                    working,
-                    self.handle.clone(),
-                    state.clone(),
-                )
-                .await?;
-                state
-                    .panorama_result
-                    .lock()
-                    .unwrap()
-                    .take()
-                    .ok_or("MERGE_FAILED: Panorama produced no image")?
+                let handle = self.handle.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::panorama_stitching::stitch_panorama_for_mcp(working, handle)
+                })
+                .await
+                .map_err(|error| format!("MERGE_FAILED: Panorama worker failed: {error}"))??
             }
             _ => unreachable!(),
         };

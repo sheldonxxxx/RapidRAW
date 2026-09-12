@@ -6,11 +6,12 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { appendFile, copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createNativeHarness } from './coverage-evidence.mjs';
 
 const exec = promisify(execFile);
 const binary = process.env.RAPIDRAW_BINARY;
@@ -26,7 +27,8 @@ const records = [], checks = [], skipped = [];
 const hash = async (path) => createHash('sha256').update(await readFile(path)).digest('hex');
 const originalHash = await hash(source);
 const originalSidecar = await readFile(`${source}.rrdata`).catch((error) => { if (error.code === 'ENOENT') return null; throw error; });
-let client;
+const coverageEnabled = process.env.RAPIDRAW_COVERAGE === '1';
+let client, coverage;
 const sanitize = (value, key = '') => {
   if (/token|secret|password/i.test(key)) return '[redacted]';
   if (typeof value === 'string' && (/base64/i.test(key) || value.length > 4096)) return `[omitted ${value.length} characters]`;
@@ -34,7 +36,18 @@ const sanitize = (value, key = '') => {
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([name,item]) => [name,sanitize(item,name)]));
   return value;
 };
+async function reconnect() {
+  if (coverage) { await coverage.reconnect(); client = coverage.client; }
+  else { await client.close(); await connect(); }
+}
 async function connect() {
+  if (coverageEnabled) {
+    coverage = await createNativeHarness({ suite: 'asset-regression', workspace, binary });
+    client = coverage.client;
+    await coverage.fixture(source, 'native-photographic-export');
+    if (originalSidecar) await coverage.fixture(`${source}.rrdata`, 'original-sidecar');
+    return;
+  }
   client = new Client({ name: 'rapidraw-assets-e2e', version: '1.0.0' });
   await client.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../dist/index.js', import.meta.url)), '--binary', binary, '--workspace', workspace, '--timeout-ms', '300000'], stderr: 'inherit' }));
 }
@@ -43,7 +56,7 @@ async function call(method, args = {}, expectError = false) {
   const started = performance.now();
   console.error(`[asset-e2e ${sequence}] ${method} started`);
   let result;
-  try { result = await client.callTool({ name: `rapidraw_${method}`, arguments: args }, { timeout: 300000 }); }
+  try { result = coverage ? (await coverage.call(method, args, { expectError })).result : await client.callTool({ name: `rapidraw_${method}`, arguments: args }, { timeout: 300000 }); }
   catch (error) {
     const record = { sequence, method, args: sanitize(args), elapsed_ms: Math.round(performance.now() - started), transport_error: String(error) };
     records.push(record); await appendFile(evidence, `${JSON.stringify(record)}\n`); throw error;
@@ -64,7 +77,26 @@ async function preview(session_id, label, options = {}) {
   await writeFile(path, Buffer.from(block.data, 'base64'));
   return { ...response, pixels: block.data, path };
 }
-function check(name, details) { checks.push({ name, ...details }); }
+const assertionCoverage = {
+  auto_suggestion_apply_undo: ['native_assertion', ['tool:auto_adjust', 'tool:undo']],
+  orientation_crop_native_roi: ['native_assertion', ['tool:render', 'adjustment:orientationSteps', 'adjustment:crop']],
+  load_recipe_roundtrip: ['pixel_assertion', ['tool:save_recipe', 'tool:load_recipe', 'tool:render']],
+  existing_preset_apply_undo: ['native_assertion', ['tool:apply_preset', 'tool:undo']],
+  local_ui_curve_create_update_remove: ['pixel_assertion', ['tool:mask_create', 'tool:mask_update', 'tool:mask_remove', 'tool:render']],
+  cube_precision_and_spatial_exclusions: ['pixel_assertion', ['tool:export', 'parameter:export.format="cube"']],
+  owned_lut_survives_external_move_and_restart: ['pixel_assertion', ['tool:apply_lut', 'tool:save_session', 'tool:render']],
+  source_sidecar_lut_materialization: ['native_assertion', ['tool:open_photo', 'tool:save_session']],
+  all_resize_modes_and_conflict: ['native_assertion', ['tool:export']],
+  watermark_pixels_and_selective_exports: ['pixel_assertion', ['tool:export', 'parameter:export.watermark', 'parameter:export.export_masks=true']],
+  source_inside_export_category_protected: ['native_assertion', ['tool:export']],
+};
+// These markers follow the existing assertion groups. A failed assertion aborts
+// before its marker and never receives successful assertion or pixel credit.
+async function check(name, details) {
+  checks.push({ name, ...details });
+  const [level, requirements] = assertionCoverage[name] ?? ['native_assertion', name.startsWith('format_') ? ['tool:export', `parameter:export.format=${JSON.stringify(name.slice(7))}`] : []];
+  if (coverage) await coverage.check(name, requirements, async () => details, level);
+}
 function inspectCube(text) {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
   const size = Number(lines.find((line) => line.startsWith('LUT_3D_SIZE '))?.split(/\s+/)[1]);
@@ -122,7 +154,7 @@ try {
   assert.equal(autoApplied.applied,true); assert.ok(autoApplied.revision>originalState.revision);
   await call('undo', { session_id });
   assert.deepEqual((await call('get_session', { session_id, include_adjustments:true })).data.adjustments,originalState.adjustments);
-  check('auto_suggestion_apply_undo',{ suggested_keys:Object.keys(suggested.suggestions) });
+  await check('auto_suggestion_apply_undo',{ suggested_keys:Object.keys(suggested.suggestions) });
 
   await call('set_adjustments', { session_id, patch:{ orientationSteps:1,crop:{unit:'px',x:10,y:20,width:200,height:300},exposure:0.27,contrast:9,vibrance:6 } });
   const cropped = await preview(session_id,'rotated-crop');
@@ -132,7 +164,7 @@ try {
   assert.equal(roi.data.width,80); assert.equal(roi.data.height,90);
   assert.deepEqual(roi.data.coordinates.preview_to_rendered_scale,{x:1,y:1});
   await call('render',{session_id,region:{x:190,y:0,width:20,height:20}},true);
-  check('orientation_crop_native_roi',{ crop:[200,300],region:[80,90],region_scale:roi.data.coordinates.preview_to_rendered_scale });
+  await check('orientation_crop_native_roi',{ crop:[200,300],region:[80,90],region_scale:roi.data.coordinates.preview_to_rendered_scale });
   await call('set_adjustments',{session_id,patch:{orientationSteps:0,crop:null}});
 
   const recipePath=join(workspace,'recipes',`${stamp}-roundtrip.json`);
@@ -145,7 +177,7 @@ try {
   const normalizeNulls=(value)=>Array.isArray(value)?value.map(normalizeNulls):(value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([,item])=>item!==null).map(([key,item])=>[key,normalizeNulls(item)])):value);
   assert.deepEqual(normalizeNulls(loadedRecipe),normalizeNulls(savedRecipe));
   assert.equal((await preview(session_id,'recipe-reloaded')).pixels,recipePreview.pixels);
-  check('load_recipe_roundtrip',{path:recipePath});
+  await check('load_recipe_roundtrip',{path:recipePath});
   const presets=(await call('list_presets')).data.presets;
   if (presets.length) {
     const before=(await call('get_session',{session_id,include_adjustments:true})).data;
@@ -155,7 +187,7 @@ try {
     if (presets[0].adjustments.enableNegativeConversion===false) assert.ok(presetApplied.warnings?.some((warning)=>warning.includes('inactive legacy')));
     await call('undo',{session_id});
     assert.deepEqual((await call('get_session',{session_id,include_adjustments:true})).data.adjustments,before.adjustments);
-    check('existing_preset_apply_undo',{preset_id:presets[0].id});
+    await check('existing_preset_apply_undo',{preset_id:presets[0].id});
   } else skipped.push({name:'existing_preset_apply',reason:'No installed presets available; installed assets were not mutated.'});
 
   const beforeLocalCurve=await preview(session_id,'before-local-curve');
@@ -167,14 +199,14 @@ try {
   assert.notEqual(updatedLocalCurve.pixels,createdLocalCurve.pixels,'Updating only local pointCurves must recompile previously generated native curves');
   await call('mask_remove',{session_id,mask_id:localCurve.mask_id});
   assert.equal((await preview(session_id,'removed-local-curve')).pixels,beforeLocalCurve.pixels,'Removing the local curve mask must restore the original rendered pixels');
-  check('local_ui_curve_create_update_remove',{created_luma_endpoint:180,updated_luma_endpoint:230,removed_restores_baseline:true});
+  await check('local_ui_curve_create_update_remove',{created_luma_endpoint:180,updated_luma_endpoint:230,removed_restores_baseline:true});
 
   const mask=(await call('mask_create',{session_id,type:'radial',name:'Asset verification mask',parameters:{centerX:width/2,centerY:height/2,radiusX:width/4,radiusY:height/4,rotation:0,feather:0.6},adjustments:{exposure:0.15}})).data;
   const cubePath=join(workspace,'exports',`${stamp}-style.cube`);
   const cube=(await call('export',{session_id,path:cubePath,format:'cube'})).data;
   const cubeStats=inspectCube(await readFile(cubePath,'utf8'));
   assert.ok(cube.excluded_adjustments.includes('masks'));
-  check('cube_precision_and_spatial_exclusions',{...cubeStats,excluded_adjustments:cube.excluded_adjustments});
+  await check('cube_precision_and_spatial_exclusions',{...cubeStats,excluded_adjustments:cube.excluded_adjustments});
   await call('apply_lut',{session_id,path:cubePath,intensity:60});
   const lutState=(await call('get_session',{session_id,include_adjustments:true})).data;
   const ownedLut=lutState.adjustments.lutPath;
@@ -184,14 +216,14 @@ try {
   const movedCube=cubePath.replace(/\.cube$/, '-moved.cube');
   await rename(cubePath,movedCube);
   await call('save_session',{session_id});
-  await client.close(); await connect();
+  await reconnect();
   const restored=(await call('get_session',{session_id,include_adjustments:true})).data;
   assert.equal(restored.adjustments.lutPath,ownedLut);
   assert.equal((await preview(session_id,'lut-after-restart')).pixels,beforeRestart.pixels);
-  check('owned_lut_survives_external_move_and_restart',{owned_lut:ownedLut});
+  await check('owned_lut_survives_external_move_and_restart',{owned_lut:ownedLut});
 
   // Exercise inherited source-sidecar assets without touching the user's source.
-  const inheritedSource=join(workspace,`${stamp}-inherited-source.jpg`);
+  const inheritedSource=join(workspace,`${stamp}-inherited-source${extname(source) || '.jpg'}`);
   await copyFile(source,inheritedSource);
   const inheritedSidecar={version:1,rating:2,tags:['asset-e2e'],futureEnvelopeField:{preserved:true},adjustments:{lutPath:movedCube,lutIntensity:70}};
   await writeFile(`${inheritedSource}.rrdata`,JSON.stringify(inheritedSidecar));
@@ -203,7 +235,7 @@ try {
   await call('save_session',{session_id:inherited.session_id});
   assert.equal(await hash(`${inheritedSource}.rrdata`),inheritedHash);
   assert.equal(inherited.metadata.futureEnvelopeField.preserved,true);
-  check('source_sidecar_lut_materialization',{session_id:inherited.session_id,source_sidecar_unchanged:true});
+  await check('source_sidecar_lut_materialization',{session_id:inherited.session_id,source_sidecar_unchanged:true});
 
   await call('set_metadata',{session_id,exif:{Artist:'RapidRAW MCP asset acceptance'}});
   for (const [format,extension] of [['jpeg','jpg'],['png','png'],['tiff','tiff'],['webp','webp'],['avif','avif'],['jxl','jxl']]) {
@@ -219,16 +251,16 @@ try {
       assert.equal(external.gps_latitude,'');assert.equal(external.gps_longitude,'');
       assert.equal(output.metadata_applied,external.software.includes('RapidRAW'),`${format}: metadata_applied must match exported Software tag`);
     }
-    check(`format_${format}`,{path,metadata_applied:output.metadata_applied,verification:output.verified,external});
+    await check(`format_${format}`,{path,metadata_applied:output.metadata_applied,verification:output.verified,external});
   }
   for (const [mode,value,expectedWidth,expectedHeight] of [
-    ['height',180,Math.round(width*180/height),180],['longEdge',220,220,Math.round(height*220/width)],['shortEdge',120,Math.round(width*120/height),120],['width',width*2,width,height],
+    ['height',180,Math.round(width*180/height),180],['longEdge',220,Math.round(width*220/Math.max(width,height)),Math.round(height*220/Math.max(width,height))],['shortEdge',120,Math.round(width*120/Math.min(width,height)),Math.round(height*120/Math.min(width,height))],['width',width*2,width,height],
   ]) {
     const output=(await call('export',{session_id,path:join(workspace,'exports',`${stamp}-resize-${mode}.jpg`),format:'jpeg',resize:{mode,value}})).data;
     assert.equal(output.width,expectedWidth);assert.equal(output.height,expectedHeight);
   }
   await call('export',{session_id,path:join(workspace,'exports',`${stamp}-conflict.jpg`),long_edge:100,resize:{mode:'width',value:200}},true);
-  check('all_resize_modes_and_conflict',{no_enlargement_default:true});
+  await check('all_resize_modes_and_conflict',{no_enlargement_default:true});
 
   const watermarkPath=join(workspace,`${stamp}-watermark.png`);await writeFile(watermarkPath,watermarkPng());
   const plainPath=join(workspace,'exports',`${stamp}-unmarked.png`), markedPath=join(workspace,'exports',`${stamp}-marked.png`);
@@ -238,24 +270,31 @@ try {
   assert.ok(marked.masks[0].coverage.nonzero_fraction>0);
   await stat(marked.masks[0].image_path);await stat(marked.masks[0].alpha_path);
   const changedPixels=await assertPixelDifference(plainPath,markedPath);
-  check('watermark_pixels_and_selective_exports',{absolute_error_metric:changedPixels,masks:marked.masks});
+  await check('watermark_pixels_and_selective_exports',{absolute_error_metric:changedPixels,masks:marked.masks});
 
   await call('export',{session_id,path:join(workspace,'recipes',`${stamp}-wrong-category.jpg`),format:'jpeg'},true);
   await call('save_recipe',{session_id,path:join(workspace,'exports',`${stamp}-wrong-category.json`)},true);
-  const protectedPath=join(workspace,'exports',`${stamp}-protected-source.jpg`);await copyFile(source,protectedPath);
+  const protectedPath=join(workspace,'exports',`${stamp}-protected-source${extname(source) || '.jpg'}`);await copyFile(source,protectedPath);
   const protectedHash=await hash(protectedPath);
   const protectedSession=(await call('open_photo',{path:protectedPath,inherit_sidecar:false})).data;
   await call('export',{session_id:protectedSession.session_id,path:protectedPath,format:'jpeg',overwrite:true},true);
   assert.equal(await hash(protectedPath),protectedHash);
-  check('source_inside_export_category_protected',{source_unchanged:true});
+  await check('source_inside_export_category_protected',{source_unchanged:true});
   await call('save_session',{session_id});
 } catch (error) { failure=error;throw error; }
 finally {
-  await client?.close();
+  let closingError;
+  try {
+    if (coverage) {
+      for (const entry of skipped) await coverage.skip(entry.name, [], entry.reason);
+      await coverage.close(failure);
+    } else await client?.close();
+  } catch (error) { closingError=error; failure ??= error; }
   assert.equal(await hash(source),originalHash,'Sample source changed');
   const after=await readFile(`${source}.rrdata`).catch((error)=>{if(error.code==='ENOENT')return null;throw error;});
   assert.deepEqual(after,originalSidecar,'Original sidecar changed');
   const summary={status:failure?'failed':'passed',error:failure?String(failure):undefined,source,source_sha256:originalHash,source_unchanged:true,checks,skipped,calls:records.length};
   await writeFile(join(workspace,`${stamp}-asset-summary.json`),JSON.stringify(summary,null,2));
   console.log(JSON.stringify(summary,null,2));
+  if(closingError)throw closingError;
 }

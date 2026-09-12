@@ -25,15 +25,15 @@ Looking for **RapidRAW MCP**? This fork includes a [Model Context Protocol serve
 
 RapidRAW is a modern, high-performance alternative to Adobe Lightroom®. It delivers a simple, beautiful editing experience in a lightweight package (under 20MB) for Windows, macOS, Linux, and Android.
 
-I started developing this project as a personal challenge when I was 18. My goal was to create a high-performance tool for my own photography workflow while deepening my understanding of React, WGSL and Rust.
+The upstream author started RapidRAW at 18 as a personal photography project and a way to learn React, WGSL, and Rust. This fork builds on that work with the optional MCP integration below.
 
 ## RapidRAW MCP — Model Context Protocol server for photo editing
 
-[sheldonxxxx/RapidRAW](https://github.com/sheldonxxxx/RapidRAW) adds an optional **MCP server for RAW photo editing** to RapidRAW. Compatible local MCP clients and vision-capable AI agents can use the native, GPU-accelerated engine to inspect photos, make nondestructive edits, review previews, and export finished images through 47 tools over stdio.
+This fork adds an optional **MCP server for RAW photo editing** to RapidRAW. Compatible local MCP clients and vision-capable AI agents can use the native, GPU-accelerated engine to inspect photos, make nondestructive edits, review previews, and export finished images through 62 tools over stdio.
 
 - **RAW development:** exposure, color, curves, crop, lens corrections, presets, and LUTs.
-- **Selective and AI editing:** masks, subject/sky/depth selection, retouching, denoise, and HDR/focus/panorama merging, with the required local models installed.
-- **Editable workflows and delivery:** undo/redo, durable named versions, temporary comparisons, recoverable denoise jobs, saved sessions and recipes, batch exports, and high-precision 16-bit TIFF output. Originals and existing sidecars are preserved through isolated working copies.
+- **Selective and AI editing:** subject/sky/depth selections, point-guided refinement, additive/subtractive brush repairs, manual masks, retouching, denoise, and HDR/focus/panorama merging, with the required local models installed.
+- **Editable workflows and delivery:** undo/redo, durable named versions and diffs, independent session forks, portable bundles, temporary comparisons, recoverable denoise and operation jobs, saved sessions and recipes, batch exports, explicit sRGB profiles, and high-precision 16-bit TIFF output. Originals and existing sidecars are preserved through isolated working copies.
 
 Install the optional execution skill with the [Skills CLI](https://github.com/vercel-labs/skills):
 
@@ -43,9 +43,19 @@ npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp
 
 Pair it with your preferred photo-editing art-direction skill or a direct photographic brief. The execution skill handles native operations, state, and delivery; MCP setup is a separate step. **This MCP workflow is tested on macOS with Metal. Windows has not been tested.** See the [macOS quick start](mcp/README.md#macos-quick-start) to build and connect this fork.
 
+For local edits, follow [guided masking](skills/rapidraw-mcp/references/guided-masking.md): start with a useful AI or manual selection, repair the areas that matter, and compare the actual adjustment at delivery size and native detail. A restrained tonal lift and a precise extraction have different boundary requirements; judge the mask against the requested result.
+
 Start with the **[MCP setup and connection guide](mcp/README.md#build-and-connect)**, then see the [tool reference and editing examples](mcp/README.md#capabilities), [optional agent skill](skills/rapidraw-mcp/SKILL.md), and [verification results and limitations](mcp/VERIFICATION.md). Contributors can read the [native integration and upstream merge guide](MCP.md).
 
-**Build this fork with the `mcp` Cargo feature to use the server.** The upstream application downloads below do not include this fork's MCP bridge. MCP support is experimental and remains in this fork while further testing continues; the verification report distinguishes tested macOS workflows from untested platforms and release packaging.
+**Build this fork with the `mcp` Cargo feature to use the server.** The upstream application downloads below do not include this fork's MCP bridge. The verification report distinguishes tested macOS workflows from untested platforms and release packaging.
+
+### Fork updates
+
+- **Unreleased:** 62 MCP tools, portable sessions, preset/LUT management, geometry diagnostics, isolated background operations, point-guided subject refinement, improved mask review, panorama matching, caching, and export/large-image fixes.
+- **2026-09-12:** matched edit comparisons, named versions, recoverable AI/BM3D denoise jobs, and improved gradient controls.
+- **2026-09-10:** optional native MCP integration, nondestructive editing workflow, execution skill, and panorama correction.
+
+Recent additions include guided AI/manual masking, reproducible local-edit comparisons, fresh mask edge reviews and real automatic lens-profile tests, including a correction to aperture selection. See the [full fork changelog](CHANGELOG.md) for additions and fixes, and the [capability/test matrix](mcp/CAPABILITY-MATRIX.md) for what has actually been verified. These are development milestones; upstream downloads do not include this fork's MCP integration.
 
 <table width="100%">
   <tr>

@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use image::codecs::jpeg::JpegEncoder;
 use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, imageops};
 use jxl_encoder::{
-    LosslessConfig, LossyConfig, PixelLayout,
+    LossyConfig, PixelLayout,
     api::{calibrated_jxl_quality, quality_to_distance},
 };
 use serde::{Deserialize, Serialize};
@@ -198,12 +198,12 @@ pub(crate) fn calculate_resize_target(
         ResizeMode::Height => false,
     };
 
-    let value = resize_opts.value;
+    let value = resize_opts.value.max(1);
     if fix_width {
-        let h = (value as f32 * (current_h as f32 / current_w as f32)).round() as u32;
+        let h = ((value as f64 * (current_h as f64 / current_w as f64)).round() as u32).max(1);
         (value, h)
     } else {
-        let w = (value as f32 * (current_w as f32 / current_h as f32)).round() as u32;
+        let w = ((value as f64 * (current_w as f64 / current_h as f64)).round() as u32).max(1);
         (w, value)
     }
 }
@@ -279,7 +279,9 @@ pub(crate) fn apply_export_resize_and_watermark(
         let (target_w, target_h) = calculate_resize_target(current_w, current_h, resize_opts);
 
         if target_w != current_w || target_h != current_h {
-            image = image.resize(target_w, target_h, imageops::FilterType::Lanczos3);
+            // The aspect ratio was already resolved above. Fitting a second time
+            // can shorten the requested axis after the companion axis rounds.
+            image = image.resize_exact(target_w, target_h, imageops::FilterType::Lanczos3);
         }
     }
 
@@ -576,6 +578,7 @@ fn build_single_mask_adjustments(all: &AllAdjustments, mask_index: usize) -> All
         tile_offset_x: all.tile_offset_x,
         tile_offset_y: all.tile_offset_y,
         mask_atlas_cols: all.mask_atlas_cols,
+        ..*all
     };
     single.mask_adjustments[0] = all.mask_adjustments[mask_index];
     for i in 1..single.mask_adjustments.len() {
@@ -593,6 +596,14 @@ fn encode_grayscale_to_png(bitmap: &GrayImage) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
+#[cfg(feature = "mcp")]
+pub(crate) fn jxl_uses_lossless_alpha(image: &DynamicImage, quality: u8) -> bool {
+    quality < 100
+        && (image.width() > 256 || image.height() > 256)
+        && image.color().has_alpha()
+        && image.pixels().any(|(_, _, pixel)| pixel[3] != 255)
+}
+
 pub(crate) fn encode_image_to_bytes(
     image: &DynamicImage,
     output_format: &str,
@@ -604,26 +615,52 @@ pub(crate) fn encode_image_to_bytes(
     match output_format.to_lowercase().as_str() {
         "jxl" => {
             let (width, height) = image.dimensions();
-            let has_alpha = image.color().has_alpha();
+            // GPU output uses RGBA even for opaque photos. Do not encode a
+            // redundant alpha plane: jxl-encoder 0.3.1's multi-group VarDCT
+            // alpha stream cannot be reopened by our native decoder.
+            let alpha_pixels = image.color().has_alpha().then(|| image.to_rgba8());
+            let has_alpha = alpha_pixels
+                .as_ref()
+                .is_some_and(|pixels| pixels.pixels().any(|pixel| pixel[3] != 255));
 
-            let jxl_data = if jpeg_quality == 100 {
-                if has_alpha {
-                    let rgba = image.to_rgba8();
-                    LosslessConfig::new()
-                        .encode(rgba.as_raw(), width, height, PixelLayout::Rgba8)
-                        .map_err(|e| format!("Failed to encode lossless JXL: {}", e))?
+            let lossless_alpha = has_alpha && (width > 256 || height > 256);
+            if jpeg_quality < 100 && lossless_alpha {
+                log::warn!(
+                    "Encoding transparent JPEG XL losslessly: the current encoder's multi-group lossy alpha stream cannot be decoded reliably; the quality setting is not applied."
+                );
+            }
+            let jxl_data = if jpeg_quality == 100 || lossless_alpha {
+                // jxl-encoder 0.3.1 also produces invalid multi-group modular
+                // lossless streams. Use the small pure-Rust lossless encoder;
+                // preserve the existing supported eight-bit JXL output depth.
+                use zune_core::{
+                    bit_depth::BitDepth, colorspace::ColorSpace, options::EncoderOptions,
+                };
+                let (pixels, colorspace) = if has_alpha {
+                    (
+                        Cow::Borrowed(alpha_pixels.as_ref().unwrap().as_raw().as_slice()),
+                        ColorSpace::RGBA,
+                    )
                 } else {
-                    let rgb = image.to_rgb8();
-                    LosslessConfig::new()
-                        .encode(rgb.as_raw(), width, height, PixelLayout::Rgb8)
-                        .map_err(|e| format!("Failed to encode lossless JXL: {}", e))?
-                }
+                    (Cow::Owned(image.to_rgb8().into_raw()), ColorSpace::RGB)
+                };
+                let options = EncoderOptions::new(
+                    width as usize,
+                    height as usize,
+                    colorspace,
+                    BitDepth::Eight,
+                );
+                let mut encoded = Vec::new();
+                zune_jpegxl::JxlSimpleEncoder::new(&pixels, options)
+                    .encode(&mut encoded)
+                    .map_err(|error| format!("Failed to encode lossless JXL: {error:?}"))?;
+                encoded
             } else {
                 let jxl_quality = calibrated_jxl_quality(jpeg_quality as f32);
                 let distance = quality_to_distance(jxl_quality);
 
                 if has_alpha {
-                    let rgba = image.to_rgba8();
+                    let rgba = alpha_pixels.as_ref().unwrap();
                     LossyConfig::new(distance)
                         .encode(rgba.as_raw(), width, height, PixelLayout::Rgba8)
                         .map_err(|e| format!("Failed to encode lossy JXL: {}", e))?

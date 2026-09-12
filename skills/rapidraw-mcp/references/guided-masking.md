@@ -1,0 +1,69 @@
+# Guided masking
+
+Build the selection needed for the photograph's intended local edit. Start with a useful AI selection when it follows the subject, or create a manual selection when the intended lighting or area is simpler. Inspect, correct and compare as an editor would; choosing brush positions from the photograph is part of the agent's work.
+
+## Choose the starting selection
+
+| Intended edit | Useful starting point |
+| --- | --- |
+| Lift a complete subject against an irregular background | AI subject with an inspected bounding region; foreground when its broader coverage fits the intent |
+| Change the sky across an irregular skyline | AI sky, then inspect foreground spill and openings |
+| Dodge part of a face, breast, garment or other local surface | Soft brush or radial mask kept within the intended surface; an exact subject silhouette is unnecessary |
+| Continuous lighting transition | Linear gradient, with its fade judged across the photograph |
+| Select a color or brightness band | Sampled color/luminance, constrained spatially when similar values occur elsewhere |
+
+These are choices, not a required sequence. Use the user's preferred starting mask if it is adequate. Do not replace a useful mask merely because automatic segmentation misses individual hairs. Recoloring, strong exposure changes and extraction can reveal errors that are invisible in a restrained tonal lift.
+
+## Inspect and repair
+
+1. **Inspect the source and choose the effect.** Identify what should change and what should remain stable. Render an overview and native detail at likely trouble spots: subject contact points, gaps, intersecting objects and high-contrast edges. Set geometry first. Map displayed points into the full pre-crop `mask` canvas using the actual render dimensions; see [coordinates](advanced-editing.md#coordinates-and-masks).
+2. **Preserve the starting selection.** Keep its mask/submask IDs and current revision. Save a named version, or fork a candidate when comparing alternatives. Render the photograph, overlay and grayscale mask. Check both missing coverage and unrelated selected objects.
+3. **Choose the smallest useful correction.** For an AI-subject omission or unwanted object, `mask_generate(kind:"subject", refine:{mask_id,sub_mask_id}, expected_revision, include_points, exclude_points)` can refine the existing AI submask; use measured include/exclude points and a region when needed to anchor the subject. Previous point arrays are not replayed automatically. Inspect the whole subject after every refinement. If it disappears, changes identity or loses valued coverage, undo or restore the reference and change approach. A nonempty response does not establish an improvement. Point refinement is optional: go directly to manual repairs when they are more controllable.
+4. **Paint named corrections.** Inspect parent/submask inversion when resuming a selection. For a non-inverted parent, add brush submasks to the existing mask: `mode:"additive"` restores missing coverage; `mode:"subtractive"` removes spill. Use `tool:"brush"` inside either mode. An `eraser` line erases earlier strokes only inside its own brush submask; it does not erase the AI sibling. Use broad soft interior strokes for a tonal region, smaller strokes at boundaries, and edge softness that suits the recorded source. Keep each correction identifiable and preserve the AI submask. Use separate lines across disconnected parts; consecutive points paint a continuous stroke, including across any intervening gap.
+5. **Judge the actual adjustment.** Compare the same local grade on the starting and corrected masks, and compare with the mask disabled. Inspect the whole frame at delivery size and matched native crops at changed boundaries. Verify that the intended subject gains light/color without a conspicuous halo, band, missing strip or altered apparent shape. Inspect combined masks when edits overlap; a correct individual mask can still contribute to an unnatural combined result.
+6. **Stop when the edit is sufficient.** Keep repairs that visibly improve the requested result. A subtle tonal mask need not be a perfect extraction matte. If remaining errors matter, repair coverage, soften an overly abrupt transition or reconsider the adjustment strength against the brief. Do not hide an ineffective edit by reducing it to invisibility. Save the chosen session and inspect its exported result when export is requested. Keep known limits separate from user approval.
+
+For a manual mask from scratch, use `mask_create(type:"brush", parameters:{lines:[...]})` or the suitable geometric/range type, then follow the same inspection and effect comparison. A soft interior dodge intentionally covers part of the subject; it is not evidence of a complete object selection. Manual creation is a normal option when it meets the intended edit more simply.
+
+## Native brush contract
+
+`brushSize` is a diameter in full mask-canvas pixels. Put `feather` (0–1) on each line. Parent/submask `opacity` is 0–100. Sample coordinates below illustrate the request shape only; replace them with measurements from the actual photograph.
+
+```json
+{
+  "tool": "rapidraw_mask_update",
+  "arguments": {
+    "session_id": "SESSION_ID",
+    "expected_revision": 7,
+    "mask_id": "MASK_ID",
+    "submask_operations": [{
+      "operation": "add",
+      "submask": {
+        "type": "brush",
+        "name": "Remove background spill",
+        "mode": "subtractive",
+        "parameters": {
+          "lines": [{
+            "tool": "brush",
+            "brushSize": 18,
+            "feather": 0.35,
+            "points": [{"x": 420, "y": 280}, {"x": 445, "y": 291}]
+          }]
+        }
+      }
+    }]
+  }
+}
+```
+
+Use the returned revision for the next mutation and retain the generated submask IDs. For long strokes, submit a request file through the [persistent client](connection.md#persistent-fallback-client). To revise a correction, use atomic `submask_operations` to edit or remove that submask. Arrays such as `lines` replace their existing contents; do not accidentally discard earlier strokes. Never replace an opaque AI bitmap by hand.
+
+Parent inversion applies after composition and reverses the visible effect of add/subtract; inspect the rendered result if it is enabled. Composition order matters: additive takes the maximum coverage, subtractive removes coverage down to zero, and intersect takes the minimum. An additive correction placed after a subtractive one can restore the removed area. Render the combined mask after changing order. Global grow/feather cannot selectively repair an omitted toe while excluding a neighboring branch; use local corrections for local defects.
+
+Sampled color/luminance masks match values across the image, not a connected object. An intersection can constrain a spatial selection, but it can also remove useful coverage; inspect both target and protected areas. Check sampling placement after transformed geometry instead of assuming a preview sample automatically uses the right source coordinates.
+
+## What the tested workflow establishes
+
+The verified photographic workflow combines an AI subject selection with additive and subtractive brush repairs, then compares the same exposure/shadow adjustment before and after correction. A separate brush-only mask verifies a soft interior tonal lift from scratch. Native probes establish selected-area changes and protected-area stability; saved state and rendered pixels survive undo/redo and reopening. These tests support the editing loop on an inspected photograph, with usefulness judged from the actual grade and its limits.
+
+Earlier point-refinement tests cover correction prompts, preserved IDs/edits and saved state; photographic probes show selected omissions and unwanted objects can be corrected. Refinement can also worsen a selection, so it is an optional branch with visual review and rollback. Use the workflow above to judge each new photograph rather than treating API success or previous examples as a guarantee of mask quality.

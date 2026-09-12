@@ -143,6 +143,38 @@ impl Default for GeometryParams {
     }
 }
 
+impl GeometryParams {
+    fn has_lens_distortion(&self) -> bool {
+        self.lens_distortion_enabled
+            && self.lens_distortion_amount != 0.0
+            && [self.lens_dist_k1, self.lens_dist_k2, self.lens_dist_k3]
+                .iter()
+                .any(|coefficient| coefficient.abs() > 1e-6)
+    }
+
+    fn effective_tca_scales(&self) -> (f32, f32) {
+        if !self.lens_tca_enabled || self.lens_tca_amount == 0.0 {
+            return (1.0, 1.0);
+        }
+        let effective = |value: f32| {
+            if (value - 1.0).abs() > 1e-5 {
+                value + (1.0 - value) * (1.0 - self.lens_tca_amount)
+            } else {
+                1.0
+            }
+        };
+        (effective(self.tca_vr), effective(self.tca_vb))
+    }
+
+    fn has_lens_vignette(&self) -> bool {
+        self.lens_vignette_enabled
+            && (self.lens_vignette_amount as f64) * 0.8 > 0.01
+            && [self.vig_k1, self.vig_k2, self.vig_k3]
+                .iter()
+                .any(|coefficient| coefficient.abs() > 1e-6)
+    }
+}
+
 pub fn get_geometry_params_from_json(adjustments: &serde_json::Value) -> GeometryParams {
     let lens_params = adjustments
         .get("lensDistortionParams")
@@ -612,8 +644,7 @@ fn compute_lens_auto_crop_scale(params: &GeometryParams, width: f32, height: f32
 
     let k_distortion = (params.distortion as f64 / 100.0) * 2.5;
 
-    let has_lens_correction = params.lens_distortion_enabled
-        && (lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6);
+    let has_lens_correction = params.has_lens_distortion();
     let is_ptlens = params.lens_model == 1;
 
     let sample_points: [(f64, f64); 8] = [
@@ -687,9 +718,120 @@ fn compute_lens_auto_crop_scale(params: &GeometryParams, width: f32, height: f32
     }
 }
 
+/// Coordinate-only equivalent of the native geometry sampler. Reuses the
+/// renderer's homography and automatic lens crop; coordinates are pixel centers.
+/// The green-channel location is authoritative when TCA separates RGB samples.
+pub(crate) struct GeometryPointMapper {
+    params: GeometryParams,
+    #[cfg(feature = "mcp")]
+    inverse: Option<NaMatrix3<f32>>,
+    cx: f32,
+    cy: f32,
+    half_diagonal: f64,
+    auto_crop: f32,
+    #[cfg(feature = "mcp")]
+    identity: bool,
+}
+
+impl GeometryPointMapper {
+    #[cfg(feature = "mcp")]
+    pub(crate) fn new(dimensions: (u32, u32), adjustments: &Value) -> Self {
+        Self::from_params(dimensions, get_geometry_params_from_json(adjustments))
+    }
+
+    fn from_params(dimensions: (u32, u32), params: GeometryParams) -> Self {
+        #[cfg(feature = "mcp")]
+        let identity = is_geometry_identity(&params);
+        let (forward, cx, cy, half_diagonal) =
+            build_transform_matrices(&params, dimensions.0 as f32, dimensions.1 as f32);
+        #[cfg(not(feature = "mcp"))]
+        let _ = forward;
+        let has_distortion = params.has_lens_distortion();
+        let auto_crop = if has_distortion || (params.distortion as f64 / 100.0 * 2.5).abs() > 1e-5 {
+            compute_lens_auto_crop_scale(&params, dimensions.0 as f32, dimensions.1 as f32) as f32
+        } else {
+            1.0
+        };
+        Self {
+            params,
+            #[cfg(feature = "mcp")]
+            inverse: forward.try_inverse(),
+            cx,
+            cy,
+            half_diagonal,
+            auto_crop,
+            #[cfg(feature = "mcp")]
+            identity,
+        }
+    }
+
+    #[cfg(feature = "mcp")]
+    pub(crate) fn source_point(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        if !x.is_finite() || !y.is_finite() {
+            return None;
+        }
+        if self.identity {
+            return Some((x, y));
+        }
+        let inverse = self.inverse.as_ref()?;
+        let v = inverse * NaVector3::new(x as f32, y as f32, 1.0);
+        self.source_from_projection(v)
+    }
+
+    #[inline(always)]
+    fn source_from_projection(&self, v: NaVector3<f32>) -> Option<(f64, f64)> {
+        if !v.z.is_finite() || v.z.abs() <= 1e-6 {
+            return None;
+        }
+        let inv_z = 1.0 / v.z;
+        let mut sx = v.x * inv_z;
+        let mut sy = v.y * inv_z;
+        if self.auto_crop > 1.0 {
+            sx = self.cx + (sx - self.cx) / self.auto_crop;
+            sy = self.cy + (sy - self.cy) / self.auto_crop;
+        }
+        let p = &self.params;
+        let (k1, k2, k3) = (
+            p.lens_dist_k1 as f64,
+            p.lens_dist_k2 as f64,
+            p.lens_dist_k3 as f64,
+        );
+        if p.has_lens_distortion() {
+            let dx = (sx - self.cx) as f64;
+            let dy = (sy - self.cy) as f64;
+            let r = (dx * dx + dy * dy).sqrt();
+            if r > 1e-6 {
+                let rn = r / self.half_diagonal;
+                let r2 = rn * rn;
+                let rd = if p.lens_model == 1 {
+                    rn * (k1 * r2 * rn + k2 * r2 + k3 * rn + 1.0 - k1 - k2 - k3)
+                } else {
+                    rn * (1.0 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2)
+                };
+                let scale = (rn + (rd - rn) * (p.lens_distortion_amount as f64) * 2.5) / rn;
+                sx = self.cx + (dx * scale) as f32;
+                sy = self.cy + (dy * scale) as f32;
+            }
+        }
+        let k = p.distortion as f64 / 100.0 * 2.5;
+        if k.abs() > 1e-5 {
+            let dx = (sx - self.cx) as f64;
+            let dy = (sy - self.cy) as f64;
+            let r2 = (dx * dx + dy * dy) / ((self.cx * self.cx + self.cy * self.cy) as f64);
+            sx = self.cx + (dx * (1.0 + k * r2)) as f32;
+            sy = self.cy + (dy * (1.0 + k * r2)) as f32;
+        }
+        (sx.is_finite() && sy.is_finite()).then_some((sx as f64, sy as f64))
+    }
+}
+
 pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> DynamicImage {
+    if is_geometry_identity(&params) {
+        return image.clone();
+    }
     let src_img = image.to_rgb32f();
     let (width, height) = src_img.dimensions();
+    let coordinate_mapper = GeometryPointMapper::from_params((width, height), params.clone());
     let mut out_buffer = vec![0.0f32; (width * height * 3) as usize];
 
     let (forward_transform, cx, cy, half_diagonal) =
@@ -702,44 +844,16 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
     let step_vec_y = NaVector3::new(inv[(0, 1)], inv[(1, 1)], inv[(2, 1)]);
     let origin_vec = NaVector3::new(inv[(0, 2)], inv[(1, 2)], inv[(2, 2)]);
 
-    let max_radius_sq_inv = 1.0 / ((cx * cx + cy * cy) as f64);
     let hd = half_diagonal;
 
-    let k_distortion = (params.distortion as f64 / 100.0) * 2.5;
-    let lk1 = params.lens_dist_k1 as f64;
-    let lk2 = params.lens_dist_k2 as f64;
-    let lk3 = params.lens_dist_k3 as f64;
-    let lens_dist_amt = (params.lens_distortion_amount as f64) * 2.5;
-
-    let has_lens_correction = params.lens_distortion_enabled
-        && (lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6);
-    let is_ptlens = params.lens_model == 1;
-
-    let auto_crop_scale = if has_lens_correction || k_distortion.abs() > 1e-5 {
-        compute_lens_auto_crop_scale(&params, width as f32, height as f32) as f32
-    } else {
-        1.0
-    };
-
-    let vr = if (params.tca_vr - 1.0).abs() > 1e-5 {
-        params.tca_vr + (1.0 - params.tca_vr) * (1.0 - params.lens_tca_amount)
-    } else {
-        1.0
-    };
-    let vb = if (params.tca_vb - 1.0).abs() > 1e-5 {
-        params.tca_vb + (1.0 - params.tca_vb) * (1.0 - params.lens_tca_amount)
-    } else {
-        1.0
-    };
-    let has_tca = params.lens_tca_enabled && ((vr - 1.0).abs() > 1e-5 || (vb - 1.0).abs() > 1e-5);
+    let (vr, vb) = params.effective_tca_scales();
+    let has_tca = (vr - 1.0).abs() > 1e-5 || (vb - 1.0).abs() > 1e-5;
 
     let vk1 = params.vig_k1 as f64;
     let vk2 = params.vig_k2 as f64;
     let vk3 = params.vig_k3 as f64;
     let lens_vig_amt = (params.lens_vignette_amount as f64) * 0.8;
-    let has_vignetting = params.lens_vignette_enabled
-        && (vk1.abs() > 1e-6 || vk2.abs() > 1e-6 || vk3.abs() > 1e-6)
-        && lens_vig_amt > 0.01;
+    let has_vignetting = params.has_lens_vignette();
 
     let src_raw = src_img.as_raw();
     let width_usize = width as usize;
@@ -760,56 +874,10 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
             let mut current_vec = origin_vec + (step_vec_y * y_f);
 
             for pixel in row_pixel_data.as_chunks_mut::<3>().0.iter_mut() {
-                if current_vec.z.abs() > 1e-6 {
-                    let inv_z = 1.0 / current_vec.z;
-                    let mut src_x = current_vec.x * inv_z;
-                    let mut src_y = current_vec.y * inv_z;
-
-                    if auto_crop_scale > 1.0 {
-                        src_x = cx + (src_x - cx) / auto_crop_scale;
-                        src_y = cy + (src_y - cy) / auto_crop_scale;
-                    }
-
-                    if has_lens_correction {
-                        let dx = (src_x - cx) as f64;
-                        let dy = (src_y - cy) as f64;
-                        let ru = (dx * dx + dy * dy).sqrt();
-
-                        if ru > 1e-6 {
-                            let ru_norm = ru / hd;
-                            let ru_norm2 = ru_norm * ru_norm;
-
-                            let rd_norm = if is_ptlens {
-                                let a = lk1;
-                                let b = lk2;
-                                let c = lk3;
-                                let d = 1.0 - a - b - c;
-                                ru_norm * (a * ru_norm2 * ru_norm + b * ru_norm2 + c * ru_norm + d)
-                            } else {
-                                ru_norm
-                                    * (1.0
-                                        + lk1 * ru_norm2
-                                        + lk2 * (ru_norm2 * ru_norm2)
-                                        + lk3 * (ru_norm2 * ru_norm2 * ru_norm2))
-                            };
-
-                            let effective_r_norm = ru_norm + (rd_norm - ru_norm) * lens_dist_amt;
-                            let scale = effective_r_norm / ru_norm;
-
-                            src_x = cx + (dx * scale) as f32;
-                            src_y = cy + (dy * scale) as f32;
-                        }
-                    }
-
-                    if k_distortion.abs() > 1e-5 {
-                        let dx = (src_x - cx) as f64;
-                        let dy = (src_y - cy) as f64;
-                        let r2_norm = (dx * dx + dy * dy) * max_radius_sq_inv;
-                        let f = 1.0 + k_distortion * r2_norm;
-
-                        src_x = cx + (dx * f) as f32;
-                        src_y = cy + (dy * f) as f32;
-                    }
+                if let Some((src_x, src_y)) = coordinate_mapper.source_from_projection(current_vec)
+                {
+                    let src_x = src_x as f32;
+                    let src_y = src_y as f32;
 
                     if has_tca {
                         interpolate_pixel_with_tca(&tca_ctx, src_x, src_y, vr, vb, pixel);
@@ -848,6 +916,9 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
 }
 
 pub fn unwarp_image_geometry(warped_image: &DynamicImage, params: GeometryParams) -> DynamicImage {
+    if is_geometry_identity(&params) {
+        return warped_image.clone();
+    }
     let src_img = warped_image.to_rgb32f();
     let (width, height) = src_img.dimensions();
     let mut out_buffer = vec![0.0f32; (width * height * 3) as usize];
@@ -863,8 +934,7 @@ pub fn unwarp_image_geometry(warped_image: &DynamicImage, params: GeometryParams
     let lk3 = params.lens_dist_k3 as f64;
     let lens_dist_amt = (params.lens_distortion_amount as f64) * 2.5;
 
-    let has_lens_correction = params.lens_distortion_enabled
-        && (lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6);
+    let has_lens_correction = params.has_lens_distortion();
     let is_ptlens = params.lens_model == 1;
 
     let auto_crop_scale = if has_lens_correction || k_distortion.abs() > 1e-5 {
@@ -1361,22 +1431,12 @@ pub fn is_geometry_identity(params: &GeometryParams) -> bool {
         return false;
     }
 
-    let dist_identity = !params.lens_distortion_enabled
-        || ((params.lens_distortion_amount - 1.0).abs() < 1e-4
-            && params.lens_dist_k1.abs() < 1e-6
-            && params.lens_dist_k2.abs() < 1e-6
-            && params.lens_dist_k3.abs() < 1e-6);
-
-    let tca_identity = !params.lens_tca_enabled
-        || ((params.lens_tca_amount - 1.0).abs() < 1e-4
-            && (params.tca_vr - 1.0).abs() < 1e-6
-            && (params.tca_vb - 1.0).abs() < 1e-6);
-
-    let vig_identity = !params.lens_vignette_enabled
-        || ((params.lens_vignette_amount - 1.0).abs() < 1e-4
-            && params.vig_k1.abs() < 1e-6
-            && params.vig_k2.abs() < 1e-6
-            && params.vig_k3.abs() < 1e-6);
+    // Use the same effective controls as the sampler. Inactive lens settings
+    // must not force interpolation, which excludes the outermost pixel row.
+    let dist_identity = !params.has_lens_distortion();
+    let (vr, vb) = params.effective_tca_scales();
+    let tca_identity = (vr - 1.0).abs() <= 1e-5 && (vb - 1.0).abs() <= 1e-5;
+    let vig_identity = !params.has_lens_vignette();
 
     params.distortion == 0.0
         && params.vertical == 0.0
@@ -1621,6 +1681,12 @@ pub struct AllAdjustments {
     pub tile_offset_x: u32,
     pub tile_offset_y: u32,
     pub mask_atlas_cols: u32,
+    pub image_width: u32,
+    pub image_height: u32,
+    pub image_origin_x: u32,
+    pub image_origin_y: u32,
+    pub precomputed_flare: u32,
+    pub _stream_pad: [u32; 3],
 }
 
 struct AdjustmentScales {
@@ -2542,6 +2608,12 @@ pub fn get_all_adjustments_from_json(
         tile_offset_x: 0,
         tile_offset_y: 0,
         mask_atlas_cols: 1,
+        image_width: 0,
+        image_height: 0,
+        image_origin_x: 0,
+        image_origin_y: 0,
+        precomputed_flare: 0,
+        _stream_pad: [0; 3],
     }
 }
 
@@ -3484,4 +3556,113 @@ pub fn calculate_auto_adjustments(
     let results = perform_auto_analysis(&original_image);
 
     Ok(auto_results_to_json(&results))
+}
+
+#[cfg(test)]
+mod lens_identity_tests {
+    use super::*;
+
+    fn source() -> DynamicImage {
+        DynamicImage::ImageRgb16(image::ImageBuffer::from_fn(73, 61, |x, y| {
+            image::Rgb([
+                1000 + ((x * 791 + y * 223) % 60000) as u16,
+                2000 + ((x * 313 + y * 997) % 60000) as u16,
+                3000 + ((x * 613 + y * 479) % 60000) as u16,
+            ])
+        }))
+    }
+
+    fn cases() -> [(&'static str, &'static str, Value); 3] {
+        [
+            (
+                "lensDistortionAmount",
+                "lensDistortionEnabled",
+                json!({"lensDistortionParams":{"model":0,"k1":0.17,"k2":0.03}}),
+            ),
+            (
+                "lensTcaAmount",
+                "lensTcaEnabled",
+                json!({"lensDistortionParams":{"tca_vr":1.045,"tca_vb":0.97}}),
+            ),
+            (
+                "lensVignetteAmount",
+                "lensVignetteEnabled",
+                json!({"lensDistortionParams":{"vig_k1":0.4,"vig_k2":0.1}}),
+            ),
+        ]
+    }
+
+    #[test]
+    fn zero_lens_strength_preserves_exact_pixels_and_precision_including_borders() {
+        let original = source();
+        for (amount, enabled, mut adjustments) in cases() {
+            adjustments[amount] = json!(0);
+            adjustments[enabled] = json!(true);
+            let params = get_geometry_params_from_json(&adjustments);
+            assert!(is_geometry_identity(&params), "{amount}");
+            for actual in [
+                warp_image_geometry(&original, params.clone()),
+                unwarp_image_geometry(&original, params),
+                apply_geometry_warp(&original, &adjustments).into_owned(),
+            ] {
+                assert_eq!(actual.color(), original.color(), "{amount}");
+                assert_eq!(actual.as_bytes(), original.as_bytes(), "{amount}");
+            }
+        }
+    }
+
+    #[test]
+    fn neutral_lens_coefficients_are_identity_at_every_strength() {
+        let original = source();
+        for amount in [0, 37, 100, 200] {
+            let adjustments = json!({
+                "lensDistortionAmount":amount,
+                "lensTcaAmount":amount,
+                "lensVignetteAmount":amount,
+                "lensDistortionParams":{"model":1,"k1":0,"k2":0,"k3":0,"tca_vr":1,"tca_vb":1,"vig_k1":0,"vig_k2":0,"vig_k3":0}
+            });
+            let params = get_geometry_params_from_json(&adjustments);
+            assert!(is_geometry_identity(&params));
+            let actual = warp_image_geometry(&original, params);
+            assert_eq!(actual.color(), original.color());
+            assert_eq!(actual.as_bytes(), original.as_bytes());
+        }
+    }
+
+    #[test]
+    fn zero_strength_matches_disabled_during_other_geometry_and_positive_controls_change_pixels() {
+        let original = source();
+        for (amount, enabled, mut adjustments) in cases() {
+            adjustments["transformRotate"] = json!(3.75);
+            adjustments["transformHorizontal"] = json!(12.0);
+            adjustments[amount] = json!(100);
+            adjustments[enabled] = json!(false);
+            let disabled_params = get_geometry_params_from_json(&adjustments);
+            assert!(!is_geometry_identity(&disabled_params));
+            let disabled = warp_image_geometry(&original, disabled_params.clone()).to_rgb32f();
+            adjustments[amount] = json!(0);
+            adjustments[enabled] = json!(true);
+            let zero_params = get_geometry_params_from_json(&adjustments);
+            assert!(!is_geometry_identity(&zero_params));
+            let zero = warp_image_geometry(&original, zero_params.clone()).to_rgb32f();
+            assert_eq!(zero.as_raw(), disabled.as_raw(), "{amount}");
+            assert_eq!(
+                unwarp_image_geometry(&original, zero_params).as_bytes(),
+                unwarp_image_geometry(&original, disabled_params).as_bytes(),
+                "{amount} inverse"
+            );
+            adjustments[amount] = json!(100);
+            let positive =
+                warp_image_geometry(&original, get_geometry_params_from_json(&adjustments))
+                    .to_rgb32f();
+            let changed_interior = (10..51).any(|y| {
+                (10..63).any(|x| {
+                    let before = disabled.get_pixel(x, y);
+                    let after = positive.get_pixel(x, y);
+                    (0..3).any(|channel| (before[channel] - after[channel]).abs() > 0.001)
+                })
+            });
+            assert!(changed_interior, "{amount} positive control");
+        }
+    }
 }

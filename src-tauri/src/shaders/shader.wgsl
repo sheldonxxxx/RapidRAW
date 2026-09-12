@@ -176,6 +176,8 @@ struct AllAdjustments {
     tile_offset_x: u32,
     tile_offset_y: u32,
     mask_atlas_cols: u32,
+    image_width: u32, image_height: u32, image_origin_x: u32, image_origin_y: u32,
+    precomputed_flare: u32, _stream_pad1: u32, _stream_pad2: u32, _stream_pad3: u32,
 }
 
 struct HslRange {
@@ -795,7 +797,7 @@ fn sharpen_perc(c: vec3<f32>, is_raw: u32) -> f32 {
 
 fn sharpen_tap(coords: vec2<i32>, max_idx: vec2<i32>, is_raw: u32) -> f32 {
     let c = clamp(coords, vec2<i32>(0), max_idx);
-    return sharpen_perc(textureLoad(input_texture, vec2<u32>(c), 0).rgb, is_raw);
+    return sharpen_perc(load_input(vec2<u32>(c)).rgb, is_raw);
 }
 
 fn sharpen_tap_bilinear(p: vec2<f32>, max_idx: vec2<i32>, is_raw: u32) -> f32 {
@@ -858,7 +860,7 @@ fn apply_sharpen(
 
     let boost = (d0 * 1.25 * g0 + d1 * 0.25 * g1) * amount;
 
-    let dims = vec2<i32>(textureDimensions(input_texture));
+    let dims = vec2<i32>(input_dimensions());
     let max_idx = dims - vec2<i32>(1);
     let kw = array<f32, 5>(0.01853, -0.21023, 1.38348, -0.21023, 0.01853);
 
@@ -876,7 +878,7 @@ fn apply_sharpen(
         for (var ix = 0; ix < 5; ix = ix + 1) {
             let ox = ix - 2;
             let cx = clamp(coords_i.x + ox, 0, max_idx.x);
-            let sl = sharpen_perc(textureLoad(input_texture, vec2<u32>(vec2<i32>(cx, cy)), 0).rgb, is_raw);
+            let sl = sharpen_perc(load_input(vec2<u32>(vec2<i32>(cx, cy))).rgb, is_raw);
 
             acc += sl * kw[ix] * ky;
             lo = min(lo, sl);
@@ -951,7 +953,7 @@ fn apply_centre_local_contrast(
     if (centre_amount == 0.0) {
         return color_in;
     }
-    let full_dims_f = vec2<f32>(textureDimensions(input_texture));
+    let full_dims_f = vec2<f32>(input_dimensions());
     let coord_f = vec2<f32>(coords_i);
     let midpoint = 0.4;
     let feather = 0.375;
@@ -980,7 +982,7 @@ fn apply_centre_tonal_and_color(
     if (centre_amount == 0.0) {
         return color_in;
     }
-    let full_dims_f = vec2<f32>(textureDimensions(input_texture));
+    let full_dims_f = vec2<f32>(input_dimensions());
     let coord_f = vec2<f32>(coords_i);
     let midpoint = 0.4;
     let feather = 0.375;
@@ -1064,7 +1066,7 @@ fn apply_noise_reduction(
         return center_linear;
     }
 
-    let dims = vec2<i32>(textureDimensions(input_texture));
+    let dims = vec2<i32>(input_dimensions());
     let max_idx = dims - vec2<i32>(1);
     let center_safe   = max(center_linear, vec3<f32>(0.0));
     let center_luma   = get_luma(center_safe);
@@ -1112,7 +1114,7 @@ fn apply_noise_reduction(
                 let off   = vec2<i32>(i32(round(off_f.x)), i32(round(off_f.y)));
                 let coord = clamp(coords_i + off, vec2<i32>(0), max_idx);
 
-                var s = textureLoad(input_texture, vec2<u32>(coord), 0).rgb;
+                var s = load_input(vec2<u32>(coord)).rgb;
                 if (is_raw == 0u) { s = srgb_to_linear(s); }
                 let s_luma = get_luma(max(s, vec3<f32>(0.0)));
                 samp_luma[idx] = s_luma;
@@ -1201,7 +1203,7 @@ fn apply_noise_reduction(
                 let off_f = vec2<f32>(f32(dx) * stride_f + jx, f32(dy) * stride_f + jy);
                 let off   = vec2<i32>(i32(round(off_f.x)), i32(round(off_f.y)));
                 let coord = clamp(coords_i + off, vec2<i32>(0), max_idx);
-                var s = textureLoad(input_texture, vec2<u32>(coord), 0).rgb;
+                var s = load_input(vec2<u32>(coord)).rgb;
 
                 if (is_raw == 0u) { s = srgb_to_linear(s); }
 
@@ -1239,7 +1241,7 @@ fn apply_noise_reduction(
 }
 
 fn apply_ca_correction(coords: vec2<u32>, ca_rc: f32, ca_by: f32) -> vec3<f32> {
-    let dims = vec2<f32>(textureDimensions(input_texture));
+    let dims = vec2<f32>(input_dimensions());
     let center = dims / 2.0;
     let current_pos = vec2<f32>(coords);
 
@@ -1247,7 +1249,7 @@ fn apply_ca_correction(coords: vec2<u32>, ca_rc: f32, ca_by: f32) -> vec3<f32> {
     let dist = length(to_center);
 
     if (dist == 0.0) {
-        return textureLoad(input_texture, coords, 0).rgb;
+        return load_input(coords).rgb;
     }
 
     let dir = to_center / dist;
@@ -1261,9 +1263,9 @@ fn apply_ca_correction(coords: vec2<u32>, ca_rc: f32, ca_by: f32) -> vec3<f32> {
 
     let max_coords = vec2<i32>(dims - 1.0);
 
-    let r = textureLoad(input_texture, vec2<u32>(clamp(red_coords, vec2<i32>(0), max_coords)), 0).r;
-    let g = textureLoad(input_texture, vec2<u32>(clamp(green_coords, vec2<i32>(0), max_coords)), 0).g;
-    let b = textureLoad(input_texture, vec2<u32>(clamp(blue_coords, vec2<i32>(0), max_coords)), 0).b;
+    let r = load_input(vec2<u32>(clamp(red_coords, vec2<i32>(0), max_coords))).r;
+    let g = load_input(vec2<u32>(clamp(green_coords, vec2<i32>(0), max_coords))).g;
+    let b = load_input(vec2<u32>(clamp(blue_coords, vec2<i32>(0), max_coords))).b;
 
     return vec3<f32>(r, g, b);
 }
@@ -1415,7 +1417,7 @@ fn apply_all_curves(color: vec3<f32>, luma_curve: array<Point, 16>, luma_curve_c
 }
 
 fn get_mask_influence(mask_index: u32, coords: vec2<u32>) -> f32 {
-    return textureLoad(mask_textures, vec2<i32>(coords), i32(mask_index), 0).r;
+    return textureLoad(mask_textures, vec2<i32>(coords) - vec2<i32>(i32(adjustments.image_origin_x), i32(adjustments.image_origin_y)), i32(mask_index), 0).r;
 }
 
 fn sample_lut_tetrahedral(uv: vec3<f32>) -> vec3<f32> {
@@ -1619,20 +1621,20 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= out_dims.x || id.y >= out_dims.y) { return; }
 
     const REFERENCE_DIMENSION: f32 = 1080.0;
-    let full_dims = vec2<f32>(textureDimensions(input_texture));
+    let full_dims = vec2<f32>(input_dimensions());
     let current_ref_dim = min(full_dims.x, full_dims.y);
     let scale = max(0.1, current_ref_dim / REFERENCE_DIMENSION);
 
-    let absolute_coord = id.xy + vec2<u32>(adjustments.tile_offset_x, adjustments.tile_offset_y);
+    let absolute_coord = id.xy + vec2<u32>(adjustments.tile_offset_x + adjustments.image_origin_x, adjustments.tile_offset_y + adjustments.image_origin_y);
     let absolute_coord_i = vec2<i32>(absolute_coord);
 
     let ca_rc = adjustments.global.chromatic_aberration_red_cyan;
     let ca_by = adjustments.global.chromatic_aberration_blue_yellow;
-    var color_from_texture = textureLoad(input_texture, absolute_coord, 0).rgb;
+    var color_from_texture = load_input(absolute_coord).rgb;
     if (abs(ca_rc) > 0.000001 || abs(ca_by) > 0.000001) {
         color_from_texture = apply_ca_correction(absolute_coord, ca_rc, ca_by);
     }
-    let original_alpha = textureLoad(input_texture, absolute_coord, 0).a;
+    let original_alpha = load_input(absolute_coord).a;
 
     var initial_linear_rgb: vec3<f32>;
     let is_raw = adjustments.global.is_raw_image;
@@ -1808,7 +1810,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     if (adjustments.global.vignette_amount != 0.0) {
-        let full_dims_f = vec2<f32>(textureDimensions(input_texture));
+        let full_dims_f = vec2<f32>(input_dimensions());
         let coord_f = vec2<f32>(absolute_coord);
         let v_amount = adjustments.global.vignette_amount;
         let v_mid = adjustments.global.vignette_midpoint;
@@ -1907,4 +1909,14 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     final_rgb += dither(id.xy) * dither_amount;
 
     textureStore(output_texture, id.xy, vec4<f32>(clamp(final_rgb, vec3<f32>(0.0), vec3<f32>(1.0)), original_alpha));
+}
+
+// Streaming keeps spatial effects in full-image coordinates while binding bounded input tiles.
+fn input_dimensions() -> vec2<u32> {
+    if (adjustments.image_width > 0u) { return vec2<u32>(adjustments.image_width, adjustments.image_height); }
+    return textureDimensions(input_texture);
+}
+fn load_input(coords: vec2<u32>) -> vec4<f32> {
+    let local = vec2<i32>(coords) - vec2<i32>(i32(adjustments.image_origin_x), i32(adjustments.image_origin_y));
+    return textureLoad(input_texture, clamp(local, vec2<i32>(0), vec2<i32>(textureDimensions(input_texture)) - 1), 0);
 }

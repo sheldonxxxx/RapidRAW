@@ -4,6 +4,7 @@ import { isAbsolute } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { NativeBridge } from './bridge.js';
 import { createServer } from './server.js';
+import { OperationJobs } from './operation-jobs.js';
 
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: {
@@ -20,11 +21,13 @@ async function main(): Promise<void> {
   }
   const timeoutMs = Number(values['timeout-ms'] ?? process.env.RAPIDRAW_TIMEOUT_MS ?? 300000);
   const bridge = new NativeBridge({ binary, workspace, timeoutMs });
-  const server = createServer(bridge);
+  const jobs = new OperationJobs(bridge, { binary, workspace, timeoutMs });
+  const server = createServer(bridge, jobs);
   let shuttingDown = false;
   const shutdown = async (): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
+    await jobs.close();
     await bridge.close();
     await server.close();
   };

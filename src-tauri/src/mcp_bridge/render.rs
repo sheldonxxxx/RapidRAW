@@ -3,6 +3,7 @@
 //! native engine. Initially previews render at source resolution then resize, so
 //! detail-dependent effects match final exports exactly.
 mod comparison;
+mod review;
 use super::sessions::{Bridge, Session, atomic_write};
 use super::{Result, flag, number, required, validation};
 use crate::app_state::AppState;
@@ -44,7 +45,30 @@ struct Frame {
     region: Roi,
     crop_offset: (f32, f32),
     mask_coverage: Option<Value>,
+    review_images: Vec<(String, DynamicImage)>,
     warnings: Vec<String>,
+}
+
+// Display previews use eight-bit channels, matching ordinary photo previews.
+// Quantization happens after native rendering and geometry; retain the exact
+// Luma8 selection values and leave full-precision export encoding separate.
+fn encode_preview_image(image: &DynamicImage, format: &str, quality: u8) -> Result<Vec<u8>> {
+    let preview = if matches!(image, DynamicImage::ImageLuma8(_)) {
+        Cow::Borrowed(image)
+    } else {
+        Cow::Owned(DynamicImage::ImageRgb8(image.to_rgb8()))
+    };
+    encode_image_to_bytes(&preview, format, quality)
+}
+
+fn preview_blocks(frame: &Frame, format: &str, quality: u8) -> Result<(Value, Vec<Value>)> {
+    let main = json!({"mimeType":if format=="png"{"image/png"}else{"image/jpeg"},
+        "data":STANDARD.encode(encode_preview_image(&frame.image, format, quality)?)});
+    let matched = frame.review_images.iter().map(|(label, image)| {
+        Ok(json!({"label":label,"width":image.width(),"height":image.height(),"mimeType":"image/png",
+            "data":STANDARD.encode(encode_preview_image(image, "png", 100)?)}))
+    }).collect::<Result<Vec<_>>>()?;
+    Ok((main, matched))
 }
 
 impl Bridge {
@@ -183,9 +207,23 @@ impl Bridge {
         if original && params.get("mask_id").is_some() {
             return Err("INVALID_ARGUMENT: original and mask_id cannot be combined".into());
         }
+        let mask_mode = params["mask_mode"].as_str().unwrap_or("grayscale");
+        if !["grayscale", "overlay"].contains(&mask_mode) {
+            return Err("INVALID_ARGUMENT: mask_mode must be grayscale or overlay".into());
+        }
+        if params.get("mask_id").is_none() && params.get("mask_mode").is_some() {
+            return Err("INVALID_ARGUMENT: mask_mode requires mask_id".into());
+        }
+        let clipping_overlay = flag(params, "clipping_overlay", false)?;
+        if clipping_overlay && params.get("mask_id").is_some() {
+            return Err(
+                "INVALID_ARGUMENT: clipping_overlay cannot be combined with mask_id".into(),
+            );
+        }
         let prepared = self.prepare_render(session, original)?;
         let rendered_dimensions = prepared.image.dimensions();
         let region = parse_region(params.get("region"), rendered_dimensions)?;
+        let mut review_images = Vec::new();
         let (image, mask_coverage) = if let Some(id) = params.get("mask_id") {
             let id = id
                 .as_str()
@@ -204,22 +242,52 @@ impl Bridge {
                 region.height,
             )
             .to_image();
-            let coverage = mask_coverage(&bitmap);
-            (DynamicImage::ImageLuma8(bitmap), Some(coverage))
+            let mut coverage = mask_coverage(&bitmap);
+            coverage["bounds_rendered"] = review::mask_bounds(&bitmap, (region.x, region.y), 1);
+            coverage["core_bounds_rendered"] =
+                review::mask_bounds(&bitmap, (region.x, region.y), 128);
+            let image = if mask_mode == "overlay" {
+                let rgb = self.render_prepared(session, &prepared, region, None)?;
+                coverage["selected_rgb_statistics"] = review::weighted_statistics(&rgb, &bitmap);
+                review_images.push(("Matched edited photograph".to_string(), rgb.clone()));
+                review_images.push((
+                    "Matched grayscale selection".to_string(),
+                    DynamicImage::ImageLuma8(bitmap.clone()),
+                ));
+                let opacity = number(params, "overlay_opacity", 0.5, 0.0, 1.0)?;
+                review::overlay_mask(&rgb, &bitmap, opacity)?
+            } else {
+                DynamicImage::ImageLuma8(bitmap)
+            };
+            (image, Some(coverage))
         } else {
             (
                 self.render_prepared(session, &prepared, region, None)?,
                 None,
             )
         };
+        // Clipping is a display diagnostic only. Exports use render_prepared
+        // directly, so saved showClipping state never contaminates deliverables.
+        let image = if clipping_overlay {
+            review::clipping_overlay(&image)
+        } else {
+            image
+        };
         // The ROI is selected at full resolution, before delivery scaling.
         let image = resize_long_edge(image, optional_long_edge(params)?)?;
+        let review_images = review_images
+            .into_iter()
+            .map(|(label, image)| {
+                Ok((label, resize_long_edge(image, optional_long_edge(params)?)?))
+            })
+            .collect::<Result<Vec<_>>>()?;
         Ok(Frame {
             image,
             rendered_dimensions,
             region,
             crop_offset: prepared.crop_offset,
             mask_coverage,
+            review_images,
             warnings: prepared.warnings,
         })
     }
@@ -228,6 +296,25 @@ impl Bridge {
         let mut params = params.clone();
         if params.get("long_edge").is_none() && params.get("region").is_none() {
             params["long_edge"] = json!(1600);
+        }
+        if params.get("clipping_overlay").is_none() && params.get("mask_id").is_none() {
+            params["clipping_overlay"] = json!(
+                session.current().adjustments["showClipping"]
+                    .as_bool()
+                    .unwrap_or(false)
+            );
+        }
+        let use_cache = flag(&params, "cache", true)?;
+        let cache_key = if use_cache {
+            Some(review::cache_key(self, session, &params)?)
+        } else {
+            None
+        };
+        if let Some(key) = cache_key.as_ref()
+            && let Some(mut response) = review::cached_preview(key)
+        {
+            response["cache"] = json!({"hit":true,"native_full_resolution":true});
+            return Ok(response);
         }
         let frame = self.render_frame(session, &params)?;
         let format = params
@@ -238,18 +325,23 @@ impl Bridge {
             return Err("INVALID_ARGUMENT: Preview format must be jpeg or png".into());
         }
         let quality = integer(&params, "quality", 90, 1, 100)? as u8;
-        let preview = if frame.mask_coverage.is_some() {
-            frame.image.clone()
-        } else {
-            DynamicImage::ImageRgb8(frame.image.to_rgb8())
-        };
-        let bytes = encode_image_to_bytes(&preview, format, quality)?;
+        let (image, matched) = preview_blocks(&frame, format, quality)?;
         let mut response = frame_info(session, &frame);
-        response["image"] = json!({"mimeType":if format=="png"{"image/png"}else{"image/jpeg"},"data":STANDARD.encode(bytes)});
+        response["image"] = image;
         response["original"] = json!(flag(&params, "original", false)?);
+        if !frame.review_images.is_empty() {
+            response["images"] = Value::Array(matched);
+            response["overlay_legend"] = json!({"color":"magenta","opacity":number(&params,"overlay_opacity",0.5,0.0,1.0)?,"matched_images":true});
+        }
         if let Some(coverage) = frame.mask_coverage {
             response["mask_coverage"] = coverage;
             response["mask_id"] = params["mask_id"].clone();
+            response["mask_mode"] = json!(params["mask_mode"].as_str().unwrap_or("grayscale"));
+        }
+        response["clipping_overlay"] = json!(flag(&params, "clipping_overlay", false)?);
+        response["cache"] = json!({"hit":false,"enabled":use_cache,"native_full_resolution":true});
+        if let Some(key) = cache_key {
+            review::cache_preview(key, &response);
         }
         Ok(response)
     }
@@ -301,6 +393,7 @@ impl Bridge {
         let quality = integer(params, "quality", 95, 1, 100)? as u8;
         if format == "cube" {
             for key in [
+                "color_profile",
                 "long_edge",
                 "resize",
                 "bit_depth",
@@ -368,14 +461,34 @@ impl Bridge {
             return Err("INVALID_ARGUMENT: 16-bit output is supported by PNG and TIFF only; bit_depth must be 8 or 16".into());
         }
         let settings = export_settings(params, quality)?;
+        let profile_policy = params
+            .get("color_profile")
+            .map(|v| {
+                v.as_str()
+                    .ok_or("INVALID_ARGUMENT: color_profile must be auto, srgb or none")
+            })
+            .transpose()?
+            .unwrap_or("auto");
+        if !["auto", "srgb", "none"].contains(&profile_policy) {
+            return Err("INVALID_ARGUMENT: color_profile must be auto, srgb or none".into());
+        }
+        let supports_profile = super::delivery::supports_icc(format);
+        if profile_policy == "srgb" && !supports_profile {
+            return Err(format!(
+                "UNSUPPORTED_COLOR_PROFILE: Explicit ICC embedding is unavailable for {format}; use auto for native signalling or none"
+            ));
+        }
+        let embed_profile = profile_policy != "none" && supports_profile;
         self.save_sidecar(&session.id)?;
         let prepared = self.prepare_render(session, false)?;
         preflight_resize(prepared.image.dimensions(), &settings)?;
         let region = parse_region(None, prepared.image.dimensions())?;
         let image = self.render_prepared(session, &prepared, region, None)?;
         let image = apply_export_resize_and_watermark(image, &settings)?;
+        let mut jxl_lossless_alpha =
+            format == "jxl" && crate::export_processing::jxl_uses_lossless_alpha(&image, quality);
         let (bytes, metadata_applied) =
-            self.encode_export(session, &image, format, bit_depth, &settings)?;
+            self.encode_export(session, &image, format, bit_depth, &settings, embed_profile)?;
         let mut mask_paths = Vec::new();
         if settings.export_masks {
             let parent = target.parent().unwrap();
@@ -413,8 +526,16 @@ impl Bridge {
         for (index, id, image_path, alpha_path) in mask_paths {
             let local_image = self.render_prepared(session, &prepared, region, Some(index))?;
             let local_image = apply_export_resize_and_watermark(local_image, &settings)?;
-            let (local_bytes, _) =
-                self.encode_export(session, &local_image, format, bit_depth, &settings)?;
+            jxl_lossless_alpha |= format == "jxl"
+                && crate::export_processing::jxl_uses_lossless_alpha(&local_image, quality);
+            let (local_bytes, _) = self.encode_export(
+                session,
+                &local_image,
+                format,
+                bit_depth,
+                &settings,
+                embed_profile,
+            )?;
             let alpha = imageops::resize(
                 &prepared.bitmaps[index],
                 local_image.width(),
@@ -440,11 +561,15 @@ impl Bridge {
         if format == "avif" {
             warnings.push("AVIF was verified using container dimensions and channel depth; this build has no AVIF pixel decoder.".to_string());
         }
+        if jxl_lossless_alpha {
+            warnings.push("Transparent JPEG XL images larger than 256 pixels on either axis are encoded losslessly to preserve a decodable alpha channel; the quality setting is not applied and the file may be larger.".to_string());
+        }
         Ok(
             json!({"session_id":session.id,"revision":session.revision,"path":target,"format":format,
             "width":image.width(),"height":image.height(),"bytes":bytes.len(),"bit_depth":bit_depth,
             "verified":verified,"source_unchanged":true,"metadata_applied":metadata_applied,"strip_gps":settings.strip_gps,
-            "preserve_timestamps":settings.preserve_timestamps,"masks":exported_masks,"warnings":warnings}),
+            "preserve_timestamps":settings.preserve_timestamps,"masks":exported_masks,"warnings":warnings,
+            "color_profile":{"space":"sRGB","policy":profile_policy,"icc_embedded":embed_profile,"icc_verified":if embed_profile {super::delivery::verify_profile(&bytes,format)?}else{false}}}),
         )
     }
 
@@ -455,8 +580,13 @@ impl Bridge {
         format: &str,
         bit_depth: u32,
         settings: &ExportSettings,
+        embed_profile: bool,
     ) -> Result<(Vec<u8>, bool)> {
-        let mut bytes = encode_at_depth(image, format, bit_depth, settings.jpeg_quality)?;
+        let mut bytes = if embed_profile && matches!(format, "png" | "tiff") {
+            super::delivery::encode_profiled_raster(image, format, bit_depth)?
+        } else {
+            encode_at_depth(image, format, bit_depth, settings.jpeg_quality)?
+        };
         if format == "webp" && settings.keep_metadata {
             // Upgrade first: little_exif cannot upgrade a simple lossy WebP and
             // otherwise returns an error after partially inserting its metadata.
@@ -469,6 +599,9 @@ impl Bridge {
             settings.keep_metadata,
             settings.strip_gps,
         )?;
+        if embed_profile && matches!(format, "jpeg" | "webp") {
+            super::delivery::add_profile(&mut bytes, format)?;
+        }
         if format == "webp" {
             normalize_webp_metadata_header(&mut bytes, image.dimensions(), false)?;
         }
@@ -477,6 +610,12 @@ impl Bridge {
         if settings.strip_gps && has_gps {
             return Err(
                 "EXPORT_VERIFICATION_FAILED: GPS coordinates remained after metadata stripping"
+                    .into(),
+            );
+        }
+        if embed_profile && !super::delivery::verify_profile(&bytes, format)? {
+            return Err(
+                "EXPORT_VERIFICATION_FAILED: Embedded sRGB ICC profile did not survive encoding"
                     .into(),
             );
         }
@@ -687,7 +826,8 @@ fn frame_info(session: &Session, frame: &Frame) -> Value {
         "coordinates":{"space":"rendered image pixels after orientation, geometry, rotation, flips and user crop",
             "pixel_origin":"top-left","crop_offset":{"x":frame.crop_offset.0,"y":frame.crop_offset.1},
             "preview_to_rendered_scale":{"x":frame.region.width as f64/frame.image.width() as f64,"y":frame.region.height as f64/frame.image.height() as f64},
-            "mapping":"rendered_x = region.x + preview_x * scale.x; rendered_y = region.y + preview_y * scale.y"},
+            "mapping":"rendered_x = region.x + (preview_x + 0.5) * scale.x - 0.5; rendered_y = region.y + (preview_y + 0.5) * scale.y - 0.5",
+            "pixel_coordinate_convention":"pixel centers; top-left pixel is (0,0)","coordinate_mapping_tool":"map_coordinates"},
         "render_precision":"float32 processing with 16-bit final raster; preview encoding may be 8-bit", "warnings":frame.warnings})
 }
 
@@ -1121,6 +1261,70 @@ mod tests {
     }
 
     #[test]
+    fn overlay_preview_blocks_are_matching_eight_bit_pngs_without_changing_render_precision() {
+        let photograph = DynamicImage::ImageRgba16(precision_ramp().to_rgba16());
+        let selection = GrayImage::from_fn(photograph.width(), photograph.height(), |x, y| {
+            Luma([((x * 13 + y * 17) % 256) as u8])
+        });
+        let overlay = review::overlay_mask(&photograph, &selection, 0.5).unwrap();
+        let frame = Frame {
+            image: overlay.clone(),
+            rendered_dimensions: photograph.dimensions(),
+            region: Roi {
+                x: 0,
+                y: 0,
+                width: photograph.width(),
+                height: photograph.height(),
+            },
+            crop_offset: (0.0, 0.0),
+            mask_coverage: Some(mask_coverage(&selection)),
+            review_images: vec![
+                ("Matched edited photograph".into(), photograph.clone()),
+                (
+                    "Matched grayscale selection".into(),
+                    DynamicImage::ImageLuma8(selection.clone()),
+                ),
+            ],
+            warnings: Vec::new(),
+        };
+        let (main, matched) = preview_blocks(&frame, "png", 90).unwrap();
+        assert_eq!(matched.len(), 2);
+        for (index, block) in [&main, &matched[0], &matched[1]].into_iter().enumerate() {
+            let bytes = STANDARD.decode(block["data"].as_str().unwrap()).unwrap();
+            assert_eq!(block["mimeType"], "image/png");
+            assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+            assert_eq!(&bytes[12..16], b"IHDR");
+            assert_eq!(bytes[24], 8, "preview block {index} PNG channel bit depth");
+            assert_eq!(
+                bytes[25],
+                if index == 2 { 0 } else { 2 },
+                "preserve grayscale PNG selection"
+            );
+            let decoded = image::load_from_memory(&bytes).unwrap();
+            assert_eq!(decoded.dimensions(), photograph.dimensions());
+            match index {
+                0 => assert_eq!(decoded.to_rgb8(), overlay.to_rgb8()),
+                1 => assert_eq!(decoded.to_rgb8(), photograph.to_rgb8()),
+                _ => assert_eq!(decoded.to_luma8(), selection),
+            }
+        }
+        assert_eq!(frame.image.color(), image::ColorType::Rgb16);
+        assert_eq!(frame.review_images[0].1.color(), image::ColorType::Rgba16);
+        assert!(
+            photograph
+                .to_rgb16()
+                .pixels()
+                .any(|pixel| pixel[0] % 257 != 0)
+        );
+        let export = encode_at_depth(&photograph, "png", 16, 95).unwrap();
+        assert_eq!(export[24], 16);
+        assert_eq!(
+            image::load_from_memory(&export).unwrap().to_rgb16(),
+            photograph.to_rgb16()
+        );
+    }
+
+    #[test]
     fn png_and_tiff_preserve_real_sixteen_bit_levels() {
         let original = precision_ramp();
         for format in ["png", "tiff"] {
@@ -1267,6 +1471,101 @@ mod tests {
                 verify_raster(&target, (17, 13), 8).is_ok(),
                 "Could not verify {format}"
             );
+        }
+    }
+
+    #[test]
+    fn jxl_odd_dimensions_rgb8_and_rgb16_export_as_valid_eight_bit_pixels() {
+        jxl_oxide::integration::register_image_decoding_hook();
+        let directory = tempfile::tempdir().unwrap();
+        for (width, height) in [(240, 321), (321, 240), (241, 321)] {
+            let rgb = ImageBuffer::from_fn(width, height, |x, y| {
+                image::Rgb([
+                    ((x * 23 + y * 17) % 256) as u8,
+                    ((x * x + y * 19) % 256) as u8,
+                    ((x * 11 + y * y) % 256) as u8,
+                ])
+            });
+            let source = DynamicImage::ImageRgb8(rgb);
+            let high_precision = ImageBuffer::from_fn(width, height, |x, y| {
+                image::Rgb([
+                    ((x * 187 + y * 293) % 65536) as u16,
+                    ((x * x * 13 + y * 89) % 65536) as u16,
+                    ((x * 233 + y * y * 17) % 65536) as u16,
+                ])
+            });
+            for image in [source.clone(), DynamicImage::ImageRgb16(high_precision)] {
+                let mut previous_lossy = None;
+                for quality in [90, 95, 100] {
+                    let target = directory.path().join("odd.jxl");
+                    let encoded = encode_at_depth(&image, "jxl", 8, quality).unwrap();
+                    if quality < 100
+                        && let Some(previous) = previous_lossy.replace(encoded.clone())
+                    {
+                        assert_ne!(previous, encoded, "opaque lossy quality remains effective");
+                    }
+                    fs::write(&target, encoded).unwrap();
+                    let result = verify_raster(&target, (width, height), 8);
+                    assert!(
+                        result.is_ok(),
+                        "{width}x{height} {:?} quality {quality}: {result:?}",
+                        image.color()
+                    );
+                    if quality == 100 {
+                        let decoded = image::open(&target).unwrap();
+                        assert_eq!(decoded.to_rgb8(), image.to_rgb8());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn jxl_odd_dimensions_preserve_actual_alpha() {
+        jxl_oxide::integration::register_image_decoding_hook();
+        let source = DynamicImage::ImageRgba8(ImageBuffer::from_fn(241, 321, |x, y| {
+            image::Rgba([
+                (x % 256) as u8,
+                (y % 256) as u8,
+                ((x + y) % 256) as u8,
+                ((x * 17 + y * 29) % 256) as u8,
+            ])
+        }));
+        let directory = tempfile::tempdir().unwrap();
+        assert!(crate::export_processing::jxl_uses_lossless_alpha(
+            &source, 95
+        ));
+        assert!(!crate::export_processing::jxl_uses_lossless_alpha(
+            &source, 100
+        ));
+        assert!(!crate::export_processing::jxl_uses_lossless_alpha(
+            &DynamicImage::ImageRgb8(source.to_rgb8()),
+            95
+        ));
+        for source in [
+            source.clone(),
+            DynamicImage::ImageRgba16(source.to_rgba16()),
+        ] {
+            for quality in [95, 100] {
+                let target = directory.path().join("transparent.jxl");
+                fs::write(
+                    &target,
+                    encode_at_depth(&source, "jxl", 8, quality).unwrap(),
+                )
+                .unwrap();
+                let result = verify_raster(&target, source.dimensions(), 8);
+                assert!(
+                    result.is_ok(),
+                    "transparent {:?} quality {quality}: {result:?}",
+                    source.color()
+                );
+                let decoded = image::open(&target).unwrap().to_rgba8();
+                assert_eq!(
+                    decoded,
+                    source.to_rgba8(),
+                    "transparent fallback preserves every channel losslessly"
+                );
+            }
         }
     }
 
@@ -1456,5 +1755,32 @@ mod tests {
         )
         .unwrap();
         assert!(preflight_resize((10000, 100), &excessive).is_err());
+    }
+
+    #[test]
+    fn native_export_extreme_aspect_ratio_keeps_requested_axis_and_nonzero_extent() {
+        for (width, height, mode, value, expected) in [
+            (25184, 256, "width", 1024, (1024, 10)),
+            (256, 25184, "height", 1024, (10, 1024)),
+            (4096, 1, "longEdge", 16, (16, 1)),
+            (1, 4096, "longEdge", 16, (1, 16)),
+        ] {
+            let source = DynamicImage::ImageRgb16(ImageBuffer::from_pixel(
+                width,
+                height,
+                image::Rgb([32001, 32002, 32003]),
+            ));
+            let settings =
+                export_settings(&json!({"resize":{"mode":mode,"value":value}}), 95).unwrap();
+            preflight_resize(source.dimensions(), &settings).unwrap();
+            let result = apply_export_resize_and_watermark(source, &settings).unwrap();
+            assert_eq!(result.dimensions(), expected, "{width}x{height}/{mode}");
+            assert_eq!(result.color(), image::ColorType::Rgb16);
+            let center = result
+                .to_rgb16()
+                .get_pixel(expected.0 / 2, expected.1 / 2)
+                .0;
+            assert_eq!(center, [32001, 32002, 32003]);
+        }
     }
 }

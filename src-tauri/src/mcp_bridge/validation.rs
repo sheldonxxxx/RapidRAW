@@ -305,6 +305,34 @@ fn submask_parameter_schema(kind: &str) -> Value {
         "ai-foreground" | "ai-sky" | "all" => {}
         _ => unreachable!("only the supported kinds construct schemas"),
     }
+    if kind == "ai-subject" {
+        props.insert(
+            "samRefinement".into(),
+            object(
+                json!({
+                    "version":{"type":"integer","const":1},
+                    "encoding":{"type":"string","const":"f32-le-base64"},
+                    "logitsBase64":{"type":"string","minLength":349528,"maxLength":349528},
+                    "sourceSha256":{"type":"string","minLength":64,"maxLength":64,"pattern":"^[a-f0-9]{64}$"},
+                    "geometrySha256":{"type":"string","minLength":64,"maxLength":64,"pattern":"^[a-f0-9]{64}$"},
+                    "maskSha256":{"type":"string","minLength":64,"maxLength":64,"pattern":"^[a-f0-9]{64}$"},
+                    "canvasWidth":integer(1,100000),"canvasHeight":integer(1,100000),
+                    "includePoints":array(point(100000.0),0,64),"excludePoints":array(point(100000.0),0,64),
+                    "region":nullable(object(json!({"x":number(0.0,100000.0),"y":number(0.0,100000.0),"width":number(0.001,100000.0),"height":number(0.001,100000.0)}), &["x","y","width","height"]))
+                }),
+                &[
+                    "version",
+                    "encoding",
+                    "logitsBase64",
+                    "sourceSha256",
+                    "geometrySha256",
+                    "maskSha256",
+                    "canvasWidth",
+                    "canvasHeight",
+                ],
+            ),
+        );
+    }
     if kind.starts_with("ai-") || kind == "quick-eraser" {
         props.insert("maskDataBase64".into(), image_asset());
         required.push("maskDataBase64");
@@ -661,6 +689,35 @@ fn validate_submask(value: &Value, path: &str, ids: &mut HashSet<String>) -> Res
             &params["maskDataBase64"],
             &format!("{path}.parameters.maskDataBase64"),
         )?;
+    }
+    if let Some(state) = params.get("samRefinement") {
+        for key in ["sourceSha256", "geometrySha256", "maskSha256"] {
+            let hash = state[key].as_str().unwrap();
+            if hash.len() != 64
+                || !hash
+                    .bytes()
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+            {
+                return Err(format!(
+                    "{path}.parameters.samRefinement.{key}: require lowercase SHA-256"
+                ));
+            }
+        }
+        crate::ai_processing::sam_refinement::decode_logits(
+            state["logitsBase64"].as_str().unwrap(),
+        )
+        .map_err(|e| format!("{path}.parameters.samRefinement: {e}"))?;
+        let dimension = |key: &str| {
+            state[key].as_u64().ok_or_else(|| {
+                format!("{path}.parameters.samRefinement.{key}: require an unsigned JSON integer")
+            })
+        };
+        let area = dimension("canvasWidth")? * dimension("canvasHeight")?;
+        if area > MAX_ASSET_PIXELS {
+            return Err(format!(
+                "{path}.parameters.samRefinement: canvas exceeds pixel limit"
+            ));
+        }
     }
     if matches!(kind, "linear" | "ai-subject" | "quick-eraser") {
         let x1 = params["startX"].as_f64().unwrap_or(0.0);

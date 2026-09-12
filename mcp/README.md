@@ -77,16 +77,19 @@ Use the address of the connector you actually run, in `host:port` form. Alternat
 
 Every tool starts with `rapidraw_`; the table shows the suffixes. The engine's live `capabilities` response is authoritative for availability and schemas.
 
+The [application/MCP/test matrix](CAPABILITY-MATRIX.md) maps the complete application feature areas to their MCP implementation, test boundary and remaining gaps. The generated evidence ledger distinguishes individual tool calls, parameter coverage, pixel assertions and photographic review.
+
 | Area | Tools |
 | --- | --- |
 | Discovery and state | `capabilities`, `list_images`, `open_photo`, `list_sessions`, `get_session`, `close_session` |
-| Editing and review | `set_adjustments`, `render`, `render_compare`, `inspect_adjustments`, `analyze`, `auto_adjust` |
+| Editing and review | `set_adjustments`, `render`, `render_compare`, `inspect_adjustments`, `analyze`, `auto_adjust`, `map_coordinates`, `preflight`, `sample_region` |
 | Selective edits | `mask_create`, `mask_update`, `mask_remove`, `mask_generate`, `generate_depth` |
-| Background processing | `start_denoise`, `get_job`, `list_jobs`, `cancel_job`, `resume_job` |
+| Background processing | `start_denoise`, `get_job`, `list_jobs`, `cancel_job`, `resume_job`, `start_operation`, `get_operation_job`, `list_operation_jobs`, `cancel_operation_job`, `resume_operation_job` |
 | Detail and corrections | `retouch`, `denoise`, `lens_profile`, `negative_convert` |
 | History and persistence | `history`, `undo`, `redo`, `save_version`, `list_versions`, `restore_version`, `save_session`, `load_recipe`, `save_recipe` |
-| Presets and assets | `list_presets`, `apply_preset`, `list_luts`, `apply_lut`, `models`, `install_model` |
+| Presets and assets | `list_presets`, `apply_preset`, `list_luts`, `apply_lut`, `manage_presets`, `manage_luts`, `models`, `install_model` |
 | Delivery and composition | `export`, `batch_export`, `merge` |
+| Portable editing | `fork_session`, `export_session_bundle`, `import_session_bundle`, `diff_versions`, `copy_adjustments` |
 | Metadata and configuration | `get_metadata`, `set_metadata`, `get_engine_settings` |
 
 Resources:
@@ -109,7 +112,7 @@ Call `rapidraw_capabilities`, read the schema resource, then:
 {"tool":"rapidraw_analyze","arguments":{"session_id":"RETURNED_ID","histogram":true,"scopes":true}}
 ```
 
-Use the actual returned revision, not the illustrative `0` above. For native detail review, first inspect rendered dimensions, then call `render` with an integer pixel `region`; omitting `long_edge` preserves native 1:1 detail. **Render/analyze regions use full-resolution rendered coordinates after user crop and geometry. Mask geometry and AI subject regions use oriented source coordinates before user crop.** Measure and transform preview coordinates explicitly. `mask_id` renders a grayscale mask with coverage statistics for edge review.
+Use the actual returned revision, not the illustrative `0` above. For native detail review, first inspect rendered dimensions, then call `render` with an integer pixel `region`; omitting `long_edge` preserves native 1:1 detail. **Render/analyze regions use full-resolution rendered coordinates after user crop and geometry. Mask geometry and AI subject regions use the corrected, user-oriented/flipped/rotated canvas before crop (`map_coordinates` space `mask`).** The separate `oriented_source` space precedes user geometry. Map measured preview pixel centers with `map_coordinates`, supplying the actual preview dimensions and region. `mask_id` renders a grayscale mask with coverage statistics for edge review.
 
 Selective editing examples:
 
@@ -146,6 +149,26 @@ Prefer `start_denoise` over the synchronous compatibility `denoise` tool. After 
 
 See the skill's [review and job reference](../skills/rapidraw-mcp/references/review-and-jobs.md) for complete semantics and examples.
 
+## Workflow expansion
+
+Bridge 1.2 exposes 57 native methods. The stdio server adds 5 isolated-worker tools, for **62 MCP tools**. The native method list and host worker list remain separately identifiable.
+
+Use `map_coordinates` when translating displayed points or regions into edit coordinates. `sample_region` returns rendered sRGB, linear luminance, clipping and robust color measurements from a native region of at most 4 megapixels; its optional white-balance suggestion assumes the selected region should be neutral and does not change the session. `preflight` checks current geometry, requested model-group availability, export format/bit depth and native render resource limits. It does not predict every AI/merge allocation or validate a complete export request. [Geometry and review](GEOMETRY-REVIEW.md) defines coordinate spaces, overlays, submask operations and exact preview caching.
+
+`render(mask_id, mask_mode: "overlay")` returns aligned overlay, photograph and grayscale image blocks. `clipping_overlay: true` is a diagnostic preview; exported photographs exclude clipping indicators. Cache keys include rendered state, source/dependencies and view options; `cache: false` forces a fresh render and returned diagnostics disclose hits.
+
+[Forks, portable bundles and workspace assets](PORTABLE-SESSIONS.md) cover independent alternatives, moving saved edits and dependencies between workspaces, version diffs, selective copying and owned preset/LUT collections.
+
+For expensive `merge`, `export`, `negative_convert`, `mask_generate`, `generate_depth` or local `retouch`, use `start_operation` with the usual native arguments. The server captures immutable inputs/settings, starts a separate native process and returns a job ID. One such worker runs per workspace alongside the main editing bridge. `get_operation_job` reports truthful stages; it does not invent a completion percentage. `cancel_operation_job` terminates only that worker. On reconnect, `list_operation_jobs` exposes interrupted jobs; `resume_operation_job` explicitly recomputes the captured operation in a fresh attempt directory. No automatic replay or partial computation checkpoints. Successful edits import as a new independent session; worker exports stay in the returned worker-workspace export path. Generative retouch is excluded from these durable jobs so credentials and remote requests are not persisted or replayed.
+
+Mask/depth workers capture the verified parent `masks` model group; inpaint workers capture `inpaint`. The job reports `captured_models` with group and asset count, retains owned model copies, and verifies their SHA-256 before each attempt. Later parent-model changes do not affect captured jobs. Partial/corrupt parent groups fail before start with `install_model` guidance. When every required parent model is absent, the existing native installed-app copy fallback remains available and verifies the files in the worker; job capture never requests a download.
+
+Export `color_profile: "auto"` embeds and verifies an sRGB ICC profile in JPEG, PNG, TIFF and WebP. `"none"` omits it. Explicit `"srgb"` fails for AVIF, JXL and CUBE instead of claiming an unsupported profile. Pixels use the native display-referred sRGB pipeline; this is not arbitrary working-space conversion. EXIF/timestamp/GPS behavior is reported separately, and unsupported metadata preservation produces a warning.
+
+Images exceeding the GPU texture dimension use bounded overlapping input/mask tiles in the high-precision MCP renderer. Global effect coordinates remain continuous. Streaming is limited to 100 megapixels and the effect halo must fit the adapter; preflight reports the same allocation limits as rendering. Very large images still require CPU memory for their source, masks and final output.
+
+[The testing matrix](testing-matrix.md) provides per-tool, per-mode and per-adjustment evidence generation, photographic fixture validation, download/provider gates and platform setup commands. A native call, a pixel assertion and a photographic visual review are distinct coverage levels.
+
 ## Preservation and error behavior
 
 Source images and their sidecars are read-only to the workflow. `open_photo` creates an isolated working copy under `workspace/sessions/<id>`; edits, retouch intermediates and native `.rrdata` state stay with that copy. Exports must remain under `workspace/exports`, and recipes under `workspace/recipes`; relative output paths resolve inside their respective category. Exporting over a source is prohibited, and replacing an existing export requires `overwrite: true`. Recipe saves never overwrite an existing file; choose a new recipe path or revision. GPS stripping defaults on. Metadata edits affect the isolated session and its exports.
@@ -154,7 +177,9 @@ Installed presets containing explicitly disabled legacy negative-conversion cont
 
 Tool inputs reject unknown top-level fields. Native validation checks the actual adjustment/mask records against RapidRAW's schemas, so a misspelled adjustment cannot silently become a no-op. Mutations accept `expected_revision` to reject stale changes. Success returns `structuredContent`; previews also return native MCP image blocks without repeating their base64 in the JSON/text result. Engine failures return `isError: true` with a stable code and actionable message.
 
-Native requests are serialized; denoise job computation runs on a separate worker. The server never automatically retries a mutation. A timeout, crash, protocol mismatch or cancellation of an active MCP request terminates or invalidates the bridge; reconnect and inspect saved state before retrying. `cancel_job` is a separate cooperative operation and leaves the bridge usable. A request cancelled while queued is skipped without invalidating the engine. Closing the MCP connection closes stdin and then terminates an unresponsive native child. Save sessions at meaningful checkpoints for crash recovery.
+The server caps serialized MCP responses at **8 MiB**, leaving room below the SDK's default 10 MiB stdio buffer; `capabilities.transport_limits` reports the budget. Oversized images or state return `RESPONSE_TOO_LARGE` while keeping the connection usable. Requested pixels are never silently resized or transcoded. Retry a read with an explicitly smaller `long_edge`, bounded native `region`, requested JPEG encoding, or `get_session(include_adjustments:false)`. The native operation has already returned when this error is generated: inspect `recovery` session/revision, mask/job IDs and output paths before deciding what remains. Do not replay a mutation. Batch recovery includes at most 16 item summaries and explicitly reports truncation; retain the original request and reconcile omitted items separately. Large session resources raise the same named error; very long native error messages are flagged as truncated. Prompt arguments accept at most 16384 path characters and 65536 intent characters.
+
+Native requests are serialized; denoise computation and captured operation jobs run on separate workers. The server never automatically retries a mutation. A timeout, crash, protocol mismatch or cancellation of an active MCP request terminates or invalidates the bridge; reconnect and inspect saved state before retrying. `cancel_job` is a separate cooperative operation and leaves the bridge usable. A request cancelled while queued is skipped without invalidating the engine. Closing the MCP connection closes stdin and then terminates an unresponsive native child. Save sessions at meaningful checkpoints for crash recovery.
 
 The MCP process runs with your local account's filesystem permissions. Use it only with trusted local hosts. It is stdio-only: no network listener or authentication service is installed.
 

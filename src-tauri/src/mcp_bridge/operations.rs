@@ -12,6 +12,16 @@ use std::{fs, path::Path, sync::Arc};
 use tauri::Manager;
 
 pub(super) const METHODS: &[&str] = &[
+    "manage_presets",
+    "manage_luts",
+    "fork_session",
+    "export_session_bundle",
+    "import_session_bundle",
+    "diff_versions",
+    "copy_adjustments",
+    "map_coordinates",
+    "preflight",
+    "sample_region",
     "inspect_adjustments",
     "render_compare",
     "save_version",
@@ -68,6 +78,9 @@ impl Bridge {
         }
         self.refresh_job_results()?;
         match method {
+            "manage_presets" => return self.manage_presets(&params),
+            "manage_luts" => return self.manage_luts(&params),
+            "import_session_bundle" => return self.import_session_bundle(&params),
             "get_job" => return self.jobs.get(&params),
             "list_jobs" => return self.jobs.list(),
             "cancel_job" => return self.jobs.cancel(&params),
@@ -75,7 +88,7 @@ impl Bridge {
             "resume_job" => return self.start_denoise_job(&params, true).await,
             "capabilities" => {
                 return Ok(
-                    json!({"protocol_version":1,"engine":"RapidRAW","bridge_version":"1.1.0","methods":METHODS,"workspace":self.paths.root,"adjustment_schema":validation::adjustment_schema(),"coordinate_space":{"masks":"oriented full-resolution pixels before user crop","render_region":"output pixels after user crop, before preview resizing"},"precision":{"render":"float32 GPU / 16-bit readback","formats_16bit":["png","tiff"]},"persistence":"Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.","originals":"Never overwritten. All source files copied to session workspace.","limits":{"masks":32,"history":32,"comparison_variants":4,"comparison_long_edge":2048,"concurrent_denoise_jobs":1,"request_bytes":67108864},"model_policy":"Local generation copies and verifies installed model assets. Only install_model can download missing assets. Only explicitly selected generative retouch can send image data to a connector."}),
+                    json!({"protocol_version":1,"engine":"RapidRAW","bridge_version":"1.2.0","methods":METHODS,"workspace":self.paths.root,"adjustment_schema":validation::adjustment_schema(),"coordinate_space":{"masks":"oriented full-resolution pixels before user crop","render_region":"output pixels after user crop, before preview resizing"},"precision":{"render":"float32 GPU / 16-bit readback","formats_16bit":["png","tiff"]},"persistence":"Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.","originals":"Never overwritten. All source files copied to session workspace.","limits":{"masks":32,"history":32,"comparison_variants":4,"comparison_long_edge":2048,"concurrent_denoise_jobs":1,"request_bytes":67108864},"model_policy":"Local generation copies and verifies installed model assets. Only install_model can download missing assets. Only explicitly selected generative retouch can send image data to a connector."}),
                 );
             }
             "get_engine_settings" => {
@@ -89,9 +102,15 @@ impl Bridge {
                     json!({"sessions":self.sessions.values().map(|s|s.info(false)).collect::<Vec<_>>(),"count":self.sessions.len()}),
                 );
             }
-            "list_presets" => return Ok(json!({"presets":presets(&self.handle)?})),
+            "list_presets" => {
+                let mut items = presets(&self.handle)?;
+                items.extend(self.workspace_presets()?);
+                return Ok(json!({"presets":items}));
+            }
             "list_luts" => {
-                return Ok(json!({"luts":crate::lut_processing::list_luts(self.handle.clone())?}));
+                let mut items = crate::lut_processing::list_luts(self.handle.clone())?;
+                items.extend(self.workspace_luts()?);
+                return Ok(json!({"luts":items}));
             }
             "models" | "install_model" | "merge" => return self.advanced(method, &params).await,
             "batch_export" => return self.batch_export(&params).await,
@@ -103,6 +122,10 @@ impl Bridge {
         let session = self.session(&params)?.clone();
         let id = session.id.clone();
         match method {
+            "fork_session" => return self.fork_session(&session, &params),
+            "export_session_bundle" => return self.export_session_bundle(&session, &params),
+            "diff_versions" => return self.diff_versions(&session, &params),
+            "copy_adjustments" => return self.copy_adjustments(&session, &params),
             "save_version" => return self.save_version(&session, &params),
             "list_versions" => return self.list_versions(&session),
             "restore_version" => return self.restore_version(&session, &params),
@@ -153,6 +176,9 @@ impl Bridge {
         session.check_revision(&params)?;
         self.activate(&id).await?;
         match method {
+            "map_coordinates" => self.map_coordinates(&session, &params),
+            "preflight" => self.preflight(&session, &params),
+            "sample_region" => self.sample_region(&session, &params),
             "render_compare" => self.render_compare(&session, &params),
             "inspect_adjustments" => self.inspect_adjustments(&session, &params),
             "render" => self.render_response(&session, &params),
@@ -283,7 +309,9 @@ impl Bridge {
             }
             "apply_preset" => {
                 let preset_id = required(&params, "preset_id")?;
-                let preset = presets(&self.handle)?
+                let mut installed = presets(&self.handle)?;
+                installed.extend(self.workspace_presets()?);
+                let preset = installed
                     .into_iter()
                     .find(|p| p.id == preset_id)
                     .ok_or("PRESET_NOT_FOUND: Unknown preset id")?;
@@ -294,10 +322,21 @@ impl Bridge {
                 let migration_warnings = migrate_legacy_preset(&mut patch)?;
                 if preset.include_masks == Some(false) {
                     patch.as_object_mut().unwrap().remove("masks");
+                    patch.as_object_mut().unwrap().remove("aiPatches");
                 }
                 if preset.include_crop_transform == Some(false) {
-                    for key in crate::cache_utils::GEOMETRY_KEYS {
-                        patch.as_object_mut().unwrap().remove(*key);
+                    for key in crate::cache_utils::GEOMETRY_KEYS.iter().copied().chain([
+                        "crop",
+                        "rotation",
+                        "orientationSteps",
+                        "flipHorizontal",
+                        "flipVertical",
+                        "aspectRatio",
+                        "lensCorrectionMode",
+                        "lensBlurDepthMap",
+                        "lensBlurEnabled",
+                    ]) {
+                        patch.as_object_mut().unwrap().remove(key);
                     }
                 }
                 let intensity = number(&params, "intensity", 100., 0., 100.)? / 100.;
@@ -327,6 +366,7 @@ impl Bridge {
         let masks = adjustments["masks"]
             .as_array_mut()
             .ok_or("INVALID_ADJUSTMENTS: masks must be an array")?;
+        let mut submask_ids = Vec::new();
         let mask_id = if method == "mask_create" {
             uuid::Uuid::new_v4().to_string()
         } else {
@@ -361,18 +401,28 @@ impl Bridge {
             if method == "mask_remove" {
                 masks.remove(index);
             } else {
-                let patch = params
-                    .get("patch")
-                    .filter(|v| v.is_object())
-                    .ok_or("INVALID_ARGUMENT: patch must be an object")?;
-                if patch.get("id").is_some() {
-                    return Err("INVALID_ARGUMENT: A mask's id cannot be changed".into());
+                if params.get("patch").is_none() && params.get("submask_operations").is_none() {
+                    return Err("INVALID_ARGUMENT: Supply patch or submask_operations".into());
                 }
-                merge_object(&mut masks[index], patch);
-                validation::resolve_curve_patch(
-                    &mut masks[index]["adjustments"],
-                    &patch["adjustments"],
-                );
+                if let Some(patch) = params.get("patch") {
+                    if !patch.is_object() {
+                        return Err("INVALID_ARGUMENT: patch must be an object".into());
+                    }
+                    if patch.get("id").is_some() {
+                        return Err("INVALID_ARGUMENT: A mask's id cannot be changed".into());
+                    }
+                    merge_object(&mut masks[index], patch);
+                    validation::resolve_curve_patch(
+                        &mut masks[index]["adjustments"],
+                        &patch["adjustments"],
+                    );
+                }
+                if let Some(operations) = params.get("submask_operations") {
+                    submask_ids = super::geometry_review::apply_submask_operations(
+                        &mut masks[index],
+                        operations,
+                    )?;
+                }
             }
         }
         let mut result = self.commit(
@@ -382,6 +432,9 @@ impl Bridge {
             method,
         )?;
         result["mask_id"] = json!(mask_id);
+        if !submask_ids.is_empty() {
+            result["submask_ids"] = json!(submask_ids);
+        }
         Ok(result)
     }
 
@@ -499,7 +552,7 @@ fn presets(handle: &tauri::AppHandle) -> Result<Vec<Preset>> {
 /// Older installed presets retained controls for a removed inline negative engine.
 /// Only an explicitly disabled legacy section is safe to discard; ordinary edits
 /// and arbitrary unknown keys still use strict native schema validation.
-fn migrate_legacy_preset(patch: &mut Value) -> Result<Vec<String>> {
+pub(super) fn migrate_legacy_preset(patch: &mut Value) -> Result<Vec<String>> {
     let Some(enabled) = patch.get("enableNegativeConversion") else {
         return Ok(Vec::new());
     };

@@ -11,6 +11,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { createNativeHarness } from './coverage-evidence.mjs';
 
 const binary = process.env.RAPIDRAW_BINARY;
 const source = process.env.RAPIDRAW_TEST_IMAGE;
@@ -30,6 +31,7 @@ let sidecarBefore;
 try { sidecarBefore = await readFile(sourceSidecar); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const modelDirectory = process.env.RAPIDRAW_INSTALLED_MODELS;
 const originalModels = {};
+let coverage, failure;
 if (modelDirectory) {
   for (const name of await readdir(modelDirectory)) {
     if (name.endsWith('.onnx')) originalModels[name] = await digest(join(modelDirectory, name));
@@ -47,7 +49,7 @@ const records = [];
 async function call(method, args = {}, allowedError) {
   const started = performance.now();
   process.stdout.write(`Running ${method}${args.kind ? ` ${args.kind}` : ''}${args.mode ? ` ${args.mode}` : ''}\n`);
-  const result = await client.callTool({ name: `rapidraw_${method}`, arguments: args }, { timeout: 900000 });
+  const result = coverage ? (await coverage.call(method, args, { ...(allowedError instanceof RegExp ? { allowError: allowedError } : {}), ...(allowedError === 'required' ? { expectError: true } : {}) })).result : await client.callTool({ name: `rapidraw_${method}`, arguments: args }, { timeout: 900000 });
   const data = result.structuredContent;
   assert.ok(data, `${method} must return structured content`);
   const record = { method, args, elapsed_ms: Math.round(performance.now() - started), is_error: !!result.isError, result: data };
@@ -56,7 +58,7 @@ async function call(method, args = {}, allowedError) {
   records.push(record);
   await writeEvidence('running');
   if (result.isError) {
-    assert.ok(allowedError && allowedError.test(JSON.stringify(data)), `${method}: ${JSON.stringify(data)}`);
+    assert.ok(allowedError === 'required' || allowedError instanceof RegExp && allowedError.test(JSON.stringify(data)), `${method}: ${JSON.stringify(data)}`);
   } else if (allowedError === 'required') {
     assert.fail(`${method} should reject the invalid request`);
   }
@@ -72,7 +74,10 @@ async function preview(result, label) {
   await writeFile(join(workspace, `${stamp}-${label}.png`), Buffer.from(image.data, 'base64'));
 }
 try {
-  await client.connect(transport);
+  if (process.env.RAPIDRAW_COVERAGE === '1') {
+    coverage = await createNativeHarness({ suite: 'advanced-mechanical', workspace, binary, timeout: 900000 });
+    await coverage.fixture(source, 'Source for small native derived fixtures; merges/negative/AI tests are mechanical, not photographic quality');
+  } else await client.connect(transport);
   const opened = (await call('open_photo', { path: source, inherit_sidecar: false })).data;
   const rawSession = opened.session_id;
   const seedPath = join(workspace, 'exports', `${stamp}-advanced-seed.jpg`);
@@ -106,21 +111,27 @@ try {
   await preview((await call('render', { session_id, format: 'png', long_edge: 512 })).result, 'lens-blur');
   await call('set_adjustments', { session_id, patch: { lensBlurEnabled: false } });
 
-  for (const mode of ['clone', 'heal', 'retouch', 'liquify', 'inpaint']) {
+  const retouchCases = [
+    ...['clone', 'heal', 'retouch', 'inpaint'].map((mode) => ({ mode })),
+    ...['push', 'pinch', 'expand', 'twirl'].map((liquifyMode) => ({ mode: 'liquify', liquifyMode })),
+  ];
+  for (const { mode, liquifyMode } of retouchCases) {
+    const label = liquifyMode ? `${mode}-${liquifyMode}` : mode;
     const kind = mode === 'inpaint' ? 'brush' : mode;
     const parameters = {
       lines: [{ tool: 'brush', brushSize: Math.max(18, width * 0.05), feather: 0.6, points: [{ x: width * 0.45, y: height * 0.45 }, { x: width * 0.5, y: height * 0.5 }] }],
       ...(mode === 'retouch' ? { intensity: 50 } : {}),
-      ...(mode === 'liquify' ? { pressure: 40, liquifyMode: 'push' } : {}),
+      ...(mode === 'liquify' ? { pressure: 40, liquifyMode } : {}),
     };
     const retouched = await call('retouch', { session_id, mode,
-      sub_masks: [{ id: `${stamp}-${mode}-stroke`, type: kind, visible: true, mode: 'additive', parameters }],
+      sub_masks: [{ id: `${stamp}-${label}-stroke`, type: kind, visible: true, mode: 'additive', parameters }],
       ...(['clone', 'heal'].includes(mode) ? { source_point: { x: width * 0.2, y: height * 0.25 } } : {}),
     });
     assert.ok(retouched.data.patch_id);
     assert.ok(retouched.data.mask_statistics.nonzero_fraction > 0);
-    await preview(retouched.result, `${mode}-mask`);
-    await preview((await call('render', { session_id, format: 'png', long_edge: 512 })).result, `${mode}-result`);
+    await preview(retouched.result, `${label}-mask`);
+    await preview((await call('render', { session_id, format: 'png', long_edge: 512 })).result, `${label}-result`);
+    if (coverage && liquifyMode) await coverage.check(`liquify_${liquifyMode}_patch_and_native_render`, ['tool:retouch', `adjustment:aiPatches[].subMasks[]<liquify>.parameters.liquifyMode=${JSON.stringify(liquifyMode)}`], async () => ({ patch_id: retouched.data.patch_id, nonempty_mask: true, native_render_saved: `${label}-result`, photographic_quality: 'not_reviewed' }));
     await call('undo', { session_id });
   }
   await call('retouch', { session_id, mode: 'generative', sub_masks: [{ id: `${stamp}-invalid-remote`, type: 'all', visible: true, mode: 'additive', parameters: {} }] }, /INVALID_ARGUMENT|GENERATION_NOT_CONFIGURED/);
@@ -159,12 +170,14 @@ try {
   assert.deepEqual(sidecarAfter, sidecarBefore, 'Original sidecar changed');
   for (const [name, before] of Object.entries(originalModels)) assert.equal(await digest(join(modelDirectory, name)), before, `Installed model ${name} changed`);
   await writeEvidence('passed');
+  if (coverage) await coverage.check('advanced_mechanical_assertions_and_source_preservation', [], async () => ({ source_unchanged: true, installed_models_unchanged: true, successful_calls: records.filter((r) => !r.is_error).length, fixture_kind: 'small derived photo; repeated-source HDR/focus/panorama', photographic_quality: 'not_reviewed', detail: 'Assertions inside the legacy runner passed; successful call coverage is separate from photographic quality.' }));
   console.log(JSON.stringify({ status: 'passed', workspace, calls: records.length, evidence: join(workspace, `${stamp}-advanced-evidence.json`) }, null, 2));
 } catch (error) {
+  failure = error;
   await writeEvidence('failed', error.message);
   throw error;
 } finally {
-  await client.close();
+  if (coverage) await coverage.close(failure); else await client.close();
   assert.equal(await digest(source), sourceDigest, 'Original source changed');
   let finalSidecar;
   try { finalSidecar = await readFile(sourceSidecar); } catch (error) { if (error.code !== 'ENOENT') throw error; }

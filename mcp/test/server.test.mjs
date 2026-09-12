@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { toolDefinitions } from '../dist/tools.js';
 const serverPath = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 const binary = fileURLToPath(new URL('./fixtures/bridge.mjs', import.meta.url));
 
@@ -24,7 +25,7 @@ async function connect(t) {
 test('real SDK stdio handshake exposes comprehensive strict tools, resources and workflow prompt', async (t) => {
   const { client, diagnostics } = await connect(t);
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 47);
+  assert.equal(tools.length, toolDefinitions.length);
   for (const tool of tools) {
     assert.ok(tool.name.startsWith('rapidraw_'));
     assert.equal(tool.inputSchema.additionalProperties, false);
@@ -68,6 +69,21 @@ test('invalid tool arguments and engine errors remain actionable errors', async 
   assert.ok(!followup.isError);
 });
 
+test('background operation arguments receive the same strict native tool schema validation', async (t) => {
+  const { client } = await connect(t);
+  for (const args of [
+    { operation: 'export', arguments: { session_id: 'source', path: 'out.png', quality: 101 } },
+    { operation: 'export', arguments: { session_id: 'source', path: 'out.png', misspelled: true } },
+    { operation: 'merge', arguments: { kind: 'hdr', paths: ['/one.png'] } },
+    { operation: 'retouch', arguments: { session_id: 'source', mode: 'generative', sub_masks: [] } },
+  ]) {
+    const result = await client.callTool({ name: 'rapidraw_start_operation', arguments: args });
+    assert.equal(result.isError, true);
+  }
+  const jobs = await client.callTool({ name: 'rapidraw_list_operation_jobs', arguments: {} });
+  assert.equal(jobs.isError, undefined); assert.deepEqual(jobs.structuredContent.jobs, []);
+});
+
 test('client disconnect terminates the owned native process', async (t) => {
   const { client, pidFile } = await connect(t);
   await client.callTool({ name: 'rapidraw_capabilities', arguments: {} });
@@ -107,7 +123,7 @@ test('official legacy SDK v1 client interoperates through the MCP 2025 initializ
   t.after(() => client.close());
   await client.connect(transport);
   assert.match(offeredVersion, /^2025-/);
-  assert.equal((await client.listTools()).tools.length, 47);
+  assert.equal((await client.listTools()).tools.length, toolDefinitions.length);
   const preview = await client.callTool({ name: 'rapidraw_render', arguments: { session_id: 'legacy-test', long_edge: 1600 } });
   assert.ok(preview.content.some((item) => item.type === 'image'));
   assert.equal(preview.structuredContent.width, 1);
@@ -168,4 +184,71 @@ test('job and named-version contracts reject invalid identifiers and expose corr
   }
   assert.equal(tools.find((tool) => tool.name === 'rapidraw_cancel_job').annotations.idempotentHint, true);
   assert.equal(tools.find((tool) => tool.name === 'rapidraw_start_denoise').annotations.readOnlyHint, false);
+});
+
+test('oversized multi-image responses return a bounded error and preserve default SDK stdio connection', async (t) => {
+  const { client } = await connect(t);
+  const result = await client.callTool({ name: 'rapidraw_render', arguments: { session_id: 'oversized-images', format: 'png' } });
+  assert.equal(result.isError, true); assert.equal(result.structuredContent.error.code, 'RESPONSE_TOO_LARGE');
+  assert.equal(result.structuredContent.error.max_response_bytes, 8 * 1024 * 1024);
+  assert.ok(result.structuredContent.error.response_bytes > 10 * 1024 * 1024);
+  assert.equal(result.structuredContent.recovery.request_completed, true); assert.equal(result.structuredContent.recovery.mutation_may_have_completed, false);
+  assert.equal(result.structuredContent.recovery.session_id, 'oversized-images'); assert.ok(result.content.every((block) => block.type === 'text'));
+  assert.match(result.structuredContent.recovery.next_step, /smaller long_edge/);
+  const followup = await client.callTool({ name: 'rapidraw_get_session', arguments: { session_id: 'oversized-images', include_adjustments: false } });
+  assert.ok(!followup.isError);
+  const preview = await client.callTool({ name: 'rapidraw_render', arguments: { session_id: 'bounded-retry', format: 'jpeg', long_edge: 800 } });
+  assert.ok(!preview.isError); assert.ok(preview.content.some((block) => block.type === 'image'));
+  assert.equal((await client.callTool({ name: 'rapidraw_capabilities', arguments: {} })).structuredContent.transport_limits.max_response_bytes, 8 * 1024 * 1024);
+});
+
+test('oversized completed mutation preserves recovery IDs/revision without replaying the mutation', async (t) => {
+  const { client } = await connect(t);
+  const result = await client.callTool({ name: 'rapidraw_mask_generate', arguments: { session_id: 'oversized-mutation', kind: 'foreground' } });
+  assert.equal(result.structuredContent.error.code, 'RESPONSE_TOO_LARGE');
+  const recovery = result.structuredContent.recovery;
+  assert.equal(recovery.mutation_may_have_completed, true); assert.equal(recovery.retry_mutation, false); assert.equal(recovery.mask_id, 'mask-created'); assert.equal(recovery.revision, 3);
+  const state = await client.callTool({ name: 'rapidraw_get_session', arguments: { session_id: recovery.session_id, include_adjustments: false } });
+  assert.equal(state.structuredContent.mutation_count, 1); assert.equal(state.structuredContent.revision, 3);
+});
+
+test('oversized UTF-8 metadata and resources preserve the connection and permit smaller state reads', async (t) => {
+  const { client } = await connect(t);
+  const state = await client.callTool({ name: 'rapidraw_get_session', arguments: { session_id: 'oversized-state', include_adjustments: true } });
+  assert.equal(state.structuredContent.error.code, 'RESPONSE_TOO_LARGE'); assert.ok(state.structuredContent.error.response_bytes > 10 * 1024 * 1024);
+  // A resource stores JSON once, so the same state can fit while its duplicated
+  // tool metadata exceeds the limit. A larger resource must fail safely too.
+  const resource = await client.readResource({ uri: 'rapidraw://sessions/oversized-state' });
+  assert.ok(resource.contents[0].text.length > 3 * 1024 * 1024);
+  await assert.rejects(client.readResource({ uri: 'rapidraw://sessions/oversized-resource' }), /RESPONSE_TOO_LARGE/);
+  assert.ok(!(await client.callTool({ name: 'rapidraw_get_session', arguments: { session_id: 'oversized-state', include_adjustments: false } })).isError);
+});
+
+test('long native errors and excessive prompt arguments cannot overflow outbound stdio', async (t) => {
+  const { client } = await connect(t);
+  const error = await client.callTool({ name: 'rapidraw_render', arguments: { session_id: 'oversized-error' } });
+  assert.equal(error.structuredContent.error.code, 'NATIVE_FAILURE'); assert.equal(error.structuredContent.error.message_truncated, true); assert.equal(error.structuredContent.error.message.length, 4096);
+  await assert.rejects(client.getPrompt({ name: 'pro_photo_edit', arguments: { path: '/fixture.png', intent: 'x'.repeat(65537) } }));
+  assert.ok(!(await client.callTool({ name: 'rapidraw_get_session', arguments: { session_id: 'still-alive' } })).isError);
+});
+
+test('oversized batches keep bounded item IDs and explicitly disclose truncated recovery details', async () => {
+  const { toolResult, MCP_RESPONSE_BUDGET_BYTES } = await import('../dist/server.js');
+  const result = toolResult({ payload: 'x'.repeat(6 * 1024 * 1024), total: 20, items: Array.from({ length: 20 }, (_, i) => ({ ok: true, result: { session_id: `result-${i}`, path: `/exports/${i}.png`, submask_ids: ['one', 'two'] } })) }, { method: 'batch_export', readOnly: false });
+  assert.equal(result.structuredContent.error.code, 'RESPONSE_TOO_LARGE'); assert.equal(result.structuredContent.recovery.items_count, 20); assert.equal(result.structuredContent.recovery.items_truncated, true);
+  assert.equal(result.structuredContent.recovery.items.length, 16); assert.equal(result.structuredContent.recovery.items[0].result.session_id, 'result-0');
+  assert.deepEqual(result.structuredContent.recovery.items[0].result.submask_ids, ['one', 'two']); assert.ok(Buffer.byteLength(JSON.stringify(result)) < MCP_RESPONSE_BUDGET_BYTES);
+});
+
+
+test('subject point and prior reference schema reaches native without losing coordinates', async (t) => {
+  const { client } = await connect(t);
+  const args = { session_id: 'subject', expected_revision: 4, kind: 'subject', include_points: [{ x: 12.5, y: 17 }], exclude_points: [{ x: 2, y: 3 }], region: { x: 1, y: 2, width: 30, height: 40 }, refine: { mask_id: 'parent', sub_mask_id: 'child' } };
+  const response = await client.callTool({ name: 'rapidraw_mask_generate', arguments: args });
+  assert.ok(!response.isError); assert.deepEqual(response.structuredContent.params, args);
+  for (const patch of [{ include_points: [{ x: -1, y: 0 }] }, { exclude_points: Array(65).fill({ x: 1, y: 2 }) }, { refine: { mask_id: 'parent', typo: 'child' } }, { include_points: [{ x: 1, y: 2, label: 0 }] }]) {
+    const error = await client.callTool({ name: 'rapidraw_mask_generate', arguments: { ...args, ...patch } });
+    assert.equal(error.isError, true);
+  }
+  const next = await client.callTool({ name: 'rapidraw_get_session', arguments: { session_id: 'subject' } }); assert.ok(!next.isError);
 });

@@ -545,6 +545,7 @@ struct FlareParams {
 pub struct GpuProcessor {
     context: GpuContext,
     high_precision: bool,
+    tile_overlap: u32,
     blur_bgl: wgpu::BindGroupLayout,
     h_blur_pipeline: wgpu::ComputePipeline,
     v_blur_pipeline: wgpu::ComputePipeline,
@@ -582,6 +583,26 @@ pub struct GpuProcessor {
 
 const FLARE_MAP_SIZE: u32 = 512;
 
+/// Four native blur passes use base radii 1, 3.5, 8 and 40 pixels at 1080px.
+/// The vertical pass samples the intermediate tile, so its support must fit
+/// inside the overlap as well as inside the full input image.
+fn processing_tile_overlap(dimensions: (u32, u32)) -> u32 {
+    ((40.0 * dimensions.0.min(dimensions.1) as f32 / 1080.0).ceil() as u32).max(128)
+}
+
+/// A mask-only flare still needs the shared flare source map. Use the upper
+/// bound of enabled local contributions; the main shader weights their actual
+/// influence per pixel. Global-only recipes retain exactly their old amount.
+fn flare_map_amount(adjustments: &AllAdjustments) -> f32 {
+    adjustments.global.flare_amount.max(0.0)
+        + adjustments
+            .mask_adjustments
+            .iter()
+            .take((adjustments.mask_count as usize).min(MAX_MASKS))
+            .map(|mask| mask.flare_amount.max(0.0))
+            .sum::<f32>()
+}
+
 impl GpuProcessor {
     pub fn new(context: GpuContext, max_width: u32, max_height: u32) -> Result<Self, String> {
         Self::new_with_precision(context, max_width, max_height, false)
@@ -595,6 +616,27 @@ impl GpuProcessor {
         max_height: u32,
         high_precision: bool,
     ) -> Result<Self, String> {
+        let overlap = processing_tile_overlap((max_width, max_height));
+        Self::new_with_precision_overlap(context, max_width, max_height, high_precision, overlap)
+    }
+
+    fn new_with_precision_overlap(
+        context: GpuContext,
+        max_width: u32,
+        max_height: u32,
+        high_precision: bool,
+        tile_overlap: u32,
+    ) -> Result<Self, String> {
+        let tile_extent = 2048u32
+            .checked_add(tile_overlap.checked_mul(2).ok_or("Blur overlap overflow")?)
+            .ok_or("Blur tile extent overflow")?;
+        if max_width.min(tile_extent) > context.limits.max_texture_dimension_2d
+            || max_height.min(tile_extent) > context.limits.max_texture_dimension_2d
+        {
+            return Err(
+                "Native blur radius exceeds the device's reusable texture dimensions".into(),
+            );
+        }
         let device = &context.device;
         const MAX_MASK_BINDINGS: u32 = 1;
         let output_format = if high_precision {
@@ -1033,11 +1075,8 @@ impl GpuProcessor {
         let dummy_lut_view = dummy_lut_texture.create_view(&Default::default());
         let dummy_lut_sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
 
-        const TILE_SIZE: u32 = 2048;
-        const TILE_OVERLAP: u32 = 128;
-
-        let clamped_tile_width = max_width.min(TILE_SIZE + TILE_OVERLAP * 2);
-        let clamped_tile_height = max_height.min(TILE_SIZE + TILE_OVERLAP * 2);
+        let clamped_tile_width = max_width.min(tile_extent);
+        let clamped_tile_height = max_height.min(tile_extent);
 
         let clamped_tile_size = wgpu::Extent3d {
             width: clamped_tile_width,
@@ -1138,6 +1177,7 @@ impl GpuProcessor {
         Ok(Self {
             context,
             high_precision,
+            tile_overlap,
             blur_bgl,
             h_blur_pipeline,
             v_blur_pipeline,
@@ -1185,7 +1225,22 @@ impl GpuProcessor {
         }
         let device = &self.context.device;
         let queue = &self.context.queue;
-        let scale = (width.min(height) as f32) / 1080.0;
+        let effect_width = if request.adjustments.image_width > 0 {
+            request.adjustments.image_width
+        } else {
+            width
+        };
+        let effect_height = if request.adjustments.image_height > 0 {
+            request.adjustments.image_height
+        } else {
+            height
+        };
+        let scale = (effect_width.min(effect_height) as f32) / 1080.0;
+        if processing_tile_overlap((effect_width, effect_height)) > self.tile_overlap {
+            return Err(
+                "Native processor must be recreated for the larger full-image blur radius".into(),
+            );
+        }
         const MAX_MASK_BINDINGS: u32 = 1;
 
         let bounds = request.roi.unwrap_or(Roi {
@@ -1287,16 +1342,17 @@ impl GpuProcessor {
         };
 
         let adjustments = request.adjustments;
-        if adjustments.global.flare_amount > 0.0 {
+        let flare_amount = flare_map_amount(&adjustments);
+        if flare_amount > 0.0 && adjustments.precomputed_flare == 0 {
             let mut encoder = device.create_command_encoder(&Default::default());
 
-            let aspect_ratio = if height > 0 {
-                width as f32 / height as f32
+            let aspect_ratio = if effect_height > 0 {
+                effect_width as f32 / effect_height as f32
             } else {
                 1.0
             };
             let f_params = FlareParams {
-                amount: adjustments.global.flare_amount,
+                amount: flare_amount,
                 is_raw: adjustments.global.is_raw_image,
                 exposure: adjustments.global.exposure,
                 brightness: adjustments.global.brightness,
@@ -1387,7 +1443,7 @@ impl GpuProcessor {
         }
 
         const TILE_SIZE: u32 = 2048;
-        const TILE_OVERLAP: u32 = 128;
+        let overlap = self.tile_overlap;
 
         let bytes_per_pixel = if self.high_precision { 16 } else { 4 };
         let mut final_pixels = vec![
@@ -1421,10 +1477,10 @@ impl GpuProcessor {
                 let tile_width = x_end - x_start;
                 let tile_height = y_end - y_start;
 
-                let input_x_start = (x_start as i32 - TILE_OVERLAP as i32).max(0) as u32;
-                let input_y_start = (y_start as i32 - TILE_OVERLAP as i32).max(0) as u32;
-                let input_x_end = (x_end + TILE_OVERLAP).min(width);
-                let input_y_end = (y_end + TILE_OVERLAP).min(height);
+                let input_x_start = x_start.saturating_sub(overlap);
+                let input_y_start = y_start.saturating_sub(overlap);
+                let input_x_end = (x_end + overlap).min(width);
+                let input_y_end = (y_end + overlap).min(height);
                 let input_width = input_x_end - input_x_start;
                 let input_height = input_y_end - input_y_start;
 
@@ -1588,7 +1644,7 @@ impl GpuProcessor {
                     }),
                 });
 
-                let use_flare = adjustments.global.flare_amount > 0.0;
+                let use_flare = flare_amount > 0.0;
                 bind_group_entries.push(wgpu::BindGroupEntry {
                     binding: 9 + MAX_MASK_BINDINGS,
                     resource: wgpu::BindingResource::TextureView(if use_flare {
@@ -1702,12 +1758,8 @@ pub fn process_and_get_dynamic_image_high_precision(
     request: RenderRequest,
 ) -> Result<DynamicImage, String> {
     let (width, height) = base_image.dimensions();
-    validate_precision_request(
-        width,
-        height,
-        context.limits.max_texture_dimension_2d,
-        &request,
-    )?;
+    validate_precision_request(width, height, u32::MAX, &request)?;
+    high_precision_render_preflight((width, height), &request.adjustments, context)?;
     let allocation_scope = context
         .device
         .push_error_scope(wgpu::ErrorFilter::OutOfMemory);
@@ -1715,7 +1767,13 @@ pub fn process_and_get_dynamic_image_high_precision(
     let validation_scope = context
         .device
         .push_error_scope(wgpu::ErrorFilter::Validation);
-    let result = render_high_precision(context, base_image, request);
+    let result = if width > context.limits.max_texture_dimension_2d
+        || height > context.limits.max_texture_dimension_2d
+    {
+        render_streamed_precision(context, base_image, request, 4096)
+    } else {
+        render_high_precision(context, base_image, request)
+    };
     // Always drain every scope, including after a CPU-side validation failure.
     let validation_error = pollster::block_on(validation_scope.pop());
     let internal_error = pollster::block_on(internal_scope.pop());
@@ -1733,6 +1791,16 @@ fn render_high_precision(
 ) -> Result<DynamicImage, String> {
     let (width, height) = base_image.dimensions();
     let processor = GpuProcessor::new_with_precision(context.clone(), width, height, true)?;
+    render_precision_with_processor(context, &processor, base_image, request)
+}
+
+fn render_precision_with_processor(
+    context: &GpuContext,
+    processor: &GpuProcessor,
+    base_image: &DynamicImage,
+    request: RenderRequest,
+) -> Result<DynamicImage, String> {
+    let (width, height) = base_image.dimensions();
     let input = base_image.to_rgba32f();
     if input.as_raw().iter().any(|channel| !channel.is_finite()) {
         return Err("Input image contains non-finite pixels".to_string());
@@ -1761,6 +1829,190 @@ fn render_high_precision(
     let (pixels, out_width, out_height, _, _) =
         processor.run(&view, width, height, request, false, false)?;
     rgba32_bytes_to_rgba16(out_width, out_height, &pixels)
+}
+
+/// Validate the exact bounded input tile allocation used by native rendering.
+/// `None` means a full input texture fits; a tuple is (halo, default core).
+pub(crate) fn high_precision_render_preflight(
+    dimensions: (u32, u32),
+    adjustments: &AllAdjustments,
+    context: &GpuContext,
+) -> Result<Option<(u32, u32)>, String> {
+    let (width, height) = dimensions;
+    let limit = context.limits.max_texture_dimension_2d;
+    if width == 0 || height == 0 {
+        return Err("Image dimensions must be nonzero".into());
+    }
+    if width <= limit && height <= limit {
+        return Ok(None);
+    }
+    streaming_tile_plan(dimensions, adjustments, limit).map(Some)
+}
+
+fn streaming_tile_plan(
+    dimensions: (u32, u32),
+    adjustments: &AllAdjustments,
+    limit: u32,
+) -> Result<(u32, u32), String> {
+    let (width, height) = dimensions;
+    if u64::from(width) * u64::from(height) > 100_000_000 {
+        return Err("Streamed native rendering is limited to 100 megapixels per image".into());
+    }
+    let scale = width.min(height) as f32 / 1080.0;
+    let ca = adjustments
+        .global
+        .chromatic_aberration_red_cyan
+        .abs()
+        .max(adjustments.global.chromatic_aberration_blue_yellow.abs());
+    let radius = (40.0 * scale)
+        .ceil()
+        .max(width.max(height) as f32 * ca)
+        .max(32.0) as u32;
+    let halo = radius
+        .div_ceil(2048)
+        .checked_mul(2048)
+        .ok_or("Effect radius exceeds tile limits")?;
+    let margin = halo
+        .checked_mul(2)
+        .and_then(|v| v.checked_add(2048))
+        .ok_or("Effect radius exceeds tile limits")?;
+    if margin > limit {
+        return Err("Required effect halo exceeds GPU tile limits; reduce spatial effect radius or use a smaller image".into());
+    }
+    let core = 4096.min((limit - halo * 2) / 2048 * 2048);
+    Ok((halo, core))
+}
+
+/// Keep input/mask textures within device limits. The shader receives the real
+/// image extent/origin so grain, vignette, CA, mask coordinates and effect scale
+/// remain continuous. Overlapping windows align with the native 2048px grid.
+fn render_streamed_precision(
+    context: &GpuContext,
+    source: &DynamicImage,
+    request: RenderRequest,
+    requested_core: u32,
+) -> Result<DynamicImage, String> {
+    let (width, height) = source.dimensions();
+    let (halo, default_core) = streaming_tile_plan(
+        (width, height),
+        &request.adjustments,
+        context.limits.max_texture_dimension_2d,
+    )?;
+    let core = requested_core.max(2048).min(default_core);
+    let bounds = request.roi.unwrap_or(Roi {
+        x: 0,
+        y: 0,
+        width,
+        height,
+    });
+    let processor = GpuProcessor::new_with_precision_overlap(
+        context.clone(),
+        (core + halo * 2).min(width),
+        (core + halo * 2).min(height),
+        true,
+        processing_tile_overlap((width, height)),
+    )?;
+    let flare_amount = flare_map_amount(&request.adjustments);
+    if flare_amount > 0.0 {
+        // The native flare threshold samples a fixed 512x512 map. Reproduce its
+        // bilinear samples in float32, then reuse one global flare map for tiles.
+        let input = source.to_rgba32f();
+        let sampled = ImageBuffer::from_fn(FLARE_MAP_SIZE, FLARE_MAP_SIZE, |x, y| {
+            let sx = (x as f32 + 0.5) / FLARE_MAP_SIZE as f32 * width as f32 - 0.5;
+            let sy = (y as f32 + 0.5) / FLARE_MAP_SIZE as f32 * height as f32 - 0.5;
+            let ix = sx.floor();
+            let iy = sy.floor();
+            let fx = sx - ix;
+            let fy = sy - iy;
+            let mut channels = [0.0; 4];
+            for (c, value) in channels.iter_mut().enumerate() {
+                let pixel = |dx: f32, dy: f32| {
+                    input
+                        .get_pixel(
+                            (ix + dx).clamp(0.0, width as f32 - 1.0) as u32,
+                            (iy + dy).clamp(0.0, height as f32 - 1.0) as u32,
+                        )
+                        .0[c]
+                };
+                *value = (pixel(0.0, 0.0) * (1.0 - fx) + pixel(1.0, 0.0) * fx) * (1.0 - fy)
+                    + (pixel(0.0, 1.0) * (1.0 - fx) + pixel(1.0, 1.0) * fx) * fy;
+            }
+            Rgba(channels)
+        });
+        drop(input);
+        let mut adjustments = request.adjustments;
+        adjustments.image_width = width;
+        adjustments.image_height = height;
+        adjustments.global.flare_amount = flare_amount;
+        adjustments.mask_count = 0;
+        render_precision_with_processor(
+            context,
+            &processor,
+            &DynamicImage::ImageRgba32F(sampled),
+            RenderRequest {
+                adjustments,
+                mask_bitmaps: &[],
+                lut: request.lut.clone(),
+                roi: Some(Roi {
+                    x: 0,
+                    y: 0,
+                    width: 1,
+                    height: 1,
+                }),
+            },
+        )?;
+    }
+    let mut output = ImageBuffer::<Rgba<u16>, Vec<u16>>::new(bounds.width, bounds.height);
+    let end_x = bounds.x + bounds.width;
+    let end_y = bounds.y + bounds.height;
+    for gy in (bounds.y / core * core..end_y).step_by(core as usize) {
+        for gx in (bounds.x / core * core..end_x).step_by(core as usize) {
+            let ox = gx.saturating_sub(halo);
+            let oy = gy.saturating_sub(halo);
+            let ex = (gx + core + halo).min(width);
+            let ey = (gy + core + halo).min(height);
+            let x = gx.max(bounds.x);
+            let y = gy.max(bounds.y);
+            let w = (gx + core).min(end_x) - x;
+            let h = (gy + core).min(end_y) - y;
+            let tile = source.crop_imm(ox, oy, ex - ox, ey - oy);
+            let masks = request
+                .mask_bitmaps
+                .iter()
+                .map(|mask| image::imageops::crop_imm(mask, ox, oy, ex - ox, ey - oy).to_image())
+                .collect::<Vec<_>>();
+            let mut adjustments = request.adjustments;
+            adjustments.image_width = width;
+            adjustments.image_height = height;
+            adjustments.image_origin_x = ox;
+            adjustments.image_origin_y = oy;
+            adjustments.precomputed_flare = 1;
+            let rendered = render_precision_with_processor(
+                context,
+                &processor,
+                &tile,
+                RenderRequest {
+                    adjustments,
+                    mask_bitmaps: &masks,
+                    lut: request.lut.clone(),
+                    roi: Some(Roi {
+                        x: x - ox,
+                        y: y - oy,
+                        width: w,
+                        height: h,
+                    }),
+                },
+            )?
+            .to_rgba16();
+            image::imageops::replace(
+                &mut output,
+                &rendered,
+                i64::from(x - bounds.x),
+                i64::from(y - bounds.y),
+            );
+        }
+    }
+    Ok(DynamicImage::ImageRgba16(output))
 }
 
 fn validate_precision_request(
@@ -2446,5 +2698,237 @@ mod precision_tests {
             process_and_get_dynamic_image_high_precision(&context, &source, effects).unwrap();
         assert_eq!(effect_output.color(), image::ColorType::Rgba16);
         assert_eq!(effect_output.dimensions(), source.dimensions());
+
+        // Force bounded textures on an image that also fits the ordinary path,
+        // checking global spatial effects, masks and seams against that oracle.
+        let wide = DynamicImage::ImageRgb16(ImageBuffer::from_fn(8209, 129, |x, y| {
+            image::Rgb([
+                ((x * 31 + y * 71) % 60000) as u16,
+                ((x * 17 + y * 101) % 55000) as u16,
+                ((x * 11 + y * 37) % 50000) as u16,
+            ])
+        }));
+        let mask = ImageBuffer::from_fn(8209, 129, |x, y| Luma([((x / 19 + y) % 256) as u8]));
+        let mut controls = request(None).adjustments;
+        controls.global.vignette_amount = -0.3;
+        controls.global.grain_amount = 0.1;
+        controls.global.clarity = 0.15;
+        controls.global.structure = 0.1;
+        controls.global.flare_amount = 0.2;
+        controls.global.chromatic_aberration_red_cyan = 0.002;
+        controls.mask_count = 1;
+        controls.mask_adjustments[0].exposure = 0.3;
+        let masks = [mask];
+        let make = || RenderRequest {
+            adjustments: controls,
+            mask_bitmaps: &masks,
+            lut: None,
+            roi: None,
+        };
+        let whole = process_and_get_dynamic_image_high_precision(&context, &wide, make())
+            .unwrap()
+            .to_rgba16();
+        let streamed = render_streamed_precision(&context, &wide, make(), 2048)
+            .unwrap()
+            .to_rgba16();
+        let maximum = whole
+            .as_raw()
+            .iter()
+            .zip(streamed.as_raw())
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap();
+        assert!(
+            maximum <= 32,
+            "Streamed spatial effect/seam mismatch: {maximum}"
+        );
+        let beyond = DynamicImage::ImageRgb16(ImageBuffer::from_fn(
+            context.limits.max_texture_dimension_2d + 17,
+            3,
+            |x, _| image::Rgb([(x % 65536) as u16, 32000, 12000]),
+        ));
+        let large =
+            process_and_get_dynamic_image_high_precision(&context, &beyond, request(None)).unwrap();
+        assert_eq!(large.dimensions(), beyond.dimensions());
+    }
+    #[test]
+    fn blur_overlap_and_flare_requirements_include_full_extent_and_enabled_masks() {
+        assert_eq!(processing_tile_overlap((25184, 256)), 128);
+        assert_eq!(processing_tile_overlap((4097, 4099)), 152);
+        let mut controls = request(None).adjustments;
+        controls.global.flare_amount = 0.0;
+        controls.mask_adjustments[0].flare_amount = 0.7;
+        controls.mask_adjustments[1].flare_amount = 0.9;
+        assert_eq!(flare_map_amount(&controls), 0.0);
+        controls.mask_count = 1;
+        assert_eq!(flare_map_amount(&controls), 0.7);
+        controls.global.flare_amount = 0.2;
+        assert!((flare_map_amount(&controls) - 0.9).abs() < 1e-6);
+    }
+
+    #[test]
+    #[ignore = "requires a GPU adapter and bounded tall-image textures; run with --ignored"]
+    fn gpu_mask_only_flare_and_tall_blur_region_invariance() {
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("GPU adapter required");
+        let limits = adapter.limits();
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: limits.clone(),
+            ..Default::default()
+        }))
+        .unwrap();
+        let context = GpuContext {
+            device: Arc::new(device),
+            queue: Arc::new(queue),
+            limits,
+            display: Arc::new(std::sync::Mutex::new(None)),
+        };
+        let flare_source = DynamicImage::ImageRgb16(ImageBuffer::from_fn(2055, 257, |x, y| {
+            let bright = (260..480).contains(&x) && (65..180).contains(&y);
+            image::Rgb(if bright {
+                [65000, 63000, 60000]
+            } else {
+                [15000, 12000, 10000]
+            })
+        }));
+        let baseline =
+            process_and_get_dynamic_image_high_precision(&context, &flare_source, request(None))
+                .unwrap()
+                .to_rgba16();
+        let mut global = request(None).adjustments;
+        global.global.flare_amount = 0.8;
+        let global_image = process_and_get_dynamic_image_high_precision(
+            &context,
+            &flare_source,
+            RenderRequest {
+                adjustments: global,
+                mask_bitmaps: &[],
+                lut: None,
+                roi: None,
+            },
+        )
+        .unwrap()
+        .to_rgba16();
+        let mut local = request(None).adjustments;
+        local.mask_count = 1;
+        local.mask_adjustments[0].flare_amount = 0.8;
+        let masks = [image::GrayImage::from_pixel(2055, 257, Luma([255]))];
+        let local_request = || RenderRequest {
+            adjustments: local,
+            mask_bitmaps: &masks,
+            lut: None,
+            roi: None,
+        };
+        let local_image =
+            process_and_get_dynamic_image_high_precision(&context, &flare_source, local_request())
+                .unwrap()
+                .to_rgba16();
+        let changed = baseline
+            .as_raw()
+            .iter()
+            .zip(local_image.as_raw())
+            .filter(|(a, b)| a.abs_diff(**b) > 10)
+            .count();
+        assert!(
+            changed > 1000,
+            "Mask-only flare must visibly change actual rendered samples ({changed})"
+        );
+        let max_global_local = global_image
+            .as_raw()
+            .iter()
+            .zip(local_image.as_raw())
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap();
+        assert!(
+            max_global_local <= 2,
+            "Full-mask local flare differs from same global flare: {max_global_local}"
+        );
+        let streamed = render_streamed_precision(&context, &flare_source, local_request(), 2048)
+            .unwrap()
+            .to_rgba16();
+        let max_stream = local_image
+            .as_raw()
+            .iter()
+            .zip(streamed.as_raw())
+            .map(|(a, b)| a.abs_diff(*b))
+            .max()
+            .unwrap();
+        assert!(
+            max_stream <= 32,
+            "Streamed primer missed local flare: {max_stream}"
+        );
+        drop((
+            baseline,
+            global_image,
+            local_image,
+            streamed,
+            flare_source,
+            masks,
+        ));
+
+        // The old fixed128px overlap truncated the152px vertical structure
+        // blur. Sparse crops bound output memory while exercising the real
+        // full4097x4099 source, global2048px tile boundaries and stream path.
+        let tall = DynamicImage::ImageRgb16(ImageBuffer::from_fn(4097, 4099, |x, y| {
+            let band = if (y / 47) % 2 == 0 { 10000 } else { 49000 };
+            image::Rgb([
+                band + (x % 29) as u16 * 100,
+                22000 + ((x * 11 + y * 19) % 9000) as u16,
+                18000 + ((x * 7 + y * 13) % 17000) as u16,
+            ])
+        }));
+        let roi = Roi {
+            x: 2001,
+            y: 1977,
+            width: 109,
+            height: 151,
+        };
+        let expanded = Roi {
+            x: 1801,
+            y: 1777,
+            width: 509,
+            height: 551,
+        };
+        let mut controls = request(None).adjustments;
+        controls.global.structure = 0.8;
+        controls.global.clarity = 0.5;
+        let make = |roi| RenderRequest {
+            adjustments: controls,
+            mask_bitmaps: &[],
+            lut: None,
+            roi: Some(roi),
+        };
+        let reference =
+            process_and_get_dynamic_image_high_precision(&context, &tall, make(expanded))
+                .unwrap()
+                .to_rgba16();
+        let direct = process_and_get_dynamic_image_high_precision(&context, &tall, make(roi))
+            .unwrap()
+            .to_rgba16();
+        let streamed = render_streamed_precision(&context, &tall, make(roi), 2048)
+            .unwrap()
+            .to_rgba16();
+        let mut max_region = 0;
+        let mut max_stream = 0;
+        for (x, y, pixel) in direct.enumerate_pixels() {
+            let reference = reference.get_pixel(x + roi.x - expanded.x, y + roi.y - expanded.y);
+            let streamed = streamed.get_pixel(x, y);
+            for c in 0..4 {
+                max_region = max_region.max(pixel[c].abs_diff(reference[c]));
+                max_stream = max_stream.max(pixel[c].abs_diff(streamed[c]));
+            }
+        }
+        assert!(
+            max_region <= 4,
+            "Native structure blur changes with ROI: {max_region}"
+        );
+        assert!(
+            max_stream <= 32,
+            "Tall streamed native structure blur differs at seams: {max_stream}"
+        );
     }
 }

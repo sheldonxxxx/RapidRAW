@@ -9,6 +9,7 @@ if (process.env.FAKE_PID_FILE) writeFileSync(process.env.FAKE_PID_FILE, String(p
 process.stdout.write('Native startup diagnostic that must not corrupt MCP\n');
 process.stdout.write('{"event":"initializing"}\n');
 let busy = false;
+let mutationCount = 0;
 const lines = createInterface({ input: process.stdin });
 lines.on('line', async (line) => {
   const { id, method, params } = JSON.parse(line);
@@ -23,7 +24,17 @@ lines.on('line', async (line) => {
   if (method === 'capabilities') result = { protocol_version: 1, methods: toolDefinitions.map((d) => d.method), adjustment_schema: { type: 'object' } };
   if (method === 'batch_export') result = { ok: false, total: 2, succeeded: 1, failed: 1, results: [{ ok: true, result: { path: '/tmp/ok.jpg' } }, { ok: false, error: 'SESSION_NOT_FOUND', path: '/tmp/bad.jpg' }] };
   if (method === 'render') result = { ...result, width: 1, height: 1, image: { mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' } };
-  if (method === 'set_adjustments' && params.patch?.bad) {
+  if (params.session_id === 'oversized-images' && method === 'render' || params.session_id === 'oversized-mutation' && method === 'mask_generate') {
+    const data = 'A'.repeat(4 * 1024 * 1024);
+    result = { ...result, image: { data, mimeType: 'image/png' }, images: [{ label: 'Photograph', data, mimeType: 'image/png' }, { label: 'Selection', data, mimeType: 'image/png' }] };
+    if (method === 'mask_generate') { mutationCount++; result.mask_id = 'mask-created'; result.revision = 3; }
+  }
+  if (params.session_id === 'oversized-state' && method === 'get_session' && params.include_adjustments) result.adjustments = { description: 'é'.repeat(3 * 1024 * 1024) };
+  if (params.session_id === 'oversized-resource' && method === 'get_session' && params.include_adjustments) result.adjustments = { description: 'é'.repeat(5 * 1024 * 1024) };
+  if (method === 'get_session') { result.mutation_count = mutationCount; if (mutationCount) result.revision = 3; }
+  if (params.session_id === 'oversized-error' && method === 'render') {
+    process.stdout.write(`${JSON.stringify({ id, error: { code: 'NATIVE_FAILURE', message: 'x'.repeat(12 * 1024 * 1024) } })}\n`);
+  } else if (method === 'set_adjustments' && params.patch?.bad) {
     process.stdout.write(`${JSON.stringify({ id, error: { code: 'INVALID_ADJUSTMENT', message: 'Unknown adjustment bad; read the edit schema.' } })}\n`);
   } else {
     // Split lines to exercise stream framing.

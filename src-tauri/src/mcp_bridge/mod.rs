@@ -1,8 +1,12 @@
 //! Optional local automation bridge. The public MCP transport lives in `mcp/`.
 //! All image operations reuse RapidRAW's engine; originals are copied, never edited.
 mod advanced;
+mod asset_library;
+mod delivery;
+mod geometry_review;
 mod jobs;
 mod operations;
+mod portable;
 mod render;
 mod sessions;
 mod validation;
@@ -50,7 +54,9 @@ fn start() -> Result<()> {
         models: root.join("models"),
         root,
     };
-    for dir in ["sessions", "exports", "recipes", "cache", "models", "jobs"] {
+    for dir in [
+        "sessions", "exports", "recipes", "cache", "models", "jobs", "bundles", "assets",
+    ] {
         let path = paths.root.join(dir);
         if std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err(format!(

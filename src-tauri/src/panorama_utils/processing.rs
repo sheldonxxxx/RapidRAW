@@ -71,6 +71,15 @@ pub fn find_features(img: &GrayImage, brief_pairs: &[(Point2<i32>, Point2<i32>)]
     )
 }
 
+/// Retry weak natural-image texture without altering source/render pixels or
+/// relaxing descriptor matching and geometric inlier acceptance.
+pub fn find_features_low_contrast(
+    img: &GrayImage,
+    brief_pairs: &[(Point2<i32>, Point2<i32>)],
+) -> Vec<Feature> {
+    find_features_tuned(&normalize_grayscale(img), brief_pairs, 8, 8.0)
+}
+
 pub fn find_features_tuned(
     img: &GrayImage,
     brief_pairs: &[(Point2<i32>, Point2<i32>)],

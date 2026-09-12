@@ -2063,6 +2063,30 @@ fn emit_thumbnail_generated(
     );
 }
 
+fn lens_aperture_from_exif(exif: &HashMap<String, String>) -> Option<f32> {
+    let parse_number = |value: &String| {
+        let trimmed = value.trim();
+        trimmed
+            .strip_prefix("f/")
+            .unwrap_or(trimmed)
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|number| number.is_finite())
+    };
+    exif.get("FNumber")
+        .and_then(parse_number)
+        .filter(|number| *number > 0.0)
+        .or_else(|| {
+            // ApertureValue stores APEX Av, including in the existing metadata
+            // cache's f/-prefixed display string. F-number is 2^(Av/2).
+            exif.get("ApertureValue")
+                .and_then(parse_number)
+                .map(|apex| (apex / 2.0).exp2())
+                .filter(|number| number.is_finite() && *number > 0.0)
+        })
+}
+
 pub fn resolve_lens_params_in_adjustments(
     adjustments: &mut Value,
     exif_data: &Option<HashMap<String, String>>,
@@ -2125,11 +2149,7 @@ pub fn resolve_lens_params_in_adjustments(
                         {
                             focal_length = fl;
                         }
-                        if let Some(ap_str) = exif.get("ApertureValue").or(exif.get("FNumber"))
-                            && let Ok(ap) = ap_str.replace("f/", "").trim().parse::<f32>()
-                        {
-                            aperture = Some(ap);
-                        }
+                        aperture = lens_aperture_from_exif(exif);
                         if let Some(dist_str) = exif.get("SubjectDistance")
                             && let Ok(dist) = dist_str.replace(" m", "").trim().parse::<f32>()
                         {
@@ -4310,5 +4330,96 @@ pub fn sync_metadata_to_xmp(source_path: &Path, metadata: &ImageMetadata, create
         }
 
         let _ = fs::write(&xmp_file, content);
+    }
+}
+
+#[cfg(test)]
+mod lens_aperture_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn metadata(f_number: Option<&str>, apex: Option<&str>) -> HashMap<String, String> {
+        let mut exif = HashMap::from([("FocalLength".into(), "18".into())]);
+        if let Some(value) = f_number {
+            exif.insert("FNumber".into(), value.into());
+        }
+        if let Some(value) = apex {
+            exif.insert("ApertureValue".into(), value.into());
+        }
+        exif
+    }
+
+    fn resolved_vignette(exif: &HashMap<String, String>) -> f64 {
+        let db: crate::lens_correction::LensDatabase = quick_xml::de::from_str(
+            r#"<lensdatabase>
+              <lens><maker>Example</maker><model>Aperture fixture</model>
+                <mount>Example</mount><cropfactor>1.0</cropfactor>
+                <calibration>
+                  <distortion model="poly3" focal="18" k1="0.01"/>
+                  <vignetting model="pa" focal="18" aperture="3.5" distance="1000" k1="-0.8"/>
+                  <vignetting model="pa" focal="18" aperture="5.6" distance="1000" k1="-0.4"/>
+                  <vignetting model="pa" focal="18" aperture="8" distance="1000" k1="-0.2"/>
+                </calibration>
+              </lens>
+            </lensdatabase>"#,
+        )
+        .unwrap();
+        let mut adjustments = json!({
+            "lensCorrectionMode":"manual", "lensMaker":"Example", "lensModel":"Aperture fixture"
+        });
+        resolve_lens_params_in_adjustments(&mut adjustments, &Some(exif.clone()), Some(&db));
+        adjustments["lensDistortionParams"]["vig_k1"]
+            .as_f64()
+            .unwrap()
+    }
+
+    #[test]
+    fn fnumber_and_explicit_override_win_over_original_apex() {
+        let mut exif = metadata(Some("f/8"), Some("f/6"));
+        let before = exif.clone();
+        assert_eq!(lens_aperture_from_exif(&exif), Some(8.0));
+        assert!((resolved_vignette(&exif) + 0.2).abs() < 1e-6);
+        assert_eq!(exif, before);
+
+        // MCP aperture overrides replace FNumber while preserving original Av.
+        exif.insert("FNumber".into(), "3.5".into());
+        assert_eq!(lens_aperture_from_exif(&exif), Some(3.5));
+        assert!((resolved_vignette(&exif) + 0.8).abs() < 1e-6);
+        assert_eq!(exif["ApertureValue"], "f/6");
+    }
+
+    #[test]
+    fn apex_fallback_converts_to_fnumber_before_calibration_lookup() {
+        for value in ["6", "f/6", " f/6 "] {
+            let exif = metadata(None, Some(value));
+            assert_eq!(lens_aperture_from_exif(&exif), Some(8.0));
+            assert!((resolved_vignette(&exif) + 0.2).abs() < 1e-6);
+        }
+        assert_eq!(
+            lens_aperture_from_exif(&metadata(None, Some("0"))),
+            Some(1.0)
+        );
+        assert_eq!(
+            lens_aperture_from_exif(&metadata(None, Some("-2"))),
+            Some(0.5)
+        );
+    }
+
+    #[test]
+    fn invalid_apertures_fall_back_without_nonfinite_or_zero_results() {
+        for value in ["", "invalid", "NaN", "inf", "0", "-2"] {
+            assert_eq!(
+                lens_aperture_from_exif(&metadata(Some(value), Some("6"))),
+                Some(8.0)
+            );
+        }
+        for value in ["invalid", "NaN", "inf", "512", "-400"] {
+            assert_eq!(lens_aperture_from_exif(&metadata(None, Some(value))), None);
+            assert_eq!(
+                lens_aperture_from_exif(&metadata(Some("f/3.5"), Some(value))),
+                Some(3.5)
+            );
+        }
+        assert_eq!(lens_aperture_from_exif(&metadata(None, None)), None);
     }
 }

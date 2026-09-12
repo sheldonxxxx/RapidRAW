@@ -14,7 +14,7 @@ node /absolute/RapidRAW/mcp/dist/index.js \
 
 Use the actual debug/release or `CARGO_TARGET_DIR` output. `RAPIDRAW_BINARY` and `RAPIDRAW_WORKSPACE` can supply equivalent settings. This process speaks MCP over stdio; it is not a one-command JSON editing CLI. Diagnostics go to stderr. Keep a client connection open across calls and close it when finished.
 
-In a RapidRAW checkout, inspect `mcp/README.md` for the current build procedure and `.mcp-workspace/mcp-config.json` if present for local paths. `mcp/src/tools.ts` defines tool inputs; `src-tauri/src/mcp_bridge/validation.rs` defines native adjustments. Do not assume this skill is installed next to the repository or invent missing binaries. Build/connect only when needed for the user's task and supported by the environment.
+Read the user's actual MCP host configuration for configured server, binary and workspace paths. In a RapidRAW checkout, `mcp/README.md` provides the [build and connection guide](https://github.com/sheldonxxxx/RapidRAW/blob/main/mcp/README.md#build-and-connect), `mcp/src/tools.ts` defines tool inputs, and `src-tauri/src/mcp_bridge/validation.rs` defines native adjustments. Do not assume this skill is installed next to the repository or invent missing binaries. Build/connect only when needed for the user's task and supported by the environment.
 
 An MCP host configuration uses this shape, with real absolute paths:
 
@@ -71,6 +71,7 @@ Success returns `structuredContent`; a render additionally returns an MCP image 
 | --- | --- |
 | macOS startup hangs with LaunchServices/XPC warnings | Treat as a possible graphics sandbox restriction. Close this task's client/child, then relaunch through the host's permission mechanism when authorized. Do not keep waiting through repeated five-minute timeouts or delete another session's lock. List sessions after reconnecting. |
 | `REVISION_CONFLICT` | Get the current session including adjustments. Reconcile the patch against it and use the current revision. |
+| `RESPONSE_TOO_LARGE` | The connection is still usable. Read `recovery`: the operation has returned and a mutation may already have completed. Keep its session/revision, mask/job IDs and output paths; do not replay it. Request a smaller overview or bounded native detail, or get session state with `include_adjustments:false`. Batch recovery can be truncated; reconcile omitted items from the original request. |
 | Invalid argument, mask, or crop | Read the live schema and coordinate metadata; correct the input. Repeating the same invalid request will not help. |
 | Missing model | Inspect `rapidraw_models`; install the required kind when within scope or choose a suitable available method. |
 | `INCOMPATIBLE_ENGINE`, unsupported method | Check the selected fork binary and live capabilities. A stock app or mismatched build cannot be fixed by changing photo parameters. |
@@ -81,6 +82,8 @@ Success returns `structuredContent`; a render additionally returns an MCP image 
 Edits persist inside the workspace; `rapidraw_save_session` additionally writes the native sidecar. After reconnecting, use the existing session ID instead of reopening the original into a fresh session. `rapidraw_close_session` releases it from memory; its saved manifest becomes available on the next bridge startup.
 
 Default native request timeout is 300000 ms, configurable with `--timeout-ms` or `RAPIDRAW_TIMEOUT_MS`. Model installation, merge, and batch export have 30-minute limits. Ensure the host timeout can cover the selected operation. A cancelled queued request is skipped; cancellation during active native processing can invalidate the bridge, so inspect state before retrying.
+
+Current servers cap outgoing MCP responses at 8 MiB, including images and text/structured metadata, to fit the SDK's default stdio receiver. `capabilities.transport_limits` reports this budget. Choose preview size and encoding explicitly; no silent downsampling occurs. For large native regions, request adjacent bounded tiles and keep their rendered coordinates so the entire intended area is reviewed. Session resources can also exceed the budget; use the smaller session tool response when needed.
 
 ## Optional provider settings
 

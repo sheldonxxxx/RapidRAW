@@ -4,22 +4,33 @@ Read only the sections needed for the task. Tool names below include the server'
 
 ## Coordinates and masks
 
+For choosing a starting selection, manual repairs and the stop condition, follow [guided masking](guided-masking.md).
+
+When available, use `map_coordinates` to translate displayed points/regions/strokes between `preview`, `rendered`, `mask` and `oriented_source`. Supply the actual preview dimensions and region. Read returned validity; geometry can map outside the source, and a box crossing a nonlinear warp is an approximation. `preflight` checks actual resource limits before expensive work.
+
+Use `sample_region` on an inspected neutral area to measure rendered sRGB, clipping and linear luminance before preview resizing. The region is limited to 4 megapixels. Its white-balance suggestion assumes that the chosen area should be neutral; compare a temporary variant before applying it. `stage: "original"` bypasses user geometry and crop, so use that stage's coordinates; suggestions require `stage: "edited"`. `clipping_overlay: true` adds a preview diagnostic. Ordinary previews follow saved `showClipping` by default; explicit false produces a clean view, and exports remain clean.
+
+`mask_update(submask_operations: [...])` accepts 1–100 atomic operations with `operation: "add"`, `"edit"`, `"remove"`, `"duplicate"` or `"reorder"`. Keep IDs from the response; add and duplicate generate new IDs. Render the combined selection after changes; composition order and subtract/intersect modes affect what remains selected.
+
 | Operation | Coordinate space |
 | --- | --- |
 | `render.region`, `analyze.region` | Full-resolution rendered pixels after crop and geometry, before preview resizing; integer bounds |
-| Mask geometry, AI subject `region` | Oriented full-resolution source pixels before user crop |
-| Adjustment `crop` | Full-resolution pixels after orientation, flips, and rotation; inside the transformed canvas; `unit: "px"` |
+| Mask geometry, AI subject `region` | `mask`: full-resolution canvas after current geometric correction, user orientation, flips and rotation, before user crop |
+| `map_coordinates` `oriented_source` | Loaded source after EXIF decoding orientation, before all user geometry |
+| Adjustment `crop` | Full-resolution pixels after geometric correction, orientation, flips, and rotation; inside the transformed canvas; `unit: "px"` |
 
 Read `rendered_width`, `rendered_height`, `region`, and `coordinates` from a render. The response gives the preview-to-rendered mapping:
 
 ```text
-rendered_x = region.x + preview_x * coordinates.preview_to_rendered_scale.x
-rendered_y = region.y + preview_y * coordinates.preview_to_rendered_scale.y
+rendered_x = region.x + (preview_x + 0.5) * coordinates.preview_to_rendered_scale.x - 0.5
+rendered_y = region.y + (preview_y + 0.5) * coordinates.preview_to_rendered_scale.y - 0.5
 ```
 
-Round/clamp a detail region within the rendered bounds. This mapping alone does not map a cropped preview into source-space mask coordinates. For mask placement, inspect a full uncropped reference and account for orientation, geometry, and crop explicitly. Do not use a simple scale when a transform invalidates it.
+Coordinates identify pixel centers: the top-left pixel is `(0, 0)`. Round/clamp a detail rectangle within rendered bounds. For mask placement, use `map_coordinates` with `to: "mask"`; use `to: "oriented_source"` only when the destination needs the source before user geometry. Region boundaries use 128 samples and return approximate bounds under nonlinear warps; inspect unmappable samples. Requests accept at most 4096 points including stroke points and region-boundary samples.
 
 Choose geometric masks with `rapidraw_mask_create` (`radial`, `linear`, `brush`, `flow`), sampled range masks (`color`, `luminance`), or `all`. AI selections use `rapidraw_mask_generate` (`subject`, `foreground`, `sky`, `depth`); subject `region` is a rectangle around the intended subject. `rapidraw_generate_depth` produces a depth map and optionally enables blur. Check local model availability first.
+
+Subject point refinement is available through `mask_generate(kind: "subject", include_points, exclude_points, refine: {mask_id, sub_mask_id})`. Use `mask` coordinates and at most 64 points combined. Refinement requires the inspected `expected_revision` and preserves IDs, sibling corrections and grade. Only AI-subject submasks are eligible. A new point-guided selection needs a region or positive point; exclude-only is valid with a prior. An optional region is an explicit box for this call; previous point arrays are not automatically replayed. Inspect `refinement.prior_mode`: old masks use an explicitly approximate coverage-to-logit seed without baking in preserved grow/feather, opacity or inversion, while new selections retain native SAM logits. Do not edit opaque `samRefinement` data. Source/full-canvas geometry or patch changes, and changes to a generated submask's own placement, require a new selection or restoring saved state; crop and grade edits remain compatible. Visible retouch patches are included in the inference canvas before RAW display conversion and geometry. Hidden/zero-opacity parents can have empty combined statistics despite a valid refined submask, so inspect `generated_submask_statistics` separately. Review tail/hair coverage and background spill before accepting the result.
 
 Example for a measured subject near the center of an uncropped 640 × 480 image. Replace the geometry, session, and revision for the actual photo:
 
@@ -41,7 +52,7 @@ For temperature comparisons, hold tone and geometry fixed while comparing a smal
 
 An almost black mask or a thin border response can be a semantic failure despite a successful tool response. Distinguish an unavailable tool from a failed selection on this image. If useful, test a clear control image before attributing failure to the engine. The dedicated sky selector and the guided subject selector use different models: `mask_generate(kind: "subject", region: ...)` can select a bounded sky region when `kind: "sky"` misses it. Inspect the actual skyline and gaps between branches; the rectangle is a prompt, not a guarantee of coverage. Growing a coarse selection can move a fringe without selecting those gaps. Where appropriate, combine it with a sampled colour/luminance selection, then check both edge continuity and spill onto similarly coloured foreground. Inverting a foreground selection is useful only if that selection excludes the sky and celestial structure.
 
-Current AI inference uses source pixels with default RAW processing and geometry, not the current tonal grade. Repeated exposure or white-balance edits in the same session do not change that input. A rendered-copy test can diagnose this distinction, but its AI bitmap retains the copy's pixel dimensions: a reduced preview mask does not automatically scale to the full-resolution master. Generate on the master when possible; do not transplant a mismatched bitmap or fabricate its contents.
+Current AI inference uses source pixels with default RAW processing and the current geometric warp. The current tonal grade is not applied to that inference image, so exposure or white-balance edits in the same session do not change it. A rendered-copy test can diagnose this distinction, but its AI bitmap retains the copy's pixel dimensions: a reduced preview mask does not automatically scale to the full-resolution master. Generate on the master when possible; do not transplant a mismatched bitmap or fabricate its contents.
 
 ## Gradient transitions
 
@@ -104,7 +115,7 @@ Save the derived session and retain its source asset as well as the adjustments.
 | Denoise | Prefer `rapidraw_start_denoise`, then `rapidraw_get_job`. AI or BM3D, intensity 0–100; success returns a separate session with captured edits. The older `rapidraw_denoise` blocks. Inspect native texture before accepting. |
 | Lens correction | `rapidraw_lens_profile` with `mode: "lookup"` inspects; `mode: "auto"` applies. Review geometry and edges after applying. |
 | Film negative | `rapidraw_negative_convert` returns a derived session without inherited adjustments. Use its `parameters`, not obsolete negative-conversion adjustment keys. |
-| HDR, focus, panorama | `rapidraw_merge` with `kind: "hdr"`, `"focus"`, or `"panorama"` takes at least two source paths and returns a new session. Inspect alignment, ghosting, and seams. |
+| HDR, focus, panorama | `rapidraw_merge` with `kind: "hdr"`, `"focus"`, or `"panorama"` takes at least two source paths and returns a new session. MCP panorama requires every input in one connected group; otherwise it returns an error. Inspect alignment, ghosting, seams and useful new scene coverage at overview and native detail. Save, reconnect and confirm matching native detail in the returned session. |
 | Preset | Discover with `rapidraw_list_presets`, then `rapidraw_apply_preset` with returned `preset_id` and optional intensity. Inspect warnings for legacy field migration. |
 | LUT | Discover with `rapidraw_list_luts`, then `rapidraw_apply_lut` with the actual local path. The session retains its own LUT asset. |
 | Recipe | `rapidraw_load_recipe` accepts merge or replace; choose deliberately. A CUBE LUT represents global color, not crop, masks, or other spatial edits; keep a recipe for those. |
