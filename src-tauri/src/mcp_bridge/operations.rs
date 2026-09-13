@@ -340,11 +340,8 @@ impl Bridge {
                     }
                 }
                 let intensity = number(&params, "intensity", 100., 0., 100.)? / 100.;
-                let mut adjustments = session.current().adjustments.clone();
-                if intensity > 0. {
-                    interpolate_patch(&adjustments, &mut patch, intensity);
-                    validation::merge_patch(&mut adjustments, &patch)?;
-                }
+                let mut adjustments =
+                    merge_preset_adjustments(&session.current().adjustments, patch, intensity)?;
                 self.materialize_lut(&session, &mut adjustments)?;
                 let mut result = self.commit(
                     &id,
@@ -596,6 +593,29 @@ fn merge_object(base: &mut Value, patch: &Value) {
     }
 }
 
+fn merge_preset_adjustments(base: &Value, mut patch: Value, intensity: f64) -> Result<Value> {
+    let mut adjustments = base.clone();
+    if intensity == 0. {
+        return Ok(adjustments);
+    }
+    if intensity < 1. {
+        let mut effective_base = base.clone();
+        if patch["lutPath"]
+            .as_str()
+            .is_some_and(|path| !path.is_empty())
+            && base["lutPath"].as_str().is_none_or(str::is_empty)
+        {
+            // A stored default strength has no effect until a LUT is present.
+            effective_base["lutIntensity"] = json!(0);
+        }
+        // Paths and interpretation flags select the preset dependency at any
+        // positive strength; this does not crossfade two different LUTs.
+        interpolate_patch(&effective_base, &mut patch, intensity);
+    }
+    validation::merge_patch(&mut adjustments, &patch)?;
+    Ok(adjustments)
+}
+
 fn interpolate_patch(base: &Value, patch: &mut Value, intensity: f64) {
     match patch {
         Value::Number(n) => {
@@ -697,5 +717,58 @@ mod tests {
         interpolate_patch(&json!({"exposure":0,"masks":[]}), &mut patch, 0.5);
         assert_eq!(patch["exposure"], 1.);
         assert_eq!(patch["masks"][0]["id"], "new");
+    }
+
+    #[test]
+    fn new_lut_preset_fades_from_zero_and_preserves_omitted_corrections() {
+        let mut base = validation::default_adjustments();
+        base["exposure"] = json!(0.8);
+        base["temperature"] = json!(-3);
+        base["tint"] = json!(4);
+        base["colorNoiseReduction"] = json!(22);
+        base["sharpness"] = json!(17);
+        base["contrast"] = json!(10);
+        let preset = json!({"lutPath":"/example/film.cube","lutIntensity":60,"lutIsSceneReferred":true,"contrast":-4});
+        let unchanged = base.clone();
+        assert_eq!(
+            merge_preset_adjustments(&base, preset.clone(), 0.).unwrap(),
+            base
+        );
+        let half = merge_preset_adjustments(&base, preset.clone(), 0.5).unwrap();
+        assert_eq!(half["lutIntensity"], 30.);
+        assert_eq!(half["lutPath"], preset["lutPath"]);
+        assert_eq!(half["lutIsSceneReferred"], true);
+        assert_eq!(half["contrast"], 3.);
+        for key in [
+            "exposure",
+            "temperature",
+            "tint",
+            "colorNoiseReduction",
+            "sharpness",
+            "curves",
+            "masks",
+        ] {
+            assert_eq!(half[key], base[key], "omitted {key}");
+        }
+        let full = merge_preset_adjustments(&base, preset.clone(), 1.).unwrap();
+        for (key, value) in preset.as_object().unwrap() {
+            assert_eq!(&full[key], value, "exact full strength {key}");
+        }
+        assert_eq!(base, unchanged);
+    }
+
+    #[test]
+    fn replacing_lut_selects_one_dependency_and_interpolates_its_scalar_strength() {
+        let mut base = validation::default_adjustments();
+        base["lutPath"] = json!("/example/old.cube");
+        base["lutIntensity"] = json!(80);
+        base["lutIsSceneReferred"] = json!(false);
+        let preset =
+            json!({"lutPath":"/example/new.cube","lutIntensity":60,"lutIsSceneReferred":true});
+        let half = merge_preset_adjustments(&base, preset.clone(), 0.5).unwrap();
+        assert_eq!(half["lutPath"], preset["lutPath"]);
+        assert_eq!(half["lutIsSceneReferred"], true);
+        assert_eq!(half["lutIntensity"], 70.);
+        assert_eq!(merge_preset_adjustments(&base, preset, 0.).unwrap(), base);
     }
 }

@@ -10,7 +10,7 @@ const script = fileURLToPath(new URL('../../skills/rapidraw-mcp/scripts/mcp-clie
 const server = fileURLToPath(new URL('../dist/index.js', import.meta.url));
 const binary = fileURLToPath(new URL('./fixtures/bridge.mjs', import.meta.url));
 async function run(workspace, requests, extraArgs = []) {
-  const child = spawn(process.execPath, [script, '--server', server, '--binary', binary, '--workspace', workspace, ...extraArgs]);
+  const child = spawn(process.execPath, [script, '--server', server, ...(extraArgs.includes('--connection') ? [] : ['--binary', binary]), '--workspace', workspace, ...extraArgs]);
   let stdout = '', stderr = '';
   child.stdout.on('data', b => { stdout += b; });
   child.stderr.on('data', b => { stderr += b; });
@@ -21,6 +21,29 @@ async function run(workspace, requests, extraArgs = []) {
   const records = stdout.trim().split('\n').filter(Boolean).map(s => JSON.parse(s));
   return { code, records, stderr };
 }
+
+test('connection launcher keeps remote engine workspace separate from local response files', async () => {
+  const local = await mkdtemp(join(tmpdir(), 'rr-client-local-'));
+  const remote = await mkdtemp(join(tmpdir(), 'rr-client-remote-'));
+  const connection = join(local, 'connection.json');
+  await writeFile(connection, JSON.stringify({ command: process.execPath, args: [server, '--binary', binary, '--workspace', remote] }));
+  const { code, records } = await run(local, [{ tool: 'capabilities' }, { tool: 'render', arguments: { session_id: 'example', long_edge: 100 } }, { close: true }], ['--connection', connection]);
+  assert.equal(code, 0);
+  assert.ok(records[0].output_dir.startsWith(local + '/'));
+  const response = JSON.parse(await readFile(records[1].response_path, 'utf8'));
+  assert.equal(response.data.workspace, remote);
+  assert.equal((await readFile(records[2].images[0])).subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+});
+
+test('connection launcher rejects unsupported shell and environment fields before starting a child', async () => {
+  const local = await mkdtemp(join(tmpdir(), 'rr-client-invalid-'));
+  const connection = join(local, 'connection.json');
+  await writeFile(connection, JSON.stringify({ command: process.execPath, args: [], shell: true }));
+  const { code, records, stderr } = await run(local, [{ close: true }], ['--connection', connection]);
+  assert.equal(code, 1);
+  assert.deepEqual(records, []);
+  assert.match(stderr, /Connection must contain/);
+});
 
 test('skill client reads file-backed long masks, preserves image bytes, and saves full responses while printing selected fields', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'rr-skill-success-'));

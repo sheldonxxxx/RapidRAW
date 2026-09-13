@@ -24,6 +24,8 @@ An MCP host configuration uses this shape, with real absolute paths:
 
 ## Persistent fallback client
 
+For an SSH-hosted engine, use the [Linux server connection guide](https://github.com/sheldonxxxx/RapidRAW/blob/main/mcp/REMOTE-SSH.md) in the repository. The client supports `--connection /absolute/launcher.json` with `command`, `args` and optional `cwd`; `--server` then locates the local SDK and `--workspace` stores local evidence. Remote file paths remain server-side. Do not combine this mode with `--binary` or `--timeout-ms`.
+
 If tools are not exposed, use the bundled [mcp-client.mjs](../scripts/mcp-client.mjs). It resolves the official SDK from the server's installed dependencies, keeps one stdio connection, and saves large responses and native image blocks to files. Do not write a new one-shot client for every task.
 
 ```sh

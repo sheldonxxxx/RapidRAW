@@ -8,7 +8,7 @@ The [RapidRAW MCP skill](../skills/rapidraw-mcp/SKILL.md) provides agent guidanc
 
 ## macOS quick start
 
-The tested environment is macOS with Metal and a debug build of this fork. **Windows has not been tested for the MCP workflow.** Linux and packaged MCP releases are also untested.
+This quick start covers macOS with Metal and a debug build of this fork. The [Linux GPU server guide](REMOTE-SSH.md) covers the tested Debian 13/NVIDIA/Xvfb workflow over SSH. **Windows and packaged MCP releases have not been tested for the MCP workflow.**
 
 Use macOS 13+, Node.js 22.12+, [Rust via rustup](https://www.rust-lang.org/tools/install), and [Apple Command Line Tools](https://v2.tauri.app/start/prerequisites/#macos). If the Apple tools are missing, run `xcode-select --install` and finish installation first.
 

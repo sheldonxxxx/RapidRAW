@@ -4334,6 +4334,48 @@ pub fn sync_metadata_to_xmp(source_path: &Path, metadata: &ImageMetadata, create
 }
 
 #[cfg(test)]
+mod preset_import_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn desktop_collection_preserves_selected_preset_values_and_owned_lut_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let lut_path = directory.path().join("owned-film.cube");
+        let adjustments = json!({
+            "lutPath":lut_path,"lutIntensity":65,"lutIsSceneReferred":true,
+            "contrast":-4,"saturation":-5,
+            "curves":{"luma":[{"x":0,"y":3},{"x":128,"y":130},{"x":255,"y":250}]}
+        });
+        let definition = json!({
+            "id":"workspace:1f8f69ac-a1b7-4d2a-909f-c74d016b42f6","name":"Film colour",
+            "adjustments":adjustments,"includeMasks":false,"includeCropTransform":false,"presetType":"style"
+        });
+        let collection = json!({"creator":"Preset export","presets":[{"preset":definition}]});
+        let path = directory.path().join("film-colour.rrpreset");
+        fs::write(&path, serde_json::to_vec(&collection).unwrap()).unwrap();
+        let parsed = parse_preset_file(path.to_str().unwrap()).unwrap();
+        let PresetItem::Preset(preset) = &parsed[0] else {
+            panic!("Expected one native desktop preset");
+        };
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(serde_json::to_value(preset).unwrap(), definition);
+        assert_eq!(preset.adjustments["lutPath"], json!(lut_path));
+        for key in [
+            "exposure",
+            "temperature",
+            "tint",
+            "colorNoiseReduction",
+            "sharpness",
+            "masks",
+            "crop",
+        ] {
+            assert!(preset.adjustments.get(key).is_none(), "{key}");
+        }
+    }
+}
+
+#[cfg(test)]
 mod lens_aperture_tests {
     use super::*;
     use serde_json::json;

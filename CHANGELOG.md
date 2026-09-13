@@ -6,6 +6,10 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ### Added
 
+- Linux GPU server setup over SSH using Xvfb and offscreen Vulkan, with a tested Debian 13/NVIDIA configuration. The persistent inspection client accepts a stdio connection file and saves remote previews locally.
+- Explicit `adjustment_keys` when saving workspace presets, so reusable looks can retain their LUT and rendered curves while leaving each photo's exposure, white balance and detail corrections intact. Selection validates native keys and required LUT/curve dependencies.
+- Film-comparison skill guidance covering installed LUT discovery, explicit scene-referred processing for built-in films, and image-specific visual checks before recommending a look.
+
 The MCP interface grows from 47 to 62 public tools: 57 native methods and five host worker methods. Tool names below omit the `rapidraw_` prefix.
 
 | Addition | New tools |
@@ -31,6 +35,7 @@ The MCP interface grows from 47 to 62 public tools: 57 native methods and five h
 
 ### Fixed
 
+- Desktop preset strength now blends from the captured pre-preset edit and restores that edit at zero strength. Partial presets preserve omitted exposure, white balance and detail controls; both desktop and MCP preset application fade a newly added LUT from zero effective strength.
 - Linear DNG files with constant repeated black-level grids could render almost entirely white. Equivalent spatial repeats now normalize to per-channel black levels before RAW development.
 - Incorrect ICC adaptation/tag layout and export profile labeling.
 - Invalid JPEG XL output for affected image dimensions/alpha paths. Lossless and transparent compatibility cases use a verified encoder; a transparent fallback reports its quality/file-size tradeoff.

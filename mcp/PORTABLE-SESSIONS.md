@@ -92,6 +92,18 @@ Save a preset from current edits:
 
 `include_masks` and `include_geometry` default to false. Disabling selective content excludes both adjustment masks and retouch patches; imported native presets with `includeMasks:false` use the same behavior. Disabling geometry excludes crop, orientation, flips, perspective and depth-map geometry. Presets own any LUT dependency. Save returns the new preset `id`; send it to `apply_preset` using `preset_id`.
 
+For a reusable look that preserves each photo's base corrections, save only its intended controls:
+
+```json
+{"action":"save","session_id":"<session UUID>","expected_revision":12,"name":"Film colour","adjustment_keys":["lutPath","lutIntensity","lutIsSceneReferred","contrast","saturation","curves"],"include_masks":false,"include_geometry":false}
+```
+
+`adjustment_keys` accepts 1–100 unique, exact top-level names from `rapidraw://adjustment-schema`, only for `action:"save"`. Unknown, missing and excluded keys are errors; selecting a nested object such as `hsl` saves that whole control. Masks and geometry still require their respective include option. Selecting any LUT field requires `lutPath`, `lutIntensity` and `lutIsSceneReferred` together. Selecting `pointCurves`, `parametricCurve` or `curveMode` also requires the authoritative rendered `curves` field. The response reports the saved `adjustment_keys`.
+
+Omit `exposure`, `temperature`, `tint`, denoise and sharpening keys when they belong to the individual photo. Without `adjustment_keys`, save retains all current adjustment fields except the excluded masks and geometry, including neutral defaults. `apply_preset` at intensity 100 applies the saved controls and preserves omitted controls; intensity blending is separate from the saved LUT strength. To verify reuse, apply the exported and reimported preset to the same base as a direct edit and compare matching renders.
+
+When the base has no LUT, both MCP and desktop preset application blend a newly added LUT from zero effective strength: a saved LUT strength of 60 at 50% preset intensity produces a LUT strength of 30. Replacing one LUT with another selects the new path and colour interpretation at any positive preset intensity and interpolates the scalar strength from the previous value; it does not crossfade two LUTs. MCP applies intensity relative to the session's current edit on each call, so restore the same base before comparing strengths. Intensity zero leaves that current edit unchanged.
+
 Preset management calls:
 
 ```json
@@ -102,6 +114,10 @@ Preset management calls:
 ```
 
 Exports are self-contained JSON, including a verified embedded LUT. Import also accepts a native single preset, a raw adjustment object, or a native `PresetFile` collection. Collection folders are flattened into independent managed presets; inspect per-item results. Safely inactive legacy negative-conversion fields use the same migration as `apply_preset`. Active legacy negative conversion is rejected.
+
+Import self-contained MCP exports with `manage_presets`. The desktop preset dialog uses the separate `.rrpreset` collection format and does not import this embedded-LUT envelope. Saving or importing through MCP does not install presets into the desktop library.
+
+For same-machine desktop use, a `.rrpreset` collection may wrap saved native preset definitions as `{"presets":[{"preset":{...}}]}` with their existing absolute workspace-owned LUT paths. Keep those LUT files in place; this collection is not portable like the embedded MCP export. Desktop preset strength blends selected controls from the edit captured before applying the preset. Zero strength or clicking the active preset again restores that captured edit, and 100% applies the saved values.
 
 LUT management calls:
 
@@ -118,7 +134,7 @@ LUT imports parse the file, verify copied bytes and allocate a new owned ID. Exp
 
 `src-tauri/src/mcp_bridge/portable.rs` and `asset_library.rs` contain focused native storage, integrity, path, RAW-domain, version, copy and owned-asset tests.
 
-`mcp/scripts/portable-sessions-e2e.mjs` uses the actual MCP SDK and native executable. It compares native rendered pixels before/after a named fork, library removal, portable preset import and a moved bundle import after the original session paths disappear. It checks stale revisions, mixed-result copying and corrupt/missing/traversing bundles. It records source/binary provenance and separate native-call and pixel-assertion evidence.
+`mcp/scripts/portable-sessions-e2e.mjs` uses the actual MCP SDK and native executable. It compares native rendered pixels before/after a named fork, library removal, portable preset import and a moved bundle import after the original session paths disappear. A selected-preset round trip compares against a direct edit while checking that target exposure, white balance, denoise and sharpening survive. It checks stale revisions, mixed-result copying and corrupt/missing/traversing bundles. It records source/binary provenance and separate native-call and pixel-assertion evidence.
 
 From `mcp/`, after building the server and native executable:
 

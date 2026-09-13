@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -319,6 +320,90 @@ fn decode_presets(
     Ok((envelopes, collection))
 }
 
+fn preset_geometry_key(key: &str) -> bool {
+    crate::cache_utils::GEOMETRY_KEYS.contains(&key)
+        || [
+            "crop",
+            "rotation",
+            "orientationSteps",
+            "flipHorizontal",
+            "flipVertical",
+            "aspectRatio",
+            "lensCorrectionMode",
+            "lensBlurDepthMap",
+            "lensBlurEnabled",
+        ]
+        .contains(&key)
+}
+
+fn select_preset_adjustments(source: &Value, params: &Value) -> Result<Value> {
+    let include_masks = flag(params, "include_masks", false)?;
+    let include_geometry = flag(params, "include_geometry", false)?;
+    let excluded = |key: &str| {
+        (!include_masks && ["masks", "aiPatches"].contains(&key))
+            || (!include_geometry && preset_geometry_key(key))
+    };
+    let source = source
+        .as_object()
+        .ok_or("INVALID_PRESET: Adjustment object missing")?;
+    let Some(keys) = params.get("adjustment_keys") else {
+        let mut selected = source.clone();
+        selected.retain(|key, _| !excluded(key));
+        return Ok(Value::Object(selected));
+    };
+    let keys = keys
+        .as_array()
+        .filter(|keys| !keys.is_empty() && keys.len() <= 100)
+        .ok_or("INVALID_ARGUMENT: adjustment_keys must contain 1..100 unique top-level adjustment names")?;
+    let schema = validation::adjustment_schema();
+    let known = schema["properties"].as_object().unwrap();
+    let mut seen = HashSet::new();
+    let mut selected = serde_json::Map::new();
+    for key in keys {
+        let key = key
+            .as_str()
+            .ok_or("INVALID_ARGUMENT: adjustment_keys must contain strings")?;
+        if !known.contains_key(key) {
+            return Err(format!("INVALID_ARGUMENT: Unknown adjustment key {key}"));
+        }
+        if !seen.insert(key) {
+            return Err(format!("INVALID_ARGUMENT: Duplicate adjustment key {key}"));
+        }
+        if excluded(key) {
+            return Err(format!(
+                "INVALID_ARGUMENT: Adjustment {key} is excluded by include_masks/include_geometry; enable its option explicitly or omit the key"
+            ));
+        }
+        let value = source
+            .get(key)
+            .ok_or_else(|| format!("INVALID_PRESET: Requested adjustment {key} is missing"))?;
+        selected.insert(key.to_owned(), value.clone());
+    }
+    // A LUT's input interpretation and strength belong to the same saved look.
+    // UI metadata alone must not accidentally reuse a target image's LUT.
+    if selected.keys().any(|key| key.starts_with("lut")) {
+        for key in ["lutPath", "lutIntensity", "lutIsSceneReferred"] {
+            if !selected.contains_key(key) {
+                return Err(format!(
+                    "INVALID_ARGUMENT: LUT selection requires lutPath, lutIntensity and lutIsSceneReferred together; missing {key}"
+                ));
+            }
+        }
+    }
+    // Saved native curves are authoritative, including when point controls
+    // retain older values from before a switch to parametric editing.
+    if ["pointCurves", "parametricCurve", "curveMode"]
+        .iter()
+        .any(|key| selected.contains_key(*key))
+        && !selected.contains_key("curves")
+    {
+        return Err(
+            "INVALID_ARGUMENT: Selecting curve controls also requires curves to preserve the rendered result".into(),
+        );
+    }
+    Ok(Value::Object(selected))
+}
+
 impl Bridge {
     pub(super) fn workspace_presets(&self) -> Result<Vec<Preset>> {
         directories(&self.paths.root, "presets")?
@@ -342,36 +427,27 @@ impl Bridge {
     }
 
     pub(super) fn manage_presets(&self, params: &Value) -> Result<Value> {
-        match required(params, "action")? {
+        let action = required(params, "action")?;
+        if action != "save" && params.get("adjustment_keys").is_some() {
+            return Err(
+                "INVALID_ARGUMENT: adjustment_keys is only supported for action save".into(),
+            );
+        }
+        match action {
             "list" => Ok(json!({"presets":self.workspace_presets()?,"scope":"workspace"})),
             "save" => {
                 let session = self.session(params)?;
                 session.check_revision(params)?;
                 let include_masks = flag(params, "include_masks", false)?;
                 let include_geometry = flag(params, "include_geometry", false)?;
-                let mut adjustments = session.current().adjustments.clone();
-                if !include_masks {
-                    adjustments.as_object_mut().unwrap().remove("masks");
-                    adjustments.as_object_mut().unwrap().remove("aiPatches");
-                }
-                if !include_geometry {
-                    for key in crate::cache_utils::GEOMETRY_KEYS {
-                        adjustments.as_object_mut().unwrap().remove(*key);
-                    }
-                    for key in [
-                        "crop",
-                        "rotation",
-                        "orientationSteps",
-                        "flipHorizontal",
-                        "flipVertical",
-                        "aspectRatio",
-                        "lensCorrectionMode",
-                        "lensBlurDepthMap",
-                        "lensBlurEnabled",
-                    ] {
-                        adjustments.as_object_mut().unwrap().remove(key);
-                    }
-                }
+                let adjustments =
+                    select_preset_adjustments(&session.current().adjustments, params)?;
+                let adjustment_keys = adjustments
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>();
                 let asset = adjustments["lutPath"]
                     .as_str()
                     .map(|p| lut_asset(Path::new(p)))
@@ -384,7 +460,7 @@ impl Bridge {
                     include_crop_transform: Some(include_geometry),
                     preset_type: Some("style".into()),
                 };
-                store_preset(
+                let mut result = store_preset(
                     &self.paths.root,
                     PresetEnvelope {
                         format: "rapidraw-owned-preset".into(),
@@ -393,7 +469,9 @@ impl Bridge {
                         dimensions: session.dimensions,
                         lut: asset,
                     },
-                )
+                )?;
+                result["adjustment_keys"] = json!(adjustment_keys);
+                Ok(result)
             }
             "import" => {
                 let source = Path::new(required(params, "path")?);
@@ -537,6 +615,139 @@ mod tests {
         .unwrap();
         path
     }
+
+    #[test]
+    fn selected_preset_keys_reject_ambiguous_or_excluded_requests() {
+        let source = validation::default_adjustments();
+        for (keys, message) in [
+            (json!([]), "1..100"),
+            (json!("contrast"), "1..100"),
+            (json!([1]), "strings"),
+            (json!(["contrast", "contrast"]), "Duplicate"),
+            (json!(["notAnAdjustment"]), "Unknown"),
+            (json!(["hsl.reds.saturation"]), "Unknown"),
+            (json!(["masks"]), "excluded"),
+            (json!(["aiPatches"]), "excluded"),
+            (json!(["crop"]), "excluded"),
+            (json!(["lensBlurDepthMap"]), "excluded"),
+            (json!(["lutPath", "lutIntensity"]), "lutIsSceneReferred"),
+            (json!(["lutName"]), "lutPath"),
+            (json!(["pointCurves", "curveMode"]), "requires curves"),
+        ] {
+            let error =
+                select_preset_adjustments(&source, &json!({"adjustment_keys":keys})).unwrap_err();
+            assert!(error.contains(message), "{keys}: {error}");
+        }
+        let mut missing = source.clone();
+        missing.as_object_mut().unwrap().remove("contrast");
+        assert!(
+            select_preset_adjustments(&missing, &json!({"adjustment_keys":["contrast"]}))
+                .unwrap_err()
+                .contains("missing")
+        );
+        let explicit = select_preset_adjustments(
+            &source,
+            &json!({"adjustment_keys":["masks","crop"],"include_masks":true,"include_geometry":true}),
+        )
+        .unwrap();
+        assert_eq!(explicit.as_object().unwrap().len(), 2);
+        let legacy_save = select_preset_adjustments(&source, &json!({})).unwrap();
+        assert_eq!(legacy_save["exposure"], source["exposure"]);
+        for key in ["masks", "aiPatches", "crop", "lensBlurDepthMap"] {
+            assert!(legacy_save.get(key).is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn selected_curves_keep_rendered_values_when_ui_controls_are_stale() {
+        let mut source = validation::default_adjustments();
+        source["curveMode"] = json!("parametric");
+        source["parametricCurve"]["luma"]["lights"] = json!(45);
+        source["curves"]["luma"] = json!([{"x":0,"y":3},{"x":128,"y":140},{"x":255,"y":250}]);
+        let selected = select_preset_adjustments(
+            &source,
+            &json!({"adjustment_keys":["curves","pointCurves","parametricCurve","curveMode"]}),
+        )
+        .unwrap();
+        let mut target = validation::default_adjustments();
+        validation::merge_patch(&mut target, &selected).unwrap();
+        assert_eq!(target["curves"], source["curves"]);
+        assert_eq!(target["curveMode"], "parametric");
+        let mut compiled = source.clone();
+        validation::resolve_curves(&mut compiled);
+        assert_ne!(target["curves"], compiled["curves"]);
+    }
+
+    #[test]
+    fn selected_film_preset_round_trip_preserves_target_base_corrections() {
+        let origin = tempfile::tempdir().unwrap();
+        let root = origin.path().canonicalize().unwrap();
+        let lut = identity(&root);
+        let mut source = validation::default_adjustments();
+        source["lutPath"] = json!(lut);
+        source["lutIntensity"] = json!(65);
+        source["lutIsSceneReferred"] = json!(true);
+        source["contrast"] = json!(-4);
+        source["curves"]["luma"] = json!([{"x":0,"y":3},{"x":128,"y":130},{"x":255,"y":250}]);
+        let selected = select_preset_adjustments(
+            &source,
+            &json!({"adjustment_keys":["lutPath","lutIntensity","lutIsSceneReferred","contrast","curves"]}),
+        )
+        .unwrap();
+        let saved = store_preset(
+            &root,
+            PresetEnvelope {
+                format: "rapidraw-owned-preset".into(),
+                version: 1,
+                dimensions: (20, 20),
+                lut: Some(lut_asset(&lut).unwrap()),
+                preset: Preset {
+                    id: String::new(),
+                    name: "Selective film".into(),
+                    adjustments: selected,
+                    include_masks: Some(false),
+                    include_crop_transform: Some(false),
+                    preset_type: Some("style".into()),
+                },
+            },
+        )
+        .unwrap();
+        let directory = asset_directory(&root, "presets", saved["id"].as_str().unwrap()).unwrap();
+        let mut exported = read_preset(&directory).unwrap();
+        let asset = exported.lut.as_ref().unwrap();
+        exported.preset.adjustments["lutPath"] =
+            json!(format!("embedded:{}.{}", asset.sha256, asset.extension));
+        let transport = serde_json::to_value(exported).unwrap();
+        let (mut decoded, collection) =
+            decode_presets(&root.join("film.json"), transport, &json!({})).unwrap();
+        assert!(!collection);
+        drop(origin);
+        let destination = tempfile::tempdir().unwrap();
+        let destination_root = destination.path().canonicalize().unwrap();
+        let imported = store_preset(&destination_root, decoded.remove(0)).unwrap();
+        let directory = asset_directory(
+            &destination_root,
+            "presets",
+            imported["id"].as_str().unwrap(),
+        )
+        .unwrap();
+        let preset = read_preset(&directory).unwrap().preset;
+        assert_eq!(preset.adjustments.as_object().unwrap().len(), 5);
+        let corrections = json!({"exposure":1.1,"temperature":7,"tint":-4,"colorNoiseReduction":30,"lumaNoiseReduction":12,"sharpness":40});
+        let mut target = validation::default_adjustments();
+        validation::merge_patch(&mut target, &corrections).unwrap();
+        validation::merge_patch(&mut target, &preset.adjustments).unwrap();
+        validation::validate_adjustments(&target, (40, 30)).unwrap();
+        for (key, value) in corrections.as_object().unwrap() {
+            assert_eq!(&target[key], value, "base correction {key} changed");
+        }
+        assert_eq!(target["lutIsSceneReferred"], true);
+        assert_eq!(target["lutIntensity"], 65);
+        assert_eq!(target["contrast"], -4);
+        assert_eq!(target["curves"], source["curves"]);
+        assert!(Path::new(target["lutPath"].as_str().unwrap()).starts_with(&directory));
+    }
+
     #[test]
     fn stored_preset_owns_lut_after_original_is_removed() {
         let root = tempfile::tempdir().unwrap();

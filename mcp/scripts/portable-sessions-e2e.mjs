@@ -93,6 +93,33 @@ try {
     assert.equal(pixelDifference(await render(first, fresh.session_id), portableImage).maximum, 0);
     return { preset_id: ownedPreset.id, self_contained: true, matched_render: true };
   }, 'pixel_assertion');
+  await first.check('selected_preset_round_trip_matches_direct_edit_and_preserves_base', requirements('manage_presets', 'action="save"', 'adjustment_keys', 'action="export"', 'action="import"'), async () => {
+    const keys = ['lutPath', 'lutIntensity', 'lutIsSceneReferred', 'contrast', 'curves'];
+    const lookSource = (await first.call('fork_session', { session_id: source.session_id, label: 'Selective preset source' })).data;
+    await first.call('set_adjustments', { session_id: lookSource.session_id, patch: { contrast: 18, curves: { luma: [{ x: 0, y: 3 }, { x: 128, y: 146 }, { x: 255, y: 250 }] } } });
+    const look = await session(first, lookSource.session_id);
+    const saved = (await first.call('manage_presets', { action: 'save', session_id: lookSource.session_id, expected_revision: look.revision, name: 'Selective portable grade', adjustment_keys: keys })).data;
+    assert.deepEqual([...saved.adjustment_keys].sort(), [...keys].sort());
+    const exported = (await first.call('manage_presets', { action: 'export', id: saved.id, path: 'selective-preset.json' })).data;
+    const envelope = JSON.parse(await readFile(exported.path, 'utf8'));
+    assert.deepEqual(Object.keys(envelope.preset.adjustments).sort(), [...keys].sort());
+    assert.ok(envelope.preset.adjustments.lutPath.startsWith('embedded:'));
+    await first.call('manage_presets', { action: 'remove', id: saved.id });
+    const imported = (await first.call('manage_presets', { action: 'import', path: exported.path })).data;
+    const target = (await first.call('open_photo', { path: fixture, inherit_sidecar: false })).data;
+    const base = { exposure: -0.3, temperature: 12, tint: 4, colorNoiseReduction: 17, lumaNoiseReduction: 9, sharpness: 23 };
+    await first.call('set_adjustments', { session_id: target.session_id, mode: 'replace', patch: base });
+    const basePixels = await render(first, target.session_id);
+    await first.call('set_adjustments', { session_id: target.session_id, patch: Object.fromEntries(keys.map((key) => [key, look.adjustments[key]])) });
+    const direct = await render(first, target.session_id);
+    assert.ok(pixelDifference(direct, basePixels).maximum > 0, 'The selected look must visibly change the fixture');
+    await first.call('set_adjustments', { session_id: target.session_id, mode: 'replace', patch: base });
+    await first.call('apply_preset', { session_id: target.session_id, preset_id: imported.id, intensity: 100 });
+    const reapplied = await session(first, target.session_id);
+    for (const [key, value] of Object.entries(base)) assert.equal(reapplied.adjustments[key], value, key);
+    assert.equal(pixelDifference(await render(first, target.session_id), direct).maximum, 0);
+    return { adjustment_keys: saved.adjustment_keys, base_preserved: true, max_pixel_difference: 0 };
+  }, 'pixel_assertion');
   await first.check('native_imported_preset_excludes_valid_retouch_patches_when_masks_disabled', requirements('manage_presets', 'action="import"'), async () => {
     const bitmap = (await readFile(fixture)).toString('base64');
     const aiPatch = { id: 'valid-imported-patch', name: 'Full canvas patch', visible: true, invert: false, prompt: 'Fixture replacement', subMasks: [{ id: 'valid-patch-submask', type: 'all', visible: true, mode: 'additive', parameters: {} }], patchData: { color: bitmap, mask: bitmap, offsetX: 0, offsetY: 0, width: 192, height: 128, isSrgbEncoded: true } };

@@ -69,6 +69,21 @@ test('invalid tool arguments and engine errors remain actionable errors', async 
   assert.ok(!followup.isError);
 });
 
+test('preset saves expose and forward explicit adjustment selection', async (t) => {
+  const { client } = await connect(t);
+  const selection = ['lutPath', 'lutIntensity', 'lutIsSceneReferred', 'contrast', 'curves'];
+  const { tools } = await client.listTools();
+  const presetTool = tools.find((tool) => tool.name === 'rapidraw_manage_presets');
+  assert.equal(presetTool.inputSchema.properties.adjustment_keys.type, 'array');
+  const result = await client.callTool({ name: presetTool.name, arguments: { action: 'save', session_id: 'test-session', adjustment_keys: selection } });
+  assert.ok(!result.isError);
+  assert.deepEqual(result.structuredContent.params.adjustment_keys, selection);
+  for (const invalid of [[], ['contrast', 'contrast'], [''], [1], Array.from({ length: 101 }, (_, i) => `key${i}`)]) {
+    const rejected = await client.callTool({ name: presetTool.name, arguments: { action: 'save', session_id: 'test-session', adjustment_keys: invalid } });
+    assert.equal(rejected.isError, true, JSON.stringify(invalid));
+  }
+});
+
 test('background operation arguments receive the same strict native tool schema validation', async (t) => {
   const { client } = await connect(t);
   for (const args of [

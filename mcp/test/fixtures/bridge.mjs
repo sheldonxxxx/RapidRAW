@@ -21,7 +21,7 @@ lines.on('line', async (line) => {
   if (params.session_id === 'eof') { process.stdout.end(); return; }
   if (params.session_id === 'slow') await new Promise((resolve) => setTimeout(resolve, 30));
   let result = { method, params, revision: 2, session_id: params.session_id ?? 'test-session' };
-  if (method === 'capabilities') result = { protocol_version: 1, methods: toolDefinitions.map((d) => d.method), adjustment_schema: { type: 'object' } };
+  if (method === 'capabilities') result = { protocol_version: 1, workspace: args[2], methods: toolDefinitions.map((d) => d.method), adjustment_schema: { type: 'object' } };
   if (method === 'batch_export') result = { ok: false, total: 2, succeeded: 1, failed: 1, results: [{ ok: true, result: { path: '/tmp/ok.jpg' } }, { ok: false, error: 'SESSION_NOT_FOUND', path: '/tmp/bad.jpg' }] };
   if (method === 'render') result = { ...result, width: 1, height: 1, image: { mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' } };
   if (params.session_id === 'oversized-images' && method === 'render' || params.session_id === 'oversized-mutation' && method === 'mask_generate') {

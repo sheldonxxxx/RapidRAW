@@ -41,15 +41,19 @@ Install the optional execution skill with the [Skills CLI](https://github.com/ve
 npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp
 ```
 
-Pair it with your preferred photo-editing art-direction skill or a direct photographic brief. The execution skill handles native operations, state, and delivery; MCP setup is a separate step. **This MCP workflow is tested on macOS with Metal. Windows has not been tested.** See the [macOS quick start](mcp/README.md#macos-quick-start) to build and connect this fork.
+Pair it with your preferred photo-editing art-direction skill or a direct photographic brief. The execution skill handles native operations, state, and delivery; MCP setup is a separate step. **The MCP workflow is tested on macOS with Metal and on a Debian 13/NVIDIA GPU server over SSH with Xvfb. Windows has not been tested.** See the [macOS quick start](mcp/README.md#macos-quick-start) or [Linux GPU server guide](mcp/REMOTE-SSH.md) to build and connect this fork.
 
 For local edits, follow [guided masking](skills/rapidraw-mcp/references/guided-masking.md): start with a useful AI or manual selection, repair the areas that matter, and compare the actual adjustment at delivery size and native detail. A restrained tonal lift and a precise extraction have different boundary requirements; judge the mask against the requested result.
 
 For already stitched 360 photographs, follow the [spherical photo handoff](skills/rapidraw-mcp/references/spherical-photos.md) to preserve projection, review seams and poles, and verify the final delivery metadata. The same guide covers editing a flat view selected by an external spherical reframing workflow.
 
+The [execution skill](skills/rapidraw-mcp/SKILL.md) also covers film comparisons and the explicit scene-referred setting required for built-in Spektrafilm LUTs through MCP. Choose a look from the photograph's intended colour and light, then inspect it against the base; film strength and grain are separate controls.
+
+Save reusable looks with explicit [`adjustment_keys`](mcp/PORTABLE-SESSIONS.md#manage-reusable-presets-and-luts) to preserve each photograph's exposure, white balance and detail corrections. MCP preset exports embed their LUT dependency and can be imported into another MCP workspace.
+
 Start with the **[MCP setup and connection guide](mcp/README.md#build-and-connect)**, then see the [tool reference and editing examples](mcp/README.md#capabilities), [optional agent skill](skills/rapidraw-mcp/SKILL.md), and [verification results and limitations](mcp/VERIFICATION.md). Contributors can read the [native integration and upstream merge guide](MCP.md).
 
-**Build this fork with the `mcp` Cargo feature to use the server.** The upstream application downloads below do not include this fork's MCP bridge. The verification report distinguishes tested macOS workflows from untested platforms and release packaging.
+**Build this fork with the `mcp` Cargo feature to use the server.** The upstream application downloads below do not include this fork's MCP bridge. The verification report and Linux server guide describe the tested configurations; packaged MCP releases remain untested.
 
 ### Fork updates
 
