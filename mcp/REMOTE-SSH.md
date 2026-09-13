@@ -2,7 +2,7 @@
 
 Run both the Node MCP server and native RapidRAW engine on the Linux machine. A local MCP client can launch them through SSH and use the existing stdio transport. Previews travel as MCP image blocks; RAW inputs, session files, models and exports use the server's filesystem. Transfer originals and delivery files separately with SFTP, rsync or shared storage.
 
-The native bridge still initializes Tauri/GTK. It needs a display server, but no full desktop environment or physical monitor. Xvfb supplies the display while Vulkan performs offscreen GPU processing. The current ONNX sessions use the CPU execution provider; installing CUDA alone does not enable GPU inference.
+The native bridge still initializes Tauri/GTK. It needs a display server, but no full desktop environment or physical monitor. Xvfb supplies the display while Vulkan performs offscreen GPU processing. ONNX inference defaults to CPU. Linux MCP deployments can separately enable [validated CUDA inference](ONNX-CUDA.md) for foreground/sky masks, depth and AI denoise; installing CUDA alone does not select that provider.
 
 ## Build on the server
 

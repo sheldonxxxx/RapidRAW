@@ -43,6 +43,8 @@ npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp
 
 Pair it with your preferred photo-editing art-direction skill or a direct photographic brief. The execution skill handles native operations, state, and delivery; MCP setup is a separate step. **The MCP workflow is tested on macOS with Metal and on a Debian 13/NVIDIA GPU server over SSH with Xvfb. Windows has not been tested.** See the [macOS quick start](mcp/README.md#macos-quick-start) or [Linux GPU server guide](mcp/REMOTE-SSH.md) to build and connect this fork.
 
+Linux MCP servers can opt into [ONNX CUDA acceleration](mcp/ONNX-CUDA.md) for foreground/sky masks, depth and AI denoise. CPU inference remains the default on every platform, and the macOS runtime setup is unchanged.
+
 For local edits, follow [guided masking](skills/rapidraw-mcp/references/guided-masking.md): start with a useful AI or manual selection, repair the areas that matter, and compare the actual adjustment at delivery size and native detail. A restrained tonal lift and a precise extraction have different boundary requirements; judge the mask against the requested result.
 
 For already stitched 360 photographs, follow the [spherical photo handoff](skills/rapidraw-mcp/references/spherical-photos.md) to preserve projection, review seams and poles, and verify the final delivery metadata. The same guide covers editing a flat view selected by an external spherical reframing workflow.
@@ -57,7 +59,7 @@ Start with the **[MCP setup and connection guide](mcp/README.md#build-and-connec
 
 ### Fork updates
 
-- **Unreleased:** 62 MCP tools, portable sessions, preset/LUT management, geometry diagnostics, isolated background operations, point-guided subject refinement, improved mask review, panorama matching, caching, and export/large-image fixes.
+- **Unreleased:** 62 MCP tools, optional Linux ONNX CUDA inference, portable sessions, preset/LUT management, geometry diagnostics, isolated background operations, point-guided subject refinement, improved mask review, panorama matching, caching, and export/large-image fixes.
 - **2026-09-12:** matched edit comparisons, named versions, recoverable AI/BM3D denoise jobs, and improved gradient controls.
 - **2026-09-10:** optional native MCP integration, nondestructive editing workflow, execution skill, and panorama correction.
 

@@ -6,6 +6,7 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ### Added
 
+- Opt-in Linux ONNX CUDA inference for foreground/sky masks, depth and AI denoise, with per-model memory limits, initialization-only automatic fallback and MCP provider diagnostics. Subject selection, local inpainting and unvalidated models retain CPU compatibility paths; CPU remains the default on all platforms. A separate GPU runtime leaves bundled runtimes and macOS setup unchanged. See the [CUDA setup and native regression guide](mcp/ONNX-CUDA.md).
 - Linux GPU server setup over SSH using Xvfb and offscreen Vulkan, with a tested Debian 13/NVIDIA configuration. The persistent inspection client accepts a stdio connection file and saves remote previews locally.
 - Explicit `adjustment_keys` when saving workspace presets, so reusable looks can retain their LUT and rendered curves while leaving each photo's exposure, white balance and detail corrections intact. Selection validates native keys and required LUT/curve dependencies.
 - Film-comparison skill guidance covering installed LUT discovery, explicit scene-referred processing for built-in films, and image-specific visual checks before recommending a look.
@@ -35,6 +36,7 @@ The MCP interface grows from 47 to 62 public tools: 57 native methods and five h
 
 ### Fixed
 
+- Linux local inpainting rejects nonfinite ONNX output before converting it to pixels. The bundled FP16 LaMa model remains on CPU after CUDA compatibility checks found invalid output at the supported maximum input size.
 - Desktop preset strength now blends from the captured pre-preset edit and restores that edit at zero strength. Partial presets preserve omitted exposure, white balance and detail controls; both desktop and MCP preset application fade a newly added LUT from zero effective strength.
 - Linear DNG files with constant repeated black-level grids could render almost entirely white. Equivalent spatial repeats now normalize to per-channel black levels before RAW development.
 - Incorrect ICC adaptation/tag layout and export profile labeling.
@@ -60,7 +62,7 @@ Fresh mask testing records three automatic selections, 53 successful native call
 
 On the guided bird regression, named AI review finds an AI-plus-brush whole-bird lift and an independent manual breast lift useful, while retaining painted-edge limits. Selected breast pixels change, the protected perch probe remains exact, and both edited sessions retain state and rendered pixels after history changes and restart. This does not approve a complete extraction matte or every photograph.
 
-See the [application/MCP capability matrix](mcp/CAPABILITY-MATRIX.md), [verification record](mcp/VERIFICATION.md) and [reproducible test instructions](mcp/testing-matrix.md). Windows/Linux native acceptance, release packaging, configured remote providers and genuine HDR/focus/negative-film fixtures remain unverified.
+See the [application/MCP capability matrix](mcp/CAPABILITY-MATRIX.md), [verification record](mcp/VERIFICATION.md) and [reproducible test instructions](mcp/testing-matrix.md). The [Linux SSH guide](mcp/REMOTE-SSH.md) and [ONNX CUDA guide](mcp/ONNX-CUDA.md) describe the tested Debian/NVIDIA configuration and model-specific boundaries. Other Linux configurations, Windows native acceptance, release packaging, configured remote providers and genuine HDR/focus/negative-film fixtures remain unverified.
 
 ## 2026-09-12 — comparison reviews and recoverable denoise
 

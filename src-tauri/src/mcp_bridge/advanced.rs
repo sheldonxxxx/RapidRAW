@@ -170,7 +170,7 @@ impl Bridge {
             groups.insert(kind.into(), json!({"ready":ready,"assets":assets}));
         }
         Ok(
-            json!({"models_directory":self.paths.models,"groups":groups,"onnx_runtime_path":std::env::var_os("ORT_DYLIB_PATH").map(PathBuf::from),"installation":"install_model copies verified installed assets when available, then downloads only missing or corrupt assets into this workspace"}),
+            json!({"models_directory":self.paths.models,"groups":groups,"onnx_runtime_path":std::env::var_os("ORT_DYLIB_PATH").map(PathBuf::from),"onnx_execution":crate::ai_runtime::status(),"installation":"install_model copies verified installed assets when available, then downloads only missing or corrupt assets into this workspace"}),
         )
     }
 

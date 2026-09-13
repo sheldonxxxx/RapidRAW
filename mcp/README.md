@@ -58,6 +58,8 @@ Configure your MCP host with absolute paths (replace the examples with your chec
 
 Use the actual Cargo output path if `CARGO_TARGET_DIR` is configured. `RAPIDRAW_BINARY` and `RAPIDRAW_WORKSPACE` are equivalent environment variables. `--timeout-ms`/`RAPIDRAW_TIMEOUT_MS` sets the default native-operation timeout (300000 ms). Model installation, merge and batch export have a 30-minute maximum; configure the host's tool timeout accordingly. Diagnostics go to stderr; stdout contains only MCP protocol traffic.
 
+ONNX inference defaults to CPU on every platform. Linux deployments can opt into [CUDA for foreground/sky masks, depth and AI denoise](ONNX-CUDA.md) with a separate compatible runtime. Subject selection and local inpainting retain their CPU compatibility paths; the macOS runtime and default inference behavior are unchanged.
+
 ## Process-local engine settings
 
 Optional `workspace/engine-settings.json` overrides bridge defaults using the native **camelCase** keys returned by `rapidraw_get_engine_settings`. A partial object is merged with defaults; unknown keys are rejected. Restart the MCP connection after changing this file. The bridge does not migrate or write the installed GUI application's preferences.
