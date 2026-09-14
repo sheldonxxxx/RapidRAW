@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+from storage_policy import require_free_space
 
 import numpy as np
 import onnxruntime as ort
@@ -154,6 +155,7 @@ def main():
     parser.add_argument("--timeout-seconds", type=int, default=600)
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    require_free_space(args.output)
     if args.runs < 1 or args.size < 0 or args.threads < 1 or args.multiple < 1 or args.scale < 1 or args.timeout_seconds < 1 or args.gpu_memory_mib < 1:
         parser.error("Runs, threads, multiple, scale, timeout and GPU memory must be positive; size must be nonnegative")
     if not args.worker:

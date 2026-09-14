@@ -14,6 +14,7 @@ import subprocess
 import time
 
 import psutil
+from storage_policy import require_free_space
 
 
 def gpu_memory():
@@ -35,6 +36,7 @@ def main():
     if args.output.exists():
         parser.error("Output already exists; choose a new evidence file")
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    require_free_space(args.output.parent)
     baseline = gpu_memory()
     samples = []
     started = time.monotonic()

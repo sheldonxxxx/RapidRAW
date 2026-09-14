@@ -83,6 +83,16 @@ Use the actual Cargo output path if `CARGO_TARGET_DIR` is configured. `RAPIDRAW_
 
 Existing masking, denoise and inpainting tools default to CPU on every platform. Linux deployments can opt into [CUDA for foreground/sky masks, depth and AI denoise](ONNX-CUDA.md) with a separate compatible runtime. Subject selection and local inpainting retain their CPU compatibility paths. The newer enhancement operations have their own [Auto provider policy](../docs/local-enhancement.md#choose-speed-and-detail).
 
+## Storage for repeated editing and tests
+
+MCP sessions, portable assets and background model snapshots retain independent files. For copies within the same APFS volume, new copies share filesystem blocks until either copy changes. Other filesystems use ordinary copies when cloning is unavailable; photographs and captured inputs are never linked to mutable originals.
+
+MCP model installation reuses SHA-256-verified seeds from `verified-models` in the application's cache directory. Set the native process environment variable `RAPIDRAW_MODEL_CACHE` to an absolute, non-symlink directory to choose another location. The MCP test harness and native enhancement benchmark default to the shared `mcp/.cache/verified-models` directory in this checkout instead, so runs stored on the checkout volume can share blocks; the environment override still takes precedence. Place a custom cache on the same volume as the workspaces for clone savings. Workspaces still own their model files and validate hashes. The seed cache is rebuildable; changing or removing a workspace copy does not change another workspace's copy. A corrupt cache entry produces `MODEL_CACHE_INVALID` and must be removed before retrying.
+
+MCP native test harnesses and the enhancement benchmark runners require 20 GiB free on the output volume before starting. Set `RAPIDRAW_MIN_FREE_GIB` to another positive value for a deliberately smaller run. The MCP harness also checks before operations that create large assets, and the native enhancement benchmark checks between cases. These checks are not a quota: budget space for unique renders and check free space during large batches. Keep originals, accepted exports, recipes and review evidence; archive completed experiments with checksum verification before removing local copies.
+
+Development builds default to no debug symbols and no incremental compilation. For debugging, opt in with `CARGO_PROFILE_DEV_DEBUG=1 CARGO_INCREMENTAL=1`; this uses more disk space. Reuse the same target directory for the same toolchain and build configuration, and clean inactive compiler artifacts when finished.
+
 ## Process-local engine settings
 
 Optional `workspace/engine-settings.json` overrides bridge defaults using the native **camelCase** keys returned by `rapidraw_get_engine_settings`. A partial object is merged with defaults; unknown keys are rejected. Restart the MCP connection after changing this file. The bridge does not migrate or write the installed GUI application's preferences.

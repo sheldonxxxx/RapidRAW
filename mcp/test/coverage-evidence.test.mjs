@@ -62,7 +62,7 @@ test('acceptance retries cannot overwrite prior evidence', async () => {
     await writeFile(binary, Buffer.from('7f454c46', 'hex'));
     const prior = '{"status":"failed","error":"first attempt"}\n';
     await writeFile(join(workspace, 'evidence.jsonl'), prior);
-    await assert.rejects(createNativeHarness({ suite: 'unit-no-native-execution', workspace, binary }), {
+    await assert.rejects(createNativeHarness({ suite: 'unit-no-native-execution', workspace, binary, minimumFreeGiB: 0.001 }), {
       code: 'EEXIST',
     });
     assert.equal(await readFile(join(workspace, 'evidence.jsonl'), 'utf8'), prior);
@@ -86,6 +86,17 @@ test('runtime provenance includes actual engine/server code but separates suite 
     'test-output/evidence.jsonl',
   ])
     assert.equal(isRuntimeSource(path), false, path);
+});
+test('low-space preflight rejects a native run before creating evidence or starting its binary', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'rapidraw-storage-preflight-'));
+  try {
+    const binary = join(workspace, 'never-executed-header-fixture');
+    await writeFile(binary, Buffer.from('7f454c46', 'hex'));
+    await assert.rejects(createNativeHarness({ suite: 'low-space', workspace, binary, minimumFreeGiB: 1e9 }), /STORAGE_LOW/);
+    await assert.rejects(readFile(join(workspace, 'evidence.jsonl')), { code: 'ENOENT' });
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
 });
 test('mock calls, skipped tests and native errors never earn native or pixel credit', () => {
   const base = {

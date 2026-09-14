@@ -2,7 +2,6 @@ use super::{Result, WorkspacePaths, flag, required, validation};
 use crate::app_state::AppState;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs,
@@ -247,7 +246,6 @@ impl Bridge {
         if !crate::formats::is_supported_image_file(&source) {
             return Err("UNSUPPORTED_FORMAT: Source extension is not supported".into());
         }
-        let bytes = fs::read(&source).map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let directory = self.paths.root.join("sessions").join(&id);
         fs::create_dir(&directory).map_err(|e| e.to_string())?;
@@ -256,7 +254,8 @@ impl Bridge {
             .and_then(|s| s.to_str())
             .unwrap_or("image");
         let working = directory.join(format!("source.{extension}"));
-        atomic_write(&working, &bytes, false)?;
+        crate::storage_copy::copy_new(&source, &working).map_err(|e| e.to_string())?;
+        let source_sha256 = crate::ai_enhance::digest(&working).map_err(|e| e.to_string())?;
         let mut metadata = json!({"version":1,"rating":0,"tags":null,"exif":null,"adjustments":validation::default_adjustments()});
         let sidecar = PathBuf::from(format!("{}.rrdata", source.display()));
         if flag(params, "inherit_sidecar", true)? && sidecar.is_file() {
@@ -303,7 +302,7 @@ impl Bridge {
         let mut session = Session {
             id: id.clone(),
             source_path: source.to_string_lossy().into_owned(),
-            source_sha256: hex::encode(Sha256::digest(&bytes)),
+            source_sha256,
             working_path: working.to_string_lossy().into_owned(),
             dimensions: (loaded.width, loaded.height),
             is_raw: loaded.is_raw,

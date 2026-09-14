@@ -42,6 +42,7 @@ src-tauri/libs/
 
 # bench/replay.js result dumps
 bench/out/
+bench/enhance/__pycache__/
 
 # Local photo experiments and optional MCP runtime state
 /output/

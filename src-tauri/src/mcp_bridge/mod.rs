@@ -6,6 +6,7 @@ mod delivery;
 mod enhance;
 mod geometry_review;
 mod jobs;
+mod model_cache;
 mod operations;
 mod portable;
 mod render;

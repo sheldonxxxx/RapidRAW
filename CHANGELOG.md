@@ -2,6 +2,15 @@
 
 Changes added by this fork to RapidRAW. Upstream application changes remain in the [upstream history](https://github.com/CyberTimon/RapidRAW/commits/main/). Versioned entries identify fork releases; older date-only entries record development milestones. Native bridge versions are separate from the upstream application version and the MCP server package version.
 
+## Unreleased
+
+### Storage
+
+- Use independent filesystem clones for MCP session sources, portable assets, background model snapshots, and local enhancement model imports on supported filesystems, with streaming/copy fallback elsewhere.
+- Reuse checksum-verified model seeds across MCP workspaces through a host cache. Model files remain local to each workspace; corrupt cache entries fail validation.
+- Disable development incremental compilation and debug symbols by default to reduce compiler-cache growth. Both remain available through Cargo profile overrides.
+- Require 20 GiB free on the output volume before MCP native test harness and enhancement benchmark runs, with additional checks between large operations/cases; allow an explicit positive `RAPIDRAW_MIN_FREE_GIB` override.
+
 ## 0.1.0-beta.1 — 2026-09-14
 
 Release tag: `fork-v0.1.0-beta.1`. First whole-fork beta; native bridge `1.2.0` and Node MCP server package `0.1.0` retain separate component versions. See the [release notes](docs/releases/0.1.0-beta.1.md).

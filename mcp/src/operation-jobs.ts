@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, readFile, open, rename, readdir, lstat, realpath, copyFile, rm } from 'node:fs/promises';
 import { join, basename, isAbsolute, relative, resolve, sep } from 'node:path';
+import { copyIndependent } from './storage.js';
 import { NativeBridge, BridgeError, type BridgeOptions, type JsonObject } from './bridge.js';
 
 const methods = new Set([
@@ -414,7 +415,7 @@ export class OperationJobs {
             fail('INVALID_PATH', 'Merge inputs must be absolute regular files');
           const target = join(directory, 'sources', `${i}-${basename(source)}`);
           const before = await hashFile(source);
-          await copyFile(source, target);
+          await copyIndependent(source, target);
           if ((await hashFile(target)) !== before || (await hashFile(source)) !== before)
             fail('SOURCE_CHANGED', 'Source changed during capture');
           job.sources.push({ path: target, sha256: before });
@@ -527,7 +528,7 @@ export class OperationJobs {
           `Workspace model ${asset.name} differs from its expected SHA-256; run install_model with kind='${kind}' before retrying.`,
         );
       const target = join(directory, 'models', asset.name);
-      await copyFile(source, target);
+      await copyIndependent(source, target);
       if ((await hashFile(target)) !== asset.sha256 || (await hashFile(source)) !== asset.sha256)
         fail(
           'MODEL_CHANGED',
@@ -581,13 +582,7 @@ export class OperationJobs {
         await confined(join(this.root, job.job_id), modelRoot, 'directory');
         for (const asset of job.models.assets) {
           const target = join(modelRoot, asset.name);
-          const file = await open(target, 'wx');
-          try {
-            for await (const chunk of createReadStream(asset.path)) await file.writeFile(chunk);
-            await file.sync();
-          } finally {
-            await file.close();
-          }
+          await copyIndependent(asset.path, target);
           if ((await hashFile(target)) !== asset.sha256)
             fail('MODEL_CHANGED', `Captured model ${asset.name} changed while preparing the worker`);
         }

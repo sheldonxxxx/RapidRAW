@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::{Read, Write},
+    io::Read,
     path::{Component, Path, PathBuf},
 };
 
@@ -115,8 +115,7 @@ fn checked_file(root: &Path, relative: &str) -> Result<PathBuf> {
 }
 
 fn copy_hashed(source: &Path, target: &Path, kind: &str, relative: &str) -> Result<Asset> {
-    // Validate before opening; hash during the copy instead of rereading a
-    // potentially multi-gigabyte source solely to establish its file type.
+    // Hash the independent snapshot so bundles describe their captured bytes.
     let metadata = fs::symlink_metadata(source).map_err(|e| format!("ASSET_NOT_FOUND: {e}"))?;
     if !metadata.is_file() || metadata.file_type().is_symlink() {
         return Err("INVALID_ASSET: Expected a regular file, not a symlink".into());
@@ -124,28 +123,12 @@ fn copy_hashed(source: &Path, target: &Path, kind: &str, relative: &str) -> Resu
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let mut input = fs::File::open(source).map_err(|e| e.to_string())?;
-    let mut output = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(target)
-        .map_err(|e| e.to_string())?;
-    let mut digest = Sha256::new();
-    let mut bytes = 0u64;
-    let mut buffer = [0u8; 64 * 1024];
-    loop {
-        let n = input.read(&mut buffer).map_err(|e| e.to_string())?;
-        if n == 0 {
-            break;
-        }
-        digest.update(&buffer[..n]);
-        output.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
-        bytes += n as u64;
-    }
-    output.sync_all().map_err(|e| e.to_string())?;
+    crate::storage_copy::copy_new(source, target).map_err(|e| e.to_string())?;
+    let sha256 = crate::ai_enhance::digest(target).map_err(|e| e.to_string())?;
+    let bytes = fs::metadata(target).map_err(|e| e.to_string())?.len();
     Ok(Asset {
         path: relative.into(),
-        sha256: hex::encode(digest.finalize()),
+        sha256,
         bytes,
         kind: kind.into(),
     })

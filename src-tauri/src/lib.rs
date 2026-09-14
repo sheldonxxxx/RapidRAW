@@ -45,6 +45,7 @@ mod preset_converter;
 mod raw_processing;
 #[cfg(test)]
 mod runtime_regression_tests;
+mod storage_copy;
 mod tagging;
 mod tagging_utils;
 mod window_customizer;

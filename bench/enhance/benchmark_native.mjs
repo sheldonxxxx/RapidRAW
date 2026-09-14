@@ -10,15 +10,25 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { fileURLToPath } from 'node:url';
 import { NativeBridge } from '../../mcp/dist/bridge.js';
+import { requireFreeSpace } from '../../mcp/dist/storage.js';
 
 assert.ok(process.env.RAPIDRAW_BINARY, 'RAPIDRAW_BINARY is required');
 assert.ok(process.env.RAPIDRAW_WORKSPACE, 'RAPIDRAW_WORKSPACE is required');
 assert.ok(process.env.RAPIDRAW_ENHANCEMENT_MANIFEST, 'RAPIDRAW_ENHANCEMENT_MANIFEST is required');
 const workspace = resolve(process.env.RAPIDRAW_WORKSPACE);
 await mkdir(workspace, { recursive: false });
+const minimumFreeGiB = Number(process.env.RAPIDRAW_MIN_FREE_GIB ?? 20);
+await requireFreeSpace(workspace, minimumFreeGiB);
 const manifest = JSON.parse(await readFile(resolve(process.env.RAPIDRAW_ENHANCEMENT_MANIFEST), 'utf8'));
-const bridge = new NativeBridge({ binary: resolve(process.env.RAPIDRAW_BINARY), workspace, timeoutMs: 1_800_000 });
+const bridge = new NativeBridge({
+  binary: resolve(process.env.RAPIDRAW_BINARY), workspace, timeoutMs: 1_800_000,
+  env: {
+    ...process.env,
+    RAPIDRAW_MODEL_CACHE: process.env.RAPIDRAW_MODEL_CACHE ?? fileURLToPath(new URL('../../mcp/.cache/verified-models', import.meta.url)),
+  },
+});
 const call = (method, args = {}) => bridge.request(method, args);
 const hash = async (path) =>
   createHash('sha256')
@@ -42,6 +52,7 @@ try {
     });
   }
   for (const fixture of manifest.cases) {
+    await requireFreeSpace(workspace, minimumFreeGiB);
     assert.match(fixture.id, /^[a-zA-Z0-9_-]+$/);
     const reviewLongEdge = fixture.review_long_edge ?? 1600;
     assert.ok(Number.isInteger(reviewLongEdge) && reviewLongEdge >= 128 && reviewLongEdge <= 8192);

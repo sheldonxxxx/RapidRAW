@@ -231,6 +231,7 @@ impl Bridge {
             .app_data_dir()
             .map_err(|e| e.to_string())?
             .join("models");
+        let cache = super::model_cache::directory(&self.handle)?;
         let mut missing = Vec::new();
         for (name, hash) in model_assets(kind)? {
             let target = self.paths.models.join(name);
@@ -241,20 +242,16 @@ impl Bridge {
                 ));
             }
             if target.is_file() && sha256_file(&target)? == hash {
+                super::model_cache::remember(&cache, &target, hash)?;
                 continue;
             }
-            let mut source = installed.join(name);
+            let mut source =
+                super::model_cache::lookup(&cache, hash)?.unwrap_or_else(|| installed.join(name));
             if !source.is_file() && name == ai::SKYSEG_FILENAME {
                 source = installed.join(ai::SKYSEG_LEGACY_FILENAME);
             }
             if !target.exists() && source.is_file() && sha256_file(&source)? == hash {
-                let temporary = tempfile::NamedTempFile::new_in(&self.paths.models)
-                    .map_err(|e| e.to_string())?;
-                fs::copy(&source, temporary.path()).map_err(|e| e.to_string())?;
-                temporary.as_file().sync_all().map_err(|e| e.to_string())?;
-                temporary
-                    .persist_noclobber(&target)
-                    .map_err(|e| e.to_string())?;
+                crate::storage_copy::copy_new(&source, &target).map_err(|e| e.to_string())?;
             }
             if !target.is_file() || sha256_file(&target)? != hash {
                 missing.push(name);
@@ -285,6 +282,9 @@ impl Bridge {
                     .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
             }
             _ => unreachable!(),
+        }
+        for (name, hash) in model_assets(kind)? {
+            super::model_cache::remember(&cache, &self.paths.models.join(name), hash)?;
         }
         Ok(())
     }

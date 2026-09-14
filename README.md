@@ -16,6 +16,8 @@ _Desktop screenshot from upstream RapidRAW. The MCP interface is an addition mai
 
 **[AI editing test report](docs/ai-editing-experiments.md):** what we tested on a 16 GB GPU and how we chose the current workflows.
 
+For repeated MCP editing and test runs, see [storage and model-cache guidance](mcp/README.md#storage-for-repeated-editing-and-tests).
+
 ## Choose your starting point
 
 | You want to…                                                      | Start here                                                                                                                                                                                   |

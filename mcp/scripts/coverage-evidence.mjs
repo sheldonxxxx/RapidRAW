@@ -8,6 +8,7 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { requireFreeSpace } from '../dist/storage.js';
 import { classifyRequirement, summarizeGroups } from './coverage-classification.mjs';
 
 const exec = promisify(execFile);
@@ -219,6 +220,7 @@ export async function createNativeHarness({
   binary = process.env.RAPIDRAW_BINARY,
   env = {},
   timeout = 300000,
+  minimumFreeGiB = Number(env.RAPIDRAW_MIN_FREE_GIB ?? process.env.RAPIDRAW_MIN_FREE_GIB ?? 20),
 }) {
   if (!binary || (!binary.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(binary)))
     throw new Error('RAPIDRAW_BINARY must be an absolute real RapidRAW executable path');
@@ -232,6 +234,7 @@ export async function createNativeHarness({
   const executableFormat = nativeExecutableFormat(header);
   workspace = resolve(workspace);
   await mkdir(workspace, { recursive: true });
+  await requireFreeSpace(workspace, minimumFreeGiB);
   const repository = fileURLToPath(new URL('../../', import.meta.url));
   const git = async (...args) => (await exec('git', args, { cwd: repository })).stdout.trim();
   async function runtimeSnapshot() {
@@ -305,7 +308,11 @@ export async function createNativeHarness({
           String(timeout),
         ],
         stderr: 'inherit',
-        env: { ...process.env, ...env },
+        env: {
+          ...process.env,
+          RAPIDRAW_MODEL_CACHE: process.env.RAPIDRAW_MODEL_CACHE ?? join(repository, 'mcp', '.cache', 'verified-models'),
+          ...env,
+        },
       }),
     );
   }
@@ -327,6 +334,9 @@ export async function createNativeHarness({
     const started = performance.now();
     let response;
     try {
+      if (['open_photo', 'render', 'render_compare', 'mask_generate', 'generate_depth', 'denoise', 'start_denoise', 'resume_job', 'export', 'batch_export', 'install_model', 'install_enhancement_model', 'enhance', 'merge', 'retouch', 'negative_convert', 'fork_session', 'export_session_bundle', 'import_session_bundle', 'start_operation'].includes(method)) {
+        await requireFreeSpace(workspace, minimumFreeGiB);
+      }
       response = await client.callTool({ name: `rapidraw_${method}`, arguments: args }, { timeout });
       const optionalError =
         !!response.isError &&

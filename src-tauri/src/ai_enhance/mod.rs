@@ -332,7 +332,16 @@ pub async fn install(
     let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
     if let Some(source) = source {
         regular(source)?;
-        fs::copy(source, temporary.path())?;
+        let temporary_path = temporary.into_temp_path();
+        fs::remove_file(&temporary_path)?;
+        crate::storage_copy::copy_new(source, &temporary_path)?;
+        temporary = tempfile::NamedTempFile::from_parts(
+            fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&temporary_path)?,
+            temporary_path,
+        );
     } else {
         let url = m.url.ok_or_else(|| {
             anyhow!("MODEL_PREPARATION_REQUIRED: {id} requires a locally prepared ONNX path")

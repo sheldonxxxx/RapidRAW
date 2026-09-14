@@ -8,14 +8,26 @@ impl Bridge {
         ai::status(&self.paths.models)
     }
     pub(super) async fn install_enhancement_model(&self, params: &Value) -> Result<Value> {
-        ai::install(
+        let id = required(params, "model_id")?;
+        let model = ai::model(id).map_err(|e| e.to_string())?;
+        let cache = super::model_cache::directory(&self.handle)?;
+        let cached = match model.sha256.or(params["sha256"].as_str()) {
+            Some(hash) if params["path"].as_str().is_none() => {
+                super::model_cache::lookup(&cache, hash)?
+            }
+            _ => None,
+        };
+        let result = ai::install(
             &self.paths.models,
-            required(params, "model_id")?,
-            params["path"].as_str().map(Path::new),
+            id,
+            params["path"].as_str().map(Path::new).or(cached.as_deref()),
             params["sha256"].as_str(),
         )
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        let (path, hash) = ai::installed(&self.paths.models, id).map_err(|e| e.to_string())?;
+        super::model_cache::remember(&cache, &path, &hash)?;
+        Ok(result)
     }
     pub(super) async fn enhance(&mut self, params: &Value) -> Result<Value> {
         let started = std::time::Instant::now();
