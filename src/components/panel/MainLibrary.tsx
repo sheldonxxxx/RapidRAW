@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import React, { useState, useEffect, useMemo } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
+import { findForkUpdate, FORK_RELEASES_API, FORK_RELEASES_URL } from '../../utils/forkReleases';
 import { open } from '@tauri-apps/plugin-shell';
 import {
   AlertTriangle,
@@ -275,37 +276,19 @@ export default function MainLibrary(props: MainLibraryProps) {
   }, [isBusyDelayed]);
 
   useEffect(() => {
-    const compareVersions = (v1: string, v2: string) => {
-      const parts1 = v1.split('.').map(Number);
-      const parts2 = v2.split('.').map(Number);
-      const len = Math.max(parts1.length, parts2.length);
-      for (let i = 0; i < len; i++) {
-        const p1 = parts1[i] || 0;
-        const p2 = parts2[i] || 0;
-        if (p1 < p2) return -1;
-        if (p1 > p2) return 1;
-      }
-      return 0;
-    };
-
     const checkVersion = async () => {
       try {
         const currentVersion = await getVersion();
         setAppVersion(currentVersion);
 
-        const response = await fetch('https://api.github.com/repos/CyberTimon/RapidRAW/releases/latest');
+        const response = await fetch(FORK_RELEASES_API);
         if (!response.ok) {
           console.error('Failed to fetch latest release info from GitHub.');
           return;
         }
-        const data = await response.json();
-        const latestTag = data.tag_name;
-        if (!latestTag) return;
-
-        const latestVersionStr = latestTag.startsWith('v') ? latestTag.substring(1) : latestTag;
-        setLatestVersion(latestVersionStr);
-
-        if (compareVersions(currentVersion, latestVersionStr) < 0) {
+        const update = findForkUpdate(currentVersion, await response.json());
+        if (update) {
+          setLatestVersion(update.version);
           setIsUpdateAvailable(true);
         }
       } catch (error) {
@@ -452,7 +435,7 @@ export default function MainLibrary(props: MainLibraryProps) {
                             }`}
                             onClick={() => {
                               if (isUpdateAvailable) {
-                                open('https://github.com/CyberTimon/RapidRAW/releases/latest');
+                                open(`${FORK_RELEASES_URL}/tag/fork-v${encodeURIComponent(latestVersion)}`);
                               }
                             }}
                             data-tooltip={

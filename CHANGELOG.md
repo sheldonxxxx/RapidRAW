@@ -1,8 +1,10 @@
 # Fork changelog
 
-Changes added by this fork to RapidRAW. Upstream application changes remain in the [upstream history](https://github.com/CyberTimon/RapidRAW/commits/main/). Dated entries below record fork development milestones, not packaged releases. Native bridge versions are separate from the upstream application version and the MCP server package version.
+Changes added by this fork to RapidRAW. Upstream application changes remain in the [upstream history](https://github.com/CyberTimon/RapidRAW/commits/main/). Versioned entries identify fork releases; older date-only entries record development milestones. Native bridge versions are separate from the upstream application version and the MCP server package version.
 
-## Unreleased — native bridge 1.2.0
+## 0.1.0-beta.1 — 2026-09-14
+
+Release tag: `fork-v0.1.0-beta.1`. First whole-fork beta; native bridge `1.2.0` and Node MCP server package `0.1.0` retain separate component versions. See the [release notes](docs/releases/0.1.0-beta.1.md).
 
 ### Added
 
@@ -45,6 +47,10 @@ The MCP interface grows from 47 to 65 public tools: 60 native methods and five h
 - Spherical-photo skill guidance for preserving full-sphere geometry, reviewing longitude seams and poles, editing an independently selected flat view, and checking final projection metadata and colour assumptions.
 
 ### Changed
+
+- Fork packages install as RapidRAW MCP with independent preferences and model storage. App update notifications follow fork tags, including later prereleases for beta installations.
+- Release packaging includes the native MCP bridge, checks the tagged version, and uploads to a draft before publication. Windows packages use NSIS; Apple Silicon packages declare macOS 14+.
+- Frontend CI uses Node 22, and packaged builds install locked frontend dependencies.
 
 - Generation result details consistently show generated and placement dimensions. New receipts omit experimental tile metadata; previously saved receipts remain compatible.
 - Apple Silicon builds bundle the official ONNX Runtime 1.30.0 library, verified archive and file hashes, and license notices. These builds require macOS 14 or later. Intel Mac builds retain 1.22.0; existing CoreML model restrictions remain in place.

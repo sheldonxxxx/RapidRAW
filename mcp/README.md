@@ -8,6 +8,23 @@ The [RapidRAW MCP skill](../skills/rapidraw-mcp/SKILL.md) provides agent guidanc
 
 Choose [macOS setup](#macos-quick-start), [Linux over SSH](REMOTE-SSH.md), or the [tool reference](#capabilities). For a first edit, follow the [example editing loop](#example-editing-loop). All `/absolute/...` paths in this guide are placeholders.
 
+## Connect a beta package
+
+Fork release packages include the native bridge and install as **RapidRAW MCP**. Upstream packages do not include it. The Node host remains a separate setup step; use the same source tag as your downloaded package. Fresh-machine MCP installation of these packages has not yet been validated; the source-build workflows below retain their recorded test boundaries.
+
+For `fork-v0.1.0-beta.1`, install Node.js 22.12+ and Git, then run:
+
+```sh
+git clone --branch fork-v0.1.0-beta.1 --depth 1 https://github.com/sheldonxxxx/RapidRAW.git
+cd RapidRAW
+npm ci --prefix mcp
+npm run build --prefix mcp
+```
+
+Use the [host configuration below](#build-and-connect) with the absolute path to this checkout's `mcp/dist/index.js`. Set `--binary` to the installed executable. On macOS, for example, that is `/Applications/RapidRAW MCP.app/Contents/MacOS/rapidraw-mcp`; quote this path when using it in a shell. On Windows select `rapidraw-mcp.exe` inside the installation directory. On Linux use the installed `rapidraw-mcp` executable from a DEB/RPM package; the documented source build is the fallback if your package's launch environment does not support stdio.
+
+Reconnect your client and call `rapidraw_capabilities` to confirm native startup. The host package reports `0.1.0`, while the native bridge reports `1.2.0`; these component versions are independent of the app release version. Models are installed separately. The fork's new application identifier separates preferences and model storage from upstream; it does not migrate them automatically.
+
 ## macOS quick start
 
 This quick start covers macOS with Metal and a debug build of this fork. The [Linux GPU server guide](REMOTE-SSH.md) covers the tested Debian 13/NVIDIA/Xvfb workflow over SSH. **Windows and packaged MCP releases have not been tested for the MCP workflow.**

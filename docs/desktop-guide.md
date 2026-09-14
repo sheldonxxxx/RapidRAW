@@ -6,7 +6,7 @@ RapidRAW is a GPU-accelerated photo editor created by [Timon Käch](https://gith
 
 Use the [upstream releases page](https://github.com/CyberTimon/RapidRAW/releases) for the original application's available installers and bundles. Linux packaging also includes [Flathub](https://flathub.org/apps/io.github.CyberTimon.RapidRAW) and the community [AUR package](https://aur.archlinux.org/packages/rapidraw-bin). Follow the selected package's platform and dependency requirements.
 
-Those upstream packages do not include this fork's MCP bridge. Build this fork for fork-specific fixes or MCP. Its tested MCP configurations are listed separately in the [repository overview](../README.md#tested-configurations-and-current-limits).
+Those upstream packages do not include this fork's MCP bridge. Use [this fork's beta packages](https://github.com/sheldonxxxx/RapidRAW/releases) or build this fork for fork-specific fixes or MCP. The fork installs as **RapidRAW MCP** with separate preferences and model storage; existing upstream settings are not automatically migrated. To connect an agent, also set up the [Node MCP host](../mcp/README.md#connect-a-beta-package). Its tested MCP configurations are listed separately in the [repository overview](../README.md#tested-configurations-and-current-limits).
 
 For interface tutorials and the original editor's example photographs, visit the [upstream documentation](https://www.getrapidraw.com/docs/) and [showcase](https://github.com/CyberTimon/RapidRAW#showcase--edits).
 

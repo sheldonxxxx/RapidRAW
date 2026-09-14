@@ -21,13 +21,15 @@ _Desktop screenshot from upstream RapidRAW. The MCP interface is an addition mai
 | You want to…                                                      | Start here                                                                                                                                                                                   |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Edit photographs directly in a desktop application                | [Desktop guide](docs/desktop-guide.md) and [upstream application downloads](https://github.com/CyberTimon/RapidRAW/releases)                                                                 |
-| Let an AI agent use RapidRAW's native engine                      | Build this fork and follow the [MCP setup guide](mcp/README.md)                                                                                                                              |
+| Let an AI agent use RapidRAW's native engine                      | Use a fork beta package or source build and follow the [MCP setup guide](mcp/README.md)                                                                                                      |
 | Give your agent an editing workflow and a place to review results | Start with [Lightweft](https://github.com/sheldonxxxx/lightweft), then add RapidRAW as an optional execution tool                                                                            |
 | Prepare saved Insta360 files before editing                       | Use the independent [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit), then follow the [spherical handoff guide](skills/rapidraw-mcp/references/spherical-photos.md) |
 
-**MCP currently requires a source build with the `mcp` Cargo feature.** Upstream application downloads do not contain this fork's bridge. The server uses your MCP client's model; it does not include a language model or a hosted editing service.
+**Fork beta packages include the native MCP bridge.** Choose a matching asset from the [fork releases](https://github.com/sheldonxxxx/RapidRAW/releases), then [build and connect the separate Node host](mcp/README.md#connect-a-beta-package). Source builds require the `mcp` Cargo feature. Upstream application downloads do not contain this fork's bridge. The server uses your MCP client's model; it does not include a language model or a hosted editing service.
 
 Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0 for local AI inference. Intel Mac builds retain the existing runtime. See the [runtime and hardware guide](docs/local-enhancement.md#apple-silicon-runtime).
+
+**First beta:** `fork-v0.1.0-beta.1`, installed as **RapidRAW MCP** with separate application preferences and model storage. See the [release notes](docs/releases/0.1.0-beta.1.md) for installation and beta limits.
 
 ## What an agent can do
 

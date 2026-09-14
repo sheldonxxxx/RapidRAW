@@ -1,36 +1,89 @@
 name: 'Release: Build & Package App'
 
 on:
-  release:
-    types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing fork-v tag with a draft GitHub release'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release-id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Verify tag and draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          import assert from 'node:assert/strict';
+          const version = JSON.parse(readFileSync('package.json')).version;
+          const config = JSON.parse(readFileSync('src-tauri/tauri.conf.json'));
+          const cargo = readFileSync('src-tauri/Cargo.toml', 'utf8');
+          assert.equal(process.env.RELEASE_TAG, `fork-v${version}`);
+          assert.equal(config.version, version);
+          assert(cargo.includes(`version = "${version}"`));
+          JS
+          gh release view "$RELEASE_TAG" --json databaseId,isDraft > release.json
+          jq -e '.isDraft == true' release.json
+          echo "id=$(jq -r '.databaseId' release.json)" >> "$GITHUB_OUTPUT"
+          rm release.json
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run i18n:check
+      - run: npm ci --prefix mcp
+      - run: npm test --prefix mcp
+
   release:
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: 'windows-latest'
-            builds-args: '--bundles nsis'
+            args: '--features mcp --bundles nsis'
             target: ''
             asset-prefix: '01'
           - platform: 'windows-11-arm'
-            builds-args: '--bundles nsis'
+            args: '--features mcp --bundles nsis'
             target: 'aarch64-pc-windows-msvc'
             asset-prefix: '01'
           - platform: 'macos-14'
             target: aarch64-apple-darwin
+            args: --features mcp --config src-tauri/tauri.macos-arm64.conf.json
             asset-prefix: '02'
           - platform: 'macos-15-intel'
             target: x86_64-apple-darwin
             asset-prefix: '02'
           - platform: 'macos-14'
             target: aarch64-apple-darwin
-            args: '--features tethering'
+            args: '--features mcp,tethering --config src-tauri/tauri.macos-arm64.conf.json'
             asset-prefix: '02_tethering'
           - platform: 'macos-15-intel'
             target: x86_64-apple-darwin
-            args: '--features tethering'
+            args: '--features mcp,tethering'
             asset-prefix: '02_tethering'
           - platform: 'ubuntu-22.04'
             target: ''
@@ -46,18 +99,19 @@ jobs:
             asset-prefix: '03'
           - platform: 'ubuntu-22.04'
             target: ''
-            args: '--features tethering'
+            args: '--features mcp,tethering'
             asset-prefix: '03_tethering'
           - platform: 'ubuntu-24.04'
             target: ''
-            args: '--features tethering'
+            args: '--features mcp,tethering'
             asset-prefix: '03_tethering'
     uses: ./.github/workflows/build.yml
     with:
-      release-id: ${{ github.event.release.id }}
+      release-id: ${{ needs.validate.outputs.release-id }}
+      ref: ${{ inputs.tag }}
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
-      build-args: ${{ matrix.args }}
+      build-args: ${{ matrix.args || '--features mcp' }}
       asset-name-pattern: '[name]_v[version]_[platform]_[arch][ext]'
       asset-prefix: ${{ matrix.asset-prefix }}
     secrets: inherit

@@ -111,7 +111,7 @@ jobs:
           link-to-sdk: true
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Setup Android signing
         if: inputs.mobile == 'android' && github.event_name != 'pull_request'
