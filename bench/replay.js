@@ -25,11 +25,10 @@
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const dispatchMouse = (target, type, x, y, opts = {}) =>
-    target.dispatchEvent(
-      new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, ...opts }),
-    );
+    target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, ...opts }));
 
-  const THUMBNAIL_SELECTOR = '[data-bench-id="thumbnail"], .aspect-square.bg-surface.rounded-md.overflow-hidden.cursor-pointer';
+  const THUMBNAIL_SELECTOR =
+    '[data-bench-id="thumbnail"], .aspect-square.bg-surface.rounded-md.overflow-hidden.cursor-pointer';
   const SCROLL_CONTAINER_SELECTOR = '.custom-scrollbar';
   const SLIDER_SELECTOR = '.slider-input';
   const BACK_TO_LIBRARY_SELECTOR = '[data-bench-id="back-to-library"]';
@@ -131,8 +130,7 @@
     }
     if (waited >= timeoutMs) {
       throw new Error(
-        'bench: editor did not report a rendered preview within 8s ' +
-          `(${FIRST_FRAME_SELECTOR} never appeared).`,
+        'bench: editor did not report a rendered preview within 8s ' + `(${FIRST_FRAME_SELECTOR} never appeared).`,
       );
     }
     return { start, end: performance.now() };
@@ -287,7 +285,7 @@
   console.log(json);
   console.log('BENCH_RESULT_JSON_END');
   try {
-    copy(json);  
+    copy(json);
     console.log('bench: result copied to clipboard. Paste into bench/out/<name>.json');
   } catch {
     console.log('bench: clipboard copy() unavailable in this console, copy the JSON above manually');

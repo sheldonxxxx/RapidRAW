@@ -1,10 +1,7 @@
 {
   "schema_version": 1,
   "title": "RapidRAW AI editing experiment configurations",
-  "study_dates": [
-    "2026-09-13",
-    "2026-09-14"
-  ],
+  "study_dates": ["2026-09-13", "2026-09-14"],
   "purpose": "Portable model and configuration provenance for the accompanying examples. This is not an importable Comfy workflow or a model quality leaderboard.",
   "environment": {
     "evidence_scope": "Captured during the study; not a current hardware probe.",
@@ -50,10 +47,7 @@
       "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
       "samples": 7,
       "median_seconds": 11.838,
-      "range_seconds": [
-        11.637,
-        11.961
-      ],
+      "range_seconds": [11.637, 11.961],
       "first_observed_graph_seconds": 131.193,
       "cached_completions_excluded": 0
     },
@@ -62,10 +56,7 @@
       "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
       "samples": 2,
       "median_seconds": 14.6445,
-      "range_seconds": [
-        14.591,
-        14.698
-      ],
+      "range_seconds": [14.591, 14.698],
       "first_observed_graph_seconds": 75.111,
       "cached_completions_excluded": 0
     },
@@ -74,10 +65,7 @@
       "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
       "samples": 7,
       "median_seconds": 5.45,
-      "range_seconds": [
-        5.432,
-        5.653
-      ],
+      "range_seconds": [5.432, 5.653],
       "first_observed_graph_seconds": 5.453,
       "cached_completions_excluded": 6
     },
@@ -86,10 +74,7 @@
       "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
       "samples": 13,
       "median_seconds": 5.626,
-      "range_seconds": [
-        4.829,
-        6.141
-      ],
+      "range_seconds": [4.829, 6.141],
       "first_observed_graph_seconds": 5.651,
       "cached_completions_excluded": 0
     },
@@ -98,10 +83,7 @@
       "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
       "samples": 3,
       "median_seconds": 7.676,
-      "range_seconds": [
-        7.156,
-        7.782
-      ],
+      "range_seconds": [7.156, 7.782],
       "first_observed_graph_seconds": 123.238,
       "cached_completions_excluded": 0
     },
@@ -110,10 +92,7 @@
       "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
       "samples": 7,
       "median_seconds": 29.288,
-      "range_seconds": [
-        28.972,
-        29.783
-      ],
+      "range_seconds": [28.972, 29.783],
       "first_observed_graph_seconds": 36.746,
       "cached_completions_excluded": 0
     }
@@ -219,51 +198,33 @@
       "model": "2xNomosUni_span_multijpg.safetensors",
       "scale": 2,
       "availability": "research-only; not enabled by bundled connector profiles",
-      "nodes": [
-        "UpscaleModelLoader",
-        "ImageUpscaleWithModel"
-      ],
+      "nodes": ["UpscaleModelLoader", "ImageUpscaleWithModel"],
       "initial_tile": 512,
       "tile_overlap": 32,
       "execution_dtype": "float32",
-      "oom_tile_fallbacks": [
-        256,
-        128
-      ]
+      "oom_tile_fallbacks": [256, 128]
     },
     {
       "id": "upscale-realesrgan2x",
       "model": "RealESRGAN_x2plus.pth",
       "scale": 2,
       "availability": "research-only; not enabled by bundled connector profiles",
-      "nodes": [
-        "UpscaleModelLoader",
-        "ImageUpscaleWithModel"
-      ],
+      "nodes": ["UpscaleModelLoader", "ImageUpscaleWithModel"],
       "initial_tile": 512,
       "tile_overlap": 32,
       "execution_dtype": "float32",
-      "oom_tile_fallbacks": [
-        256,
-        128
-      ]
+      "oom_tile_fallbacks": [256, 128]
     },
     {
       "id": "upscale-nomosdat4x",
       "model": "4xNomosUniDAT_bokeh_jpg.safetensors",
       "scale": 4,
       "availability": "research-only; not enabled by bundled connector profiles",
-      "nodes": [
-        "UpscaleModelLoader",
-        "ImageUpscaleWithModel"
-      ],
+      "nodes": ["UpscaleModelLoader", "ImageUpscaleWithModel"],
       "initial_tile": 512,
       "tile_overlap": 32,
       "execution_dtype": "float32",
-      "oom_tile_fallbacks": [
-        256,
-        128
-      ]
+      "oom_tile_fallbacks": [256, 128]
     },
     {
       "id": "upscale-seedvr2-aligned2mp",

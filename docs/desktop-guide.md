@@ -111,14 +111,14 @@ RAPIDRAW_APP=/absolute/RapidRAW/src-tauri/target/release/RapidRAW
   --output /absolute/exports --adjustments /absolute/presets/adjustments.json
 ```
 
-| Option | Meaning | Default |
-| --- | --- | --- |
-| `<source>` | An image file or directory | Required |
-| `--output <path>` | Output file or directory | Required |
-| `--format <fmt>` | `jpeg`, `png`, `webp`, `avif`, `tiff`, `jxl`, or `cube` | `jpeg` |
-| `--quality <1-100>` | Requested export quality | `90` |
-| `--keep-metadata` | Retain capture metadata | Off |
-| `--adjustments <path>` | Native adjustment JSON overriding sidecars | Use adjacent sidecars |
+| Option                 | Meaning                                                 | Default               |
+| ---------------------- | ------------------------------------------------------- | --------------------- |
+| `<source>`             | An image file or directory                              | Required              |
+| `--output <path>`      | Output file or directory                                | Required              |
+| `--format <fmt>`       | `jpeg`, `png`, `webp`, `avif`, `tiff`, `jxl`, or `cube` | `jpeg`                |
+| `--quality <1-100>`    | Requested export quality                                | `90`                  |
+| `--keep-metadata`      | Retain capture metadata                                 | Off                   |
+| `--adjustments <path>` | Native adjustment JSON overriding sidecars              | Use adjacent sidecars |
 
 Use a separate output location and inspect exported dimensions, metadata and pixels. MCP-only parameters such as `expected_revision`, `long_edge`, `resize` and `color_profile` are not flags of this CLI. For agent-managed originals protection, portable state and structured per-item results, use the [MCP workflow](../mcp/README.md#example-editing-loop).
 

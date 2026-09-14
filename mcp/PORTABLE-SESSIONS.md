@@ -7,13 +7,13 @@ The MCP workspace is an isolated editing authority. `fork_session` creates an in
 Save a named reference before exploring a different treatment:
 
 ```json
-{"session_id":"<session UUID>","expected_revision":12,"label":"Accepted light"}
+{ "session_id": "<session UUID>", "expected_revision": 12, "label": "Accepted light" }
 ```
 
 Send that to `save_version`, then use its returned `version_id`:
 
 ```json
-{"session_id":"<session UUID>","expected_revision":12,"version_id":"<version UUID>","label":"Cooler candidate"}
+{ "session_id": "<session UUID>", "expected_revision": 12, "version_id": "<version UUID>", "label": "Cooler candidate" }
 ```
 
 Send this to `fork_session`. Omit `version_id` to use current edits. The new session has a new UUID, revision zero, its own working source and LUT copies, and one active history snapshot. Named references are copied and rebound to the new session. Source provenance, metadata, inline masks, depth maps, retouch patches and `is_raw` are preserved. A float TIFF derived from RAW therefore keeps its RAW interpretation when edited through the new MCP session.
@@ -25,7 +25,7 @@ Edits to either session are independent. Read the returned session ID and revisi
 Export the session:
 
 ```json
-{"session_id":"<session UUID>","expected_revision":12,"name":"accepted-landscape"}
+{ "session_id": "<session UUID>", "expected_revision": 12, "name": "accepted-landscape" }
 ```
 
 `export_session_bundle` returns an absolute `path` under `workspace/bundles`, plus `manifest_sha256`. A bundle is a directory, not a ZIP archive. Its contents are:
@@ -39,7 +39,7 @@ Bitmap masks, depth maps and retouch patches remain embedded in their snapshots.
 Copy the entire directory to the destination machine or disk. Connect an MCP server to the destination workspace and call `import_session_bundle`:
 
 ```json
-{"path":"/absolute/path/to/accepted-landscape","expected_manifest_sha256":"<SHA-256 returned by export>"}
+{ "path": "/absolute/path/to/accepted-landscape", "expected_manifest_sha256": "<SHA-256 returned by export>" }
 ```
 
 Import checks every file's digest and size, all history snapshots and named references, dependency references and LUT parsing. It rejects traversal, absolute asset paths, duplicate assets, missing assets and symlinks within the bundle. The imported source and LUTs live in a new UUID directory; once import succeeds, the transport bundle and old workspace are no longer required.
@@ -53,7 +53,7 @@ Limits: 32 history snapshots, up to 4,096 named references, 8,192 inventoried fi
 `diff_versions` compares named snapshots or current edits:
 
 ```json
-{"session_id":"<session UUID>","from_version_id":"<accepted version UUID>"}
+{ "session_id": "<session UUID>", "from_version_id": "<accepted version UUID>" }
 ```
 
 Omitting `to_version_id` compares against current edits. Either side can be omitted. The result contains JSON Pointer paths, add/remove/replace operations and before/after values for adjustments and metadata. Large embedded strings are represented by byte length and SHA-256, so a mask change does not print megabytes of bitmap data. Comparing versions leaves history and revision unchanged; use `render_compare` for the photographic comparison.
@@ -64,14 +64,14 @@ Omitting `to_version_id` compares against current edits. Either side can be omit
 
 ```json
 {
-  "session_id":"<source UUID>",
-  "expected_revision":12,
-  "keys":["exposure","temperature","tint","hsl"],
-  "geometry":"exclude",
-  "mode":"replace_selected",
-  "targets":[
-    {"session_id":"<destination UUID>","expected_revision":3},
-    {"session_id":"<another destination UUID>","expected_revision":0}
+  "session_id": "<source UUID>",
+  "expected_revision": 12,
+  "keys": ["exposure", "temperature", "tint", "hsl"],
+  "geometry": "exclude",
+  "mode": "replace_selected",
+  "targets": [
+    { "session_id": "<destination UUID>", "expected_revision": 3 },
+    { "session_id": "<another destination UUID>", "expected_revision": 0 }
   ]
 }
 ```
@@ -87,7 +87,14 @@ The source may additionally specify `version_id`. `replace_selected` replaces ea
 Save a preset from current edits:
 
 ```json
-{"action":"save","session_id":"<session UUID>","expected_revision":12,"name":"Evening colour","include_masks":false,"include_geometry":false}
+{
+  "action": "save",
+  "session_id": "<session UUID>",
+  "expected_revision": 12,
+  "name": "Evening colour",
+  "include_masks": false,
+  "include_geometry": false
+}
 ```
 
 `include_masks` and `include_geometry` default to false. Disabling selective content excludes both adjustment masks and retouch patches; imported native presets with `includeMasks:false` use the same behavior. Disabling geometry excludes crop, orientation, flips, perspective and depth-map geometry. Presets own any LUT dependency. Save returns the new preset `id`; send it to `apply_preset` using `preset_id`.
@@ -95,7 +102,15 @@ Save a preset from current edits:
 For a reusable look that preserves each photo's base corrections, save only its intended controls:
 
 ```json
-{"action":"save","session_id":"<session UUID>","expected_revision":12,"name":"Film colour","adjustment_keys":["lutPath","lutIntensity","lutIsSceneReferred","contrast","saturation","curves"],"include_masks":false,"include_geometry":false}
+{
+  "action": "save",
+  "session_id": "<session UUID>",
+  "expected_revision": 12,
+  "name": "Film colour",
+  "adjustment_keys": ["lutPath", "lutIntensity", "lutIsSceneReferred", "contrast", "saturation", "curves"],
+  "include_masks": false,
+  "include_geometry": false
+}
 ```
 
 `adjustment_keys` accepts 1–100 unique, exact top-level names from `rapidraw://adjustment-schema`, only for `action:"save"`. Unknown, missing and excluded keys are errors; selecting a nested object such as `hsl` saves that whole control. Masks and geometry still require their respective include option. Selecting any LUT field requires `lutPath`, `lutIntensity` and `lutIsSceneReferred` together. Selecting `pointCurves`, `parametricCurve` or `curveMode` also requires the authoritative rendered `curves` field. The response reports the saved `adjustment_keys`.

@@ -4,32 +4,22 @@
     "klein4-v1": {
       "label": "Klein 4B",
       "config": "configs/klein4-v1.json",
-      "megapixels": [
-        1,
-        2
-      ]
+      "megapixels": [1, 2]
     },
     "klein4-tight2mp": {
       "label": "Klein 4B closer context",
       "config": "configs/klein4-tight2mp.json",
-      "megapixels": [
-        1,
-        2
-      ]
+      "megapixels": [1, 2]
     },
     "klein9-kv": {
       "label": "Klein 9B KV",
       "config": "configs/klein9-kv.json",
-      "megapixels": [
-        1
-      ]
+      "megapixels": [1]
     },
     "boogu-turbo4-context": {
       "label": "Boogu Edit Turbo",
       "config": "configs/boogu-turbo4-context.json",
-      "megapixels": [
-        1
-      ]
+      "megapixels": [1]
     }
   }
 }

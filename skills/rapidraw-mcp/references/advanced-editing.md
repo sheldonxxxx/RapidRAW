@@ -12,12 +12,12 @@ Use `sample_region` on an inspected neutral area to measure rendered sRGB, clipp
 
 `mask_update(submask_operations: [...])` accepts 1–100 atomic operations with `operation: "add"`, `"edit"`, `"remove"`, `"duplicate"` or `"reorder"`. Keep IDs from the response; add and duplicate generate new IDs. Render the combined selection after changes; composition order and subtract/intersect modes affect what remains selected.
 
-| Operation | Coordinate space |
-| --- | --- |
-| `render.region`, `analyze.region` | Full-resolution rendered pixels after crop and geometry, before preview resizing; integer bounds |
-| Mask geometry, AI subject `region` | `mask`: full-resolution canvas after current geometric correction, user orientation, flips and rotation, before user crop |
-| `map_coordinates` `oriented_source` | Loaded source after EXIF decoding orientation, before all user geometry |
-| Adjustment `crop` | Full-resolution pixels after geometric correction, orientation, flips, and rotation; inside the transformed canvas; `unit: "px"` |
+| Operation                           | Coordinate space                                                                                                                 |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `render.region`, `analyze.region`   | Full-resolution rendered pixels after crop and geometry, before preview resizing; integer bounds                                 |
+| Mask geometry, AI subject `region`  | `mask`: full-resolution canvas after current geometric correction, user orientation, flips and rotation, before user crop        |
+| `map_coordinates` `oriented_source` | Loaded source after EXIF decoding orientation, before all user geometry                                                          |
+| Adjustment `crop`                   | Full-resolution pixels after geometric correction, orientation, flips, and rotation; inside the transformed canvas; `unit: "px"` |
 
 Read `rendered_width`, `rendered_height`, `region`, and `coordinates` from a render. The response gives the preview-to-rendered mapping:
 
@@ -35,7 +35,17 @@ Subject point refinement is available through `mask_generate(kind: "subject", in
 Example for a measured subject near the center of an uncropped 640 × 480 image. Replace the geometry, session, and revision for the actual photo:
 
 ```json
-{"tool":"rapidraw_mask_create","arguments":{"session_id":"SESSION_ID","expected_revision":1,"type":"radial","name":"Subject lift","parameters":{"centerX":320,"centerY":240,"radiusX":140,"radiusY":180,"rotation":0,"feather":0.8},"adjustments":{"exposure":0.18,"shadows":8}}}
+{
+  "tool": "rapidraw_mask_create",
+  "arguments": {
+    "session_id": "SESSION_ID",
+    "expected_revision": 1,
+    "type": "radial",
+    "name": "Subject lift",
+    "parameters": { "centerX": 320, "centerY": 240, "radiusX": 140, "radiusY": 180, "rotation": 0, "feather": 0.8 },
+    "adjustments": { "exposure": 0.18, "shadows": 8 }
+  }
+}
 ```
 
 `feather` is 0–1 for this geometry; mask `opacity` is 0–100. Keep the returned `mask_id`. Render it with `rapidraw_render` using `mask_id`, inspect coverage/edges, then render normally to judge the effect. Mask previews require an enabled mask; inspect its grayscale coverage before disabling it for a visual comparison. Empty coverage is a failed selection, even if a mask record exists. A geometric approximation is not an AI subject selection.
@@ -67,7 +77,17 @@ Use these controls to place a continuous transition deliberately; smoother curve
 For an uncropped 1200 × 800 image with a flat horizon at y=250, this selects the sky: white above y=200, black below y=300, half strength on y=250.
 
 ```json
-{"tool":"rapidraw_mask_create","arguments":{"session_id":"SESSION_ID","expected_revision":1,"type":"linear","name":"Sky","parameters":{"startX":0,"startY":250,"endX":1200,"endY":250,"range":50},"adjustments":{"highlights":-12}}}
+{
+  "tool": "rapidraw_mask_create",
+  "arguments": {
+    "session_id": "SESSION_ID",
+    "expected_revision": 1,
+    "type": "linear",
+    "name": "Sky",
+    "parameters": { "startX": 0, "startY": 250, "endX": 1200, "endY": 250, "range": 50 },
+    "adjustments": { "highlights": -12 }
+  }
+}
 ```
 
 Render the mask before trusting it. When opposing gradients overlap, inspect their combined tonal effect: individually smooth ramps can create a dark trough or bright belt when their starts and strengths differ. Try consolidating them into one continuous adjustment before adding a compensating mask. A gradient deliberately crosses scene boundaries; use it for a continuous tonal transition, not as a claim of precise sky selection. Set its width and direction so the effect fades through the intended air and foreground without producing a belt or flattening the celestial band. Use an AI selection when tracing an irregular skyline is actually needed. A mostly uniform gray frame is not a successful selective mask just because its coverage is nonzero.
@@ -79,7 +99,39 @@ Render the mask before trusting it. When opposing gradients overlap, inspect the
 A gray shirt has little hue to rotate. Raising temperature often makes it beige without creating the requested accent. Choose the target color, measure the garment mask, then use local RGB point curves or color grading to introduce color while retaining folds. Exclude skin, hair, backpack and background. A warm-accent curve example for an **already verified mask**:
 
 ```json
-{"tool":"rapidraw_mask_update","arguments":{"session_id":"SESSION_ID","expected_revision":2,"mask_id":"MASK_ID","patch":{"opacity":70,"adjustments":{"pointCurves":{"red":[{"x":0,"y":0},{"x":80,"y":155},{"x":160,"y":220},{"x":255,"y":255}],"green":[{"x":0,"y":0},{"x":80,"y":62},{"x":160,"y":142},{"x":255,"y":255}],"blue":[{"x":0,"y":0},{"x":80,"y":30},{"x":160,"y":85},{"x":255,"y":235}]}}}}}
+{
+  "tool": "rapidraw_mask_update",
+  "arguments": {
+    "session_id": "SESSION_ID",
+    "expected_revision": 2,
+    "mask_id": "MASK_ID",
+    "patch": {
+      "opacity": 70,
+      "adjustments": {
+        "pointCurves": {
+          "red": [
+            { "x": 0, "y": 0 },
+            { "x": 80, "y": 155 },
+            { "x": 160, "y": 220 },
+            { "x": 255, "y": 255 }
+          ],
+          "green": [
+            { "x": 0, "y": 0 },
+            { "x": 80, "y": 62 },
+            { "x": 160, "y": 142 },
+            { "x": 255, "y": 255 }
+          ],
+          "blue": [
+            { "x": 0, "y": 0 },
+            { "x": 80, "y": 30 },
+            { "x": 160, "y": 85 },
+            { "x": 255, "y": 235 }
+          ]
+        }
+      }
+    }
+  }
+}
 ```
 
 These values are an illustrative coral treatment, not a default clothing preset. Check the resulting hue and strength on this photo. Recoloring passes only when the accent is visible at overview/delivery size **and** the native detail preserves folds with no colored halo or untouched strips. If the mask is wrong, fix coverage before increasing color strength.
@@ -112,16 +164,16 @@ Save the derived session and retain its source asset as well as the adjustments.
 
 ## Derived sessions, corrections, and assets
 
-| Task | Tool and behavior that matters |
-| --- | --- |
-| Denoise | Prefer `rapidraw_start_denoise`, then `rapidraw_get_job`. AI or BM3D, intensity 0–100; success returns a separate session with captured edits. The older `rapidraw_denoise` blocks. Inspect native texture before accepting. |
-| Lens correction | `rapidraw_lens_profile` with `mode: "lookup"` inspects; `mode: "auto"` applies. Review geometry and edges after applying. |
-| Film negative | `rapidraw_negative_convert` returns a derived session without inherited adjustments. Use its `parameters`, not obsolete negative-conversion adjustment keys. |
+| Task                 | Tool and behavior that matters                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Denoise              | Prefer `rapidraw_start_denoise`, then `rapidraw_get_job`. AI or BM3D, intensity 0–100; success returns a separate session with captured edits. The older `rapidraw_denoise` blocks. Inspect native texture before accepting.                                                                                                                                                                    |
+| Lens correction      | `rapidraw_lens_profile` with `mode: "lookup"` inspects; `mode: "auto"` applies. Review geometry and edges after applying.                                                                                                                                                                                                                                                                       |
+| Film negative        | `rapidraw_negative_convert` returns a derived session without inherited adjustments. Use its `parameters`, not obsolete negative-conversion adjustment keys.                                                                                                                                                                                                                                    |
 | HDR, focus, panorama | `rapidraw_merge` with `kind: "hdr"`, `"focus"`, or `"panorama"` takes at least two source paths and returns a new session. MCP panorama requires every input in one connected group; otherwise it returns an error. Inspect alignment, ghosting, seams and useful new scene coverage at overview and native detail. Save, reconnect and confirm matching native detail in the returned session. |
-| Preset | Discover with `rapidraw_list_presets`, then `rapidraw_apply_preset` with returned `preset_id` and optional intensity. Inspect warnings for legacy field migration. |
-| LUT | Discover with `rapidraw_list_luts`, then `rapidraw_apply_lut` with the actual local path. The session retains its own LUT asset. |
-| Recipe | `rapidraw_load_recipe` accepts merge or replace; choose deliberately. A CUBE LUT represents global color, not crop, masks, or other spatial edits; keep a recipe for those. |
-| Metadata | `rapidraw_get_metadata`, then `rapidraw_set_metadata` for rating, tags, or EXIF. Save/export to persist and inspect the output metadata. |
+| Preset               | Discover with `rapidraw_list_presets`, then `rapidraw_apply_preset` with returned `preset_id` and optional intensity. Inspect warnings for legacy field migration.                                                                                                                                                                                                                              |
+| LUT                  | Discover with `rapidraw_list_luts`, then `rapidraw_apply_lut` with the actual local path. The session retains its own LUT asset.                                                                                                                                                                                                                                                                |
+| Recipe               | `rapidraw_load_recipe` accepts merge or replace; choose deliberately. A CUBE LUT represents global color, not crop, masks, or other spatial edits; keep a recipe for those.                                                                                                                                                                                                                     |
+| Metadata             | `rapidraw_get_metadata`, then `rapidraw_set_metadata` for rating, tags, or EXIF. Save/export to persist and inspect the output metadata.                                                                                                                                                                                                                                                        |
 
 Save a denoised RAW-derived session through MCP to retain its linear TIFF interpretation. Opening that derived TIFF directly in the GUI cannot recover the same interpretation from `.rrdata` alone; use an MCP export for a portable display image. Original RAW working copies and their saved sidecars can be continued in the GUI.
 
@@ -130,7 +182,16 @@ Save a denoised RAW-derived session through MCP to retain its linear TIFF interp
 For a short-edge target, use this shape instead of `long_edge`:
 
 ```json
-{"tool":"rapidraw_export","arguments":{"session_id":"SESSION_ID","path":"short-edge.jpg","format":"jpeg","quality":92,"resize":{"mode":"shortEdge","value":1080,"dont_enlarge":true}}}
+{
+  "tool": "rapidraw_export",
+  "arguments": {
+    "session_id": "SESSION_ID",
+    "path": "short-edge.jpg",
+    "format": "jpeg",
+    "quality": 92,
+    "resize": { "mode": "shortEdge", "value": 1080, "dont_enlarge": true }
+  }
+}
 ```
 
 Other resize modes are `longEdge`, `width`, and `height`. `export_masks`, watermark configuration, metadata preservation, timestamps, and 16-bit PNG/TIFF are available in the current tool schema; use only what the delivery requires. Inspect actual output properties rather than inferring precision from the filename.

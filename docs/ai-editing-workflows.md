@@ -10,12 +10,12 @@ Workflow, AI resolution and seed controls require a [current build of this fork]
 
 The bundled catalog contains four profiles. Install their required models and enable the entries you use:
 
-| Profile | Use it for | Default / supported AI resolution |
-| --- | --- | --- |
-| **Klein 4B** | First attempt for removal, creative recolouring and instruction edits | 1 MP / 1 or 2 MP |
-| **Klein 4B closer context** | Isolated subjects needing less context; retain useful landmarks | 2 MP / 1 or 2 MP |
-| **Klein 9B KV** | A bounded alternative when Klein 4B struggles with an instruction | 1 MP / 1 MP |
-| **Boogu Edit Turbo** | Another instruction-edit alternative, including adding or replacing objects | 1 MP / 1 MP |
+| Profile                     | Use it for                                                                  | Default / supported AI resolution |
+| --------------------------- | --------------------------------------------------------------------------- | --------------------------------- |
+| **Klein 4B**                | First attempt for removal, creative recolouring and instruction edits       | 1 MP / 1 or 2 MP                  |
+| **Klein 4B closer context** | Isolated subjects needing less context; retain useful landmarks             | 2 MP / 1 or 2 MP                  |
+| **Klein 9B KV**             | A bounded alternative when Klein 4B struggles with an instruction           | 1 MP / 1 MP                       |
+| **Boogu Edit Turbo**        | Another instruction-edit alternative, including adding or replacing objects | 1 MP / 1 MP                       |
 
 Check the [model requirements and licenses](../ai-connector/README.md#requirements), especially for commercial use of Klein 9B KV.
 

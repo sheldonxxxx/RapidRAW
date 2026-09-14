@@ -45,17 +45,17 @@ git merge upstream/main
 
 Review these integration points when upstream changes them:
 
-| Existing area | MCP integration | What to recheck |
-| --- | --- | --- |
-| Cargo features and `lib.rs` | Optional module and early `--mcp-bridge` entry | Standard startup and feature-disabled build |
-| `app_state.rs` | Shared `Default` constructor | New native fields initialized identically for UI and bridge |
-| `app_settings.rs` | Process-local settings override | No GUI preference migration or modification during MCP work |
-| `ai_processing.rs` | Workspace model directory and shared model constants | Model names, checksums, readiness and ONNX runtime compatibility |
-| Export and negative helpers | Crate-visible access to native operations | Correct format, resize, metadata and conversion semantics |
-| `denoising.rs` | Additional source-domain denoise helper | Preserve linear RAW values, highlight headroom and subsequent edits |
-| Panorama homography calculation | Four-point DLT nullspace repair | Identity, translation, projective and overdetermined regressions |
-| `gpu_processing.rs` and export sampling shader | Additional float32/16-bit render path | Shader bindings, color behavior, GPU precision tests |
-| Frontend default adjustments and native parsers | Validated adapter schema | Every field, range, curve representation and mask geometry |
+| Existing area                                   | MCP integration                                      | What to recheck                                                     |
+| ----------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------- |
+| Cargo features and `lib.rs`                     | Optional module and early `--mcp-bridge` entry       | Standard startup and feature-disabled build                         |
+| `app_state.rs`                                  | Shared `Default` constructor                         | New native fields initialized identically for UI and bridge         |
+| `app_settings.rs`                               | Process-local settings override                      | No GUI preference migration or modification during MCP work         |
+| `ai_processing.rs`                              | Workspace model directory and shared model constants | Model names, checksums, readiness and ONNX runtime compatibility    |
+| Export and negative helpers                     | Crate-visible access to native operations            | Correct format, resize, metadata and conversion semantics           |
+| `denoising.rs`                                  | Additional source-domain denoise helper              | Preserve linear RAW values, highlight headroom and subsequent edits |
+| Panorama homography calculation                 | Four-point DLT nullspace repair                      | Identity, translation, projective and overdetermined regressions    |
+| `gpu_processing.rs` and export sampling shader  | Additional float32/16-bit render path                | Shader bindings, color behavior, GPU precision tests                |
+| Frontend default adjustments and native parsers | Validated adapter schema                             | Every field, range, curve representation and mask geometry          |
 
 The MCP schema intentionally rejects unknown fields. If upstream adds an adjustment, add it to the adapter's defaults/schema, verify its native parameter mapping, and exercise a visible output change. Do not silently accept fields that the engine ignores. Keep the adapter thin; improvements useful to the GUI should be implemented in native helpers and used from both entry points.
 

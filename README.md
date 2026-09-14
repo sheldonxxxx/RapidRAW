@@ -12,18 +12,18 @@ Use RapidRAW on its own, connect it to your preferred MCP client, or pair it wit
   <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/editor.jpg" alt="Upstream RapidRAW desktop editor showing a photograph and adjustment controls">
 </p>
 
-*Desktop screenshot from upstream RapidRAW. The MCP interface is an addition maintained in this fork.*
+_Desktop screenshot from upstream RapidRAW. The MCP interface is an addition maintained in this fork._
 
 **[AI editing test report](docs/ai-editing-experiments.md):** what we tested on a 16 GB GPU and how we chose the current workflows.
 
 ## Choose your starting point
 
-| You want to… | Start here |
-| --- | --- |
-| Edit photographs directly in a desktop application | [Desktop guide](docs/desktop-guide.md) and [upstream application downloads](https://github.com/CyberTimon/RapidRAW/releases) |
-| Let an AI agent use RapidRAW's native engine | Build this fork and follow the [MCP setup guide](mcp/README.md) |
-| Give your agent an editing workflow and a place to review results | Start with [Lightweft](https://github.com/sheldonxxxx/lightweft), then add RapidRAW as an optional execution tool |
-| Prepare saved Insta360 files before editing | Use the independent [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit), then follow the [spherical handoff guide](skills/rapidraw-mcp/references/spherical-photos.md) |
+| You want to…                                                      | Start here                                                                                                                                                                                   |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Edit photographs directly in a desktop application                | [Desktop guide](docs/desktop-guide.md) and [upstream application downloads](https://github.com/CyberTimon/RapidRAW/releases)                                                                 |
+| Let an AI agent use RapidRAW's native engine                      | Build this fork and follow the [MCP setup guide](mcp/README.md)                                                                                                                              |
+| Give your agent an editing workflow and a place to review results | Start with [Lightweft](https://github.com/sheldonxxxx/lightweft), then add RapidRAW as an optional execution tool                                                                            |
+| Prepare saved Insta360 files before editing                       | Use the independent [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit), then follow the [spherical handoff guide](skills/rapidraw-mcp/references/spherical-photos.md) |
 
 **MCP currently requires a source build with the `mcp` Cargo feature.** Upstream application downloads do not contain this fork's bridge. The server uses your MCP client's model; it does not include a language model or a hosted editing service.
 
@@ -65,11 +65,11 @@ The [execution skill](skills/rapidraw-mcp/SKILL.md) covers state, masks, compari
 
 ## Three independent projects, one connected workflow
 
-| Project | Responsibility | Handoff |
-| --- | --- | --- |
-| [Lightweft](https://github.com/sheldonxxxx/lightweft) | Central workspace for direction, review and personal style | An image-specific brief and rendered candidates for comparison |
-| **RapidRAW + MCP** | Native photographic editing, persistent state and exports | Previews, editable sessions, recipes and delivery files |
-| [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit) | Postprocessing saved Insta360 media and preparing verified photo derivatives | A stitched sphere or selected flat reframe for editing |
+| Project                                                                   | Responsibility                                                               | Handoff                                                        |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [Lightweft](https://github.com/sheldonxxxx/lightweft)                     | Central workspace for direction, review and personal style                   | An image-specific brief and rendered candidates for comparison |
+| **RapidRAW + MCP**                                                        | Native photographic editing, persistent state and exports                    | Previews, editable sessions, recipes and delivery files        |
+| [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit) | Postprocessing saved Insta360 media and preparing verified photo derivatives | A stitched sphere or selected flat reframe for editing         |
 
 Each project has its own installation, dependencies and repository. RapidRAW does not require either companion. When combined, the agent coordinates their file handoffs; installing one project does not automatically install or configure the others.
 
@@ -77,12 +77,12 @@ RapidRAW edits the pixels it receives. Camera-native fisheye stitching and spher
 
 ## Tested configurations and current limits
 
-| Configuration | Evidence and setup |
-| --- | --- |
-| macOS with Metal, native debug build | Native editing, state, rendering and export acceptance in the [verification record](mcp/VERIFICATION.md); [setup](mcp/README.md#macos-quick-start) |
-| Debian 13 x86-64, NVIDIA GPU, SSH and Xvfb | Exercised server workflow documented in the [Linux guide](mcp/REMOTE-SSH.md); this is a specific tested configuration |
-| Optional Linux ONNX CUDA inference | Foreground/sky masks, depth and AI denoise; [model policy and runtime setup](mcp/ONNX-CUDA.md) |
-| Windows, packaged MCP releases and fresh-machine installation | No completed native acceptance claim |
+| Configuration                                                 | Evidence and setup                                                                                                                                 |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS with Metal, native debug build                          | Native editing, state, rendering and export acceptance in the [verification record](mcp/VERIFICATION.md); [setup](mcp/README.md#macos-quick-start) |
+| Debian 13 x86-64, NVIDIA GPU, SSH and Xvfb                    | Exercised server workflow documented in the [Linux guide](mcp/REMOTE-SSH.md); this is a specific tested configuration                              |
+| Optional Linux ONNX CUDA inference                            | Foreground/sky masks, depth and AI denoise; [model policy and runtime setup](mcp/ONNX-CUDA.md)                                                     |
+| Windows, packaged MCP releases and fresh-machine installation | No completed native acceptance claim                                                                                                               |
 
 Existing mask and denoise operations default to CPU on every platform. Their Linux CUDA support is opt-in and separate from GPU photo rendering; subject selection and local inpainting retain CPU compatibility paths.
 
@@ -98,19 +98,19 @@ Exports go under the MCP workspace's `exports` directory; replacing an existing 
 
 ## Documentation and contributions
 
-| Guide | Use it for |
-| --- | --- |
-| [MCP setup and tool reference](mcp/README.md) | Builds, connections, examples, preservation and recovery |
-| [Desktop guide](docs/desktop-guide.md) | Standalone editing, build commands, CLI export and tethering |
+| Guide                                                           | Use it for                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| [MCP setup and tool reference](mcp/README.md)                   | Builds, connections, examples, preservation and recovery                        |
+| [Desktop guide](docs/desktop-guide.md)                          | Standalone editing, build commands, CLI export and tethering                    |
 | [Local masks and detail enhancement](docs/local-enhancement.md) | Native learned masks, experimental deblur, 2× enlargement and hardware profiles |
-| [AI editing workflows](docs/ai-editing-workflows.md) | Choose a use-case workflow, write a precise prompt and inspect generative edits |
-| [Execution skill](skills/rapidraw-mcp/SKILL.md) | Agent editing, mask review, comparisons and delivery |
-| [Portable sessions and presets](mcp/PORTABLE-SESSIONS.md) | Independent alternatives, reusable looks and moving edits |
-| [Geometry and review](mcp/GEOMETRY-REVIEW.md) | Coordinate mapping, native detail and diagnostic previews |
-| [Testing and evidence](mcp/testing-matrix.md) | Reproducing protocol, native and photographic checks |
-| [Contribution guide](CONTRIBUTING.md) | Reporting issues and proposing changes |
-| [Native integration guide](MCP.md) | Developing the optional bridge and merging upstream changes |
-| [Fork changelog](CHANGELOG.md) | Additions and fixes, with unreleased changes identified |
+| [AI editing workflows](docs/ai-editing-workflows.md)            | Choose a use-case workflow, write a precise prompt and inspect generative edits |
+| [Execution skill](skills/rapidraw-mcp/SKILL.md)                 | Agent editing, mask review, comparisons and delivery                            |
+| [Portable sessions and presets](mcp/PORTABLE-SESSIONS.md)       | Independent alternatives, reusable looks and moving edits                       |
+| [Geometry and review](mcp/GEOMETRY-REVIEW.md)                   | Coordinate mapping, native detail and diagnostic previews                       |
+| [Testing and evidence](mcp/testing-matrix.md)                   | Reproducing protocol, native and photographic checks                            |
+| [Contribution guide](CONTRIBUTING.md)                           | Reporting issues and proposing changes                                          |
+| [Native integration guide](MCP.md)                              | Developing the optional bridge and merging upstream changes                     |
+| [Fork changelog](CHANGELOG.md)                                  | Additions and fixes, with unreleased changes identified                         |
 
 Report fork/MCP issues in [this repository](https://github.com/sheldonxxxx/RapidRAW/issues). Contributions that improve edit quality, recovery, installation and reproducible photographic review are welcome.
 

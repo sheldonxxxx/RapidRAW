@@ -37,7 +37,7 @@ Deterministic replay for comparing UI smoothness before/after a change.
   is bigger than the run-to-run noise.
 - **Per-phase frame attribution.** Frame timing is bucketed into the `scroll`, `open`,
   and `edit` windows separately (not just one number for the whole run), so a result
-  points at *which* interaction got slower instead of just "the run as a whole".
+  points at _which_ interaction got slower instead of just "the run as a whole".
 
 ## Known limitations
 
@@ -61,7 +61,7 @@ Deterministic replay for comparing UI smoothness before/after a change.
   phase still times out, check `document.querySelectorAll('[data-bench-id]')` in the
   console to confirm the build you're testing actually contains the marker.
 - This is a general smoothness/regression check, not a profiler. It won't tell you
-  *why* something is slow — use devtools Timeline/Performance recording by hand for
+  _why_ something is slow — use devtools Timeline/Performance recording by hand for
   root-causing, and this script for confirming a fix actually helped.
 - Still requires a manual paste-and-save per run (devtools console access, `copy()` to
   clipboard, write `bench/out/<name>.json` by hand). There's no CI/headless runner —

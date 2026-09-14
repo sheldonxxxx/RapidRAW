@@ -19,7 +19,20 @@ Read the user's actual MCP host configuration for configured server, binary and 
 An MCP host configuration uses this shape, with real absolute paths:
 
 ```json
-{"mcpServers":{"rapidraw":{"command":"node","args":["/absolute/RapidRAW/mcp/dist/index.js","--binary","/absolute/RapidRAW/src-tauri/target/debug/RapidRAW","--workspace","/absolute/rapidraw-photo-jobs"]}}}
+{
+  "mcpServers": {
+    "rapidraw": {
+      "command": "node",
+      "args": [
+        "/absolute/RapidRAW/mcp/dist/index.js",
+        "--binary",
+        "/absolute/RapidRAW/src-tauri/target/debug/RapidRAW",
+        "--workspace",
+        "/absolute/rapidraw-photo-jobs"
+      ]
+    }
+  }
+}
 ```
 
 ## Persistent fallback client
@@ -38,7 +51,7 @@ node /absolute/skill/scripts/mcp-client.mjs \
 Run as an interactive terminal process; retain its execution session ID. `ready` means MCP transport connected, not that the native engine is ready. First send:
 
 ```json
-{"tool":"capabilities","timeout_ms":30000}
+{ "tool": "capabilities", "timeout_ms": 30000 }
 ```
 
 Send one request, inspect the response, then send the next. Input uses `arguments`, matching MCP. For long masks write a JSON request file with the filesystem tool and submit `{"file":"/absolute/request.json"}`; long terminal lines can be truncated. On completion send `{"close":true}`. Keep the connection alive between related operations; if the host closes it, reconnect and resume the saved session.
@@ -46,7 +59,11 @@ Send one request, inspect the response, then send the next. Input uses `argument
 Keep exact operations in a JSON array when useful. Select one without copying its large patch, and attach live state using shallow `arguments` overrides:
 
 ```json
-{"file":"/absolute/job/operations.json","index":0,"arguments":{"session_id":"SESSION_ID","expected_revision":3}}
+{
+  "file": "/absolute/job/operations.json",
+  "index": 0,
+  "arguments": { "session_id": "SESSION_ID", "expected_revision": 3 }
+}
 ```
 
 The index is zero-based. Read the returned revision before selecting the next operation. This executes one operation, not an automatic batch.
@@ -69,17 +86,17 @@ Only one connection can own a workspace at a time. Use separate workspaces for c
 
 Success returns `structuredContent`; a render additionally returns an MCP image block. Failures have `isError: true` and a structured error code/message, or per-item results for batch failure. Never translate a failure into a claim that a blank edit or export succeeded.
 
-| Symptom | Next action |
-| --- | --- |
-| macOS startup hangs with LaunchServices/XPC warnings | Treat as a possible graphics sandbox restriction. Close this task's client/child, then relaunch through the host's permission mechanism when authorized. Do not keep waiting through repeated five-minute timeouts or delete another session's lock. List sessions after reconnecting. |
-| `REVISION_CONFLICT` | Get the current session including adjustments. Reconcile the patch against it and use the current revision. |
-| `RESPONSE_TOO_LARGE` | The connection is still usable. Read `recovery`: the operation has returned and a mutation may already have completed. Keep its session/revision, mask/job IDs and output paths; do not replay it. Request a smaller overview or bounded native detail, or get session state with `include_adjustments:false`. Batch recovery can be truncated; reconcile omitted items from the original request. |
-| Invalid argument, mask, or crop | Read the live schema and coordinate metadata; correct the input. Repeating the same invalid request will not help. |
-| Missing model | Inspect `rapidraw_models`; install the required kind when within scope or choose a suitable available method. |
-| `INCOMPATIBLE_ENGINE`, unsupported method | Check the selected fork binary and live capabilities. A stock app or mismatched build cannot be fixed by changing photo parameters. |
-| `GENERATION_NOT_CONFIGURED` | Inspect engine settings and the requested provider. Complete authorized provider setup or use an appropriate local operation. |
-| Timeout, crash, protocol error, active cancellation | Close/reconnect the client, list sessions, inspect the affected session and filesystem outputs, then decide what remains. Never automatically replay a mutation. |
-| Existing export/recipe | Inspect it. Choose a new name, or use `overwrite: true` for an intended export replacement. Recipes always require a new path. |
+| Symptom                                              | Next action                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS startup hangs with LaunchServices/XPC warnings | Treat as a possible graphics sandbox restriction. Close this task's client/child, then relaunch through the host's permission mechanism when authorized. Do not keep waiting through repeated five-minute timeouts or delete another session's lock. List sessions after reconnecting.                                                                                                             |
+| `REVISION_CONFLICT`                                  | Get the current session including adjustments. Reconcile the patch against it and use the current revision.                                                                                                                                                                                                                                                                                        |
+| `RESPONSE_TOO_LARGE`                                 | The connection is still usable. Read `recovery`: the operation has returned and a mutation may already have completed. Keep its session/revision, mask/job IDs and output paths; do not replay it. Request a smaller overview or bounded native detail, or get session state with `include_adjustments:false`. Batch recovery can be truncated; reconcile omitted items from the original request. |
+| Invalid argument, mask, or crop                      | Read the live schema and coordinate metadata; correct the input. Repeating the same invalid request will not help.                                                                                                                                                                                                                                                                                 |
+| Missing model                                        | Inspect `rapidraw_models`; install the required kind when within scope or choose a suitable available method.                                                                                                                                                                                                                                                                                      |
+| `INCOMPATIBLE_ENGINE`, unsupported method            | Check the selected fork binary and live capabilities. A stock app or mismatched build cannot be fixed by changing photo parameters.                                                                                                                                                                                                                                                                |
+| `GENERATION_NOT_CONFIGURED`                          | Inspect engine settings and the requested provider. Complete authorized provider setup or use an appropriate local operation.                                                                                                                                                                                                                                                                      |
+| Timeout, crash, protocol error, active cancellation  | Close/reconnect the client, list sessions, inspect the affected session and filesystem outputs, then decide what remains. Never automatically replay a mutation.                                                                                                                                                                                                                                   |
+| Existing export/recipe                               | Inspect it. Choose a new name, or use `overwrite: true` for an intended export replacement. Recipes always require a new path.                                                                                                                                                                                                                                                                     |
 
 Edits persist inside the workspace; `rapidraw_save_session` additionally writes the native sidecar. After reconnecting, use the existing session ID instead of reopening the original into a fresh session. `rapidraw_close_session` releases it from memory; its saved manifest becomes available on the next bridge startup.
 

@@ -18,9 +18,14 @@ Coordinates are **pixel centers**, so the top-left pixel is `(0, 0)`. Resize map
   "session_id": "SESSION",
   "from": "preview",
   "to": "mask",
-  "preview": {"width": 800, "height": 600},
-  "points": [{"x": 120, "y": 200}],
-  "strokes": [[{"x": 120, "y": 200}, {"x": 135, "y": 212}]]
+  "preview": { "width": 800, "height": 600 },
+  "points": [{ "x": 120, "y": 200 }],
+  "strokes": [
+    [
+      { "x": 120, "y": 200 },
+      { "x": 135, "y": 212 }
+    ]
+  ]
 }
 ```
 
@@ -68,9 +73,12 @@ Repeated exact previews use a process-local LRU bounded to 16 entries and 64 MiB
   "mask_id": "MASK",
   "expected_revision": 12,
   "submask_operations": [
-    {"operation": "add", "submask": {"type": "linear", "parameters": {"startX": 0, "startY": 200, "endX": 600, "endY": 200}}},
-    {"operation": "edit", "submask_id": "EXISTING", "patch": {"opacity": 70}},
-    {"operation": "duplicate", "submask_id": "EXISTING", "index": 1}
+    {
+      "operation": "add",
+      "submask": { "type": "linear", "parameters": { "startX": 0, "startY": 200, "endX": 600, "endY": 200 } }
+    },
+    { "operation": "edit", "submask_id": "EXISTING", "patch": { "opacity": 70 } },
+    { "operation": "duplicate", "submask_id": "EXISTING", "index": 1 }
   ]
 }
 ```

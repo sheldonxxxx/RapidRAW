@@ -55,11 +55,17 @@ Set up SSH keys and verify the host key interactively first. Then register a com
     "rapidraw_gpu": {
       "command": "/usr/bin/ssh",
       "args": [
-        "-T", "-o", "BatchMode=yes",
-        "-o", "ConnectTimeout=10",
-        "-o", "ServerAliveInterval=30",
-        "-o", "ServerAliveCountMax=3",
-        "user@gpu-server", "/absolute/bin/rapidraw-mcp"
+        "-T",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=3",
+        "user@gpu-server",
+        "/absolute/bin/rapidraw-mcp"
       ]
     }
   }

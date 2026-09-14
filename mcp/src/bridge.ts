@@ -10,7 +10,10 @@ export interface BridgeOptions {
   log?: (message: string) => void;
 }
 export class BridgeError extends Error {
-  constructor(public readonly code: string, message: string) {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
     super(message);
     this.name = 'BridgeError';
   }
@@ -70,9 +73,27 @@ export class NativeBridge {
       this.captureFatalError(chunk);
     });
     child.stdin.on('error', (error: Error) => this.fail(new BridgeError('BRIDGE_IO', error.message)));
-    child.on('error', (error: Error) => this.fail(new BridgeError('BRIDGE_START', `Cannot run ${this.options.binary}: ${error.message}. Build the fork with MCP bridge support and check --binary.`)));
-    child.on('exit', (code, signal) => this.fail(new BridgeError('BRIDGE_EXIT', `Native engine exited (${signal ?? code ?? 'unknown'}). Reconnect the MCP server and load the saved session; edits are never automatically replayed.`)));
-    child.stdout.on('end', () => this.fail(new BridgeError('BRIDGE_EOF', 'Native engine closed its output. Reconnect and load the last saved session.')));
+    child.on('error', (error: Error) =>
+      this.fail(
+        new BridgeError(
+          'BRIDGE_START',
+          `Cannot run ${this.options.binary}: ${error.message}. Build the fork with MCP bridge support and check --binary.`,
+        ),
+      ),
+    );
+    child.on('exit', (code, signal) =>
+      this.fail(
+        new BridgeError(
+          'BRIDGE_EXIT',
+          `Native engine exited (${signal ?? code ?? 'unknown'}). Reconnect the MCP server and load the saved session; edits are never automatically replayed.`,
+        ),
+      ),
+    );
+    child.stdout.on('end', () =>
+      this.fail(
+        new BridgeError('BRIDGE_EOF', 'Native engine closed its output. Reconnect and load the last saved session.'),
+      ),
+    );
   }
 
   private captureFatalError(chunk: string): void {
@@ -91,7 +112,9 @@ export class NativeBridge {
   private consume(chunk: string): void {
     this.buffer += chunk;
     if (Buffer.byteLength(this.buffer, 'utf8') > 64 * 1024 * 1024) {
-      this.fail(new BridgeError('BRIDGE_PROTOCOL', 'Native response exceeded the 64 MiB limit. Use a smaller preview.'));
+      this.fail(
+        new BridgeError('BRIDGE_PROTOCOL', 'Native response exceeded the 64 MiB limit. Use a smaller preview.'),
+      );
       this.child?.kill('SIGTERM');
       return;
     }
@@ -101,7 +124,9 @@ export class NativeBridge {
       this.buffer = this.buffer.slice(newline + 1);
       if (!line) continue;
       let message: unknown;
-      try { message = JSON.parse(line); } catch {
+      try {
+        message = JSON.parse(line);
+      } catch {
         this.log(line.slice(0, 4096));
         continue;
       }
@@ -110,7 +135,12 @@ export class NativeBridge {
         continue;
       }
       if (!this.pending || message.id !== this.pending.id) {
-        this.fail(new BridgeError('BRIDGE_PROTOCOL', 'Native response ID did not match the active request. Reconnect before continuing.'));
+        this.fail(
+          new BridgeError(
+            'BRIDGE_PROTOCOL',
+            'Native response ID did not match the active request. Reconnect before continuing.',
+          ),
+        );
         this.child?.kill('SIGTERM');
         return;
       }
@@ -119,17 +149,26 @@ export class NativeBridge {
       clearTimeout(active.timer);
       active.cleanup();
       if (isObject(message.error) && typeof message.error.message === 'string') {
-        active.reject(new BridgeError(typeof message.error.code === 'string' ? message.error.code : 'ENGINE_ERROR', message.error.message));
+        active.reject(
+          new BridgeError(
+            typeof message.error.code === 'string' ? message.error.code : 'ENGINE_ERROR',
+            message.error.message,
+          ),
+        );
       } else if (isObject(message.result)) {
         active.resolve(message.result);
       } else {
-        active.reject(new BridgeError('BRIDGE_PROTOCOL', 'Native response needs an object result or an error with a message.'));
+        active.reject(
+          new BridgeError('BRIDGE_PROTOCOL', 'Native response needs an object result or an error with a message.'),
+        );
       }
     }
   }
 
   private fail(error: BridgeError): void {
-    this.terminalError ??= ['BRIDGE_EXIT', 'BRIDGE_EOF'].includes(error.code) ? this.nativeFatalError ?? error : error;
+    this.terminalError ??= ['BRIDGE_EXIT', 'BRIDGE_EOF'].includes(error.code)
+      ? (this.nativeFatalError ?? error)
+      : error;
     if (this.pending) {
       clearTimeout(this.pending.timer);
       this.pending.cleanup();
@@ -138,9 +177,18 @@ export class NativeBridge {
     }
   }
 
-  request(method: string, params: JsonObject = {}, timeoutMs = this.timeoutMs, signal?: AbortSignal): Promise<JsonObject> {
+  request(
+    method: string,
+    params: JsonObject = {},
+    timeoutMs = this.timeoutMs,
+    signal?: AbortSignal,
+  ): Promise<JsonObject> {
     const next = this.serial.then(() => {
-      if (signal?.aborted) throw new BridgeError('REQUEST_CANCELLED', 'Request was cancelled before dispatch; no native edit was applied.');
+      if (signal?.aborted)
+        throw new BridgeError(
+          'REQUEST_CANCELLED',
+          'Request was cancelled before dispatch; no native edit was applied.',
+        );
       return this.dispatch(method, params, timeoutMs, signal);
     });
     // Rejections belong to each caller; the queue still drains after ordinary engine errors.
@@ -159,13 +207,23 @@ export class NativeBridge {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.fail(new BridgeError('BRIDGE_TIMEOUT', `${method} exceeded ${timeoutMs} ms. The engine is being stopped because completion is uncertain. Reconnect and inspect saved state before retrying.`));
+        this.fail(
+          new BridgeError(
+            'BRIDGE_TIMEOUT',
+            `${method} exceeded ${timeoutMs} ms. The engine is being stopped because completion is uncertain. Reconnect and inspect saved state before retrying.`,
+          ),
+        );
         this.child?.kill('SIGTERM');
         const killer = setTimeout(() => this.child?.kill('SIGKILL'), 1000);
         killer.unref();
       }, timeoutMs);
       const abort = (): void => {
-        this.fail(new BridgeError('REQUEST_CANCELLED', 'Active native request was cancelled. The engine is being stopped; reconnect and inspect saved state before retrying.'));
+        this.fail(
+          new BridgeError(
+            'REQUEST_CANCELLED',
+            'Active native request was cancelled. The engine is being stopped; reconnect and inspect saved state before retrying.',
+          ),
+        );
         void this.close();
       };
       const cleanup = (): void => signal?.removeEventListener('abort', abort);
@@ -189,7 +247,11 @@ export class NativeBridge {
     await new Promise<void>((resolve) => {
       const terminate = setTimeout(() => child.kill('SIGTERM'), 1000);
       const kill = setTimeout(() => child.kill('SIGKILL'), 2000);
-      const finish = (): void => { clearTimeout(terminate); clearTimeout(kill); resolve(); };
+      const finish = (): void => {
+        clearTimeout(terminate);
+        clearTimeout(kill);
+        resolve();
+      };
       child.once('close', finish);
       child.stdin.end();
     });

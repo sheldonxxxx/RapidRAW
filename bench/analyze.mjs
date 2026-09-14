@@ -30,9 +30,7 @@ function extractJson(raw) {
   const startIdx = raw.indexOf(START_MARKER);
   const endIdx = raw.indexOf(END_MARKER);
   const body =
-    startIdx !== -1 && endIdx !== -1 && endIdx > startIdx
-      ? raw.slice(startIdx + START_MARKER.length, endIdx)
-      : raw;
+    startIdx !== -1 && endIdx !== -1 && endIdx > startIdx ? raw.slice(startIdx + START_MARKER.length, endIdx) : raw;
 
   return body
     .split('\n')
@@ -52,9 +50,7 @@ function load(path) {
   try {
     return JSON.parse(jsonText);
   } catch (err) {
-    throw new Error(
-      `could not parse ${path} as JSON, even after stripping devtools console noise (${err.message})`,
-    );
+    throw new Error(`could not parse ${path} as JSON, even after stripping devtools console noise (${err.message})`);
   }
 }
 
@@ -78,9 +74,7 @@ function reportSingle(path, r) {
     console.log(`  [${phase}]`);
     for (const [metric, unit] of METRICS) {
       const s = r.summary[phase][metric];
-      console.log(
-        `    ${metric}: median ${fmt(s.median, unit)}, p95 ${fmt(s.p95, unit)}, stdev ${fmt(s.stdev, unit)}`,
-      );
+      console.log(`    ${metric}: median ${fmt(s.median, unit)}, p95 ${fmt(s.p95, unit)}, stdev ${fmt(s.stdev, unit)}`);
     }
   }
   console.log();
@@ -111,7 +105,17 @@ function reportDiff(pathA, a, pathB, b) {
       const av = a.summary[phase][metric].median;
       const bv = b.summary[phase][metric].median;
       const change = pct(av, bv);
-      const flag = higherIsBetter ? (bv < av ? ' (worse)' : bv > av ? ' (better)' : '') : bv > av ? ' (worse)' : bv < av ? ' (better)' : '';
+      const flag = higherIsBetter
+        ? bv < av
+          ? ' (worse)'
+          : bv > av
+            ? ' (better)'
+            : ''
+        : bv > av
+          ? ' (worse)'
+          : bv < av
+            ? ' (better)'
+            : '';
       console.log(`    ${metric}: ${fmt(av, unit)} -> ${fmt(bv, unit)}  (${change})${flag}`);
     }
   }

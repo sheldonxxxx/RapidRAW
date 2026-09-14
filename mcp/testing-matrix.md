@@ -6,12 +6,12 @@ The evidence harness discovers the current MCP tools and native adjustment schem
 
 Evidence levels are separate:
 
-| Level | Meaning |
-|---|---|
-| `native_call` | A successful real MCP call. Schema acceptance alone is not a pixel assertion. |
-| `native_assertion` | Explicit output/state/persistence assertion through the native tool. |
-| `pixel_assertion` | Explicit decoded pixel, placement, precision or independently decoded delivery assertion. Only named requirements get credit. |
-| `visual_review` | Reserved for an attributable review of saved images. Rendering an image never implies visual approval. Current automated runners grant no visual-review credit. |
+| Level              | Meaning                                                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `native_call`      | A successful real MCP call. Schema acceptance alone is not a pixel assertion.                                                                                   |
+| `native_assertion` | Explicit output/state/persistence assertion through the native tool.                                                                                            |
+| `pixel_assertion`  | Explicit decoded pixel, placement, precision or independently decoded delivery assertion. Only named requirements get credit.                                   |
+| `visual_review`    | Reserved for an attributable review of saved images. Rendering an image never implies visual approval. Current automated runners grant no visual-review credit. |
 
 Protocol/fake-worker tests verify transport, validation and lifecycle contracts. They **never** count as native or photographic evidence. A failed/empty AI mask remains a failed first attempt. A skip is never a pass.
 
@@ -77,19 +77,21 @@ Use local manifests with `RAPIDRAW_PHOTO_MANIFEST=/absolute/manifest.json node m
 ```json
 {
   "version": 1,
-  "groups": [{
-    "id": "new-hdr-001",
-    "kind": "hdr",
-    "partition": "fresh-holdout",
-    "capture_group": "new-capture-sequence-001",
-    "provenance": "Original camera captures; retain acquisition and prior-use records",
-    "derived_from_same_image": false,
-    "sources": [
-      {"path": "/absolute/photos/dark.CR3", "sha256": "REPLACE_WITH_HASH", "exposure_ev": -2},
-      {"path": "/absolute/photos/light.CR3", "sha256": "REPLACE_WITH_HASH", "exposure_ev": 2}
-    ],
-    "review_criteria": ["Retained highlight detail", "No moving-subject ghosts", "Natural shadow noise"]
-  }]
+  "groups": [
+    {
+      "id": "new-hdr-001",
+      "kind": "hdr",
+      "partition": "fresh-holdout",
+      "capture_group": "new-capture-sequence-001",
+      "provenance": "Original camera captures; retain acquisition and prior-use records",
+      "derived_from_same_image": false,
+      "sources": [
+        { "path": "/absolute/photos/dark.CR3", "sha256": "REPLACE_WITH_HASH", "exposure_ev": -2 },
+        { "path": "/absolute/photos/light.CR3", "sha256": "REPLACE_WITH_HASH", "exposure_ev": 2 }
+      ],
+      "review_criteria": ["Retained highlight detail", "No moving-subject ghosts", "Natural shadow noise"]
+    }
+  ]
 }
 ```
 
@@ -124,45 +126,107 @@ The suite requires local mask models and a version-1 photographic manifest with 
 ```json
 {
   "version": 1,
-  "groups": [{
-    "id": "bird-local-lift",
-    "kind": "ai-mask",
-    "partition": "regression",
-    "capture_group": "inspected-bird-capture",
-    "provenance": "Original acquisition and prior-use record",
-    "derived_from_same_image": false,
-    "sources": [{"path": "/absolute/photos/original.CR3", "sha256": "REPLACE_WITH_ORIGINAL_SHA256"}],
-    "review_criteria": ["Brighten the bird naturally", "Keep the perch unchanged", "Avoid visible halos or painted gaps"],
-    "ai": {"kind": "subject", "region": {"x": 100, "y": 80, "width": 440, "height": 320}},
-    "local_adjustments": {"exposure": 0.2, "shadows": 5},
-    "effect_probes": {
-      "selected": {"region": {"x": 250, "y": 240, "width": 16, "height": 16}, "minimum_mean_absolute_difference": 0.002},
-      "protected": {"region": {"x": 450, "y": 360, "width": 8, "height": 8}, "maximum_mean_absolute_difference": 0.001}
-    },
-    "corrections": [
-      {
-        "id": "restore-toe", "mode": "additive",
-        "parameters": {"lines": [{"tool": "brush", "brushSize": 18, "feather": 0.35, "points": [{"x": 300, "y": 350}, {"x": 315, "y": 355}]}]},
-        "probe": {"region": {"x": 301, "y": 350, "width": 4, "height": 4}, "minimum_opacity_delta": 0.1},
-        "review_criteria": ["Restore the visible toe without joining it to the perch"]
-      },
-      {
-        "id": "remove-perch", "mode": "subtractive",
-        "parameters": {"lines": [{"tool": "brush", "brushSize": 24, "feather": 0.25, "points": [{"x": 440, "y": 365}, {"x": 470, "y": 365}]}]},
-        "probe": {"region": {"x": 450, "y": 360, "width": 8, "height": 8}, "minimum_opacity_delta": 0.1},
-        "review_criteria": ["Remove selected perch while retaining adjacent feathers"]
-      }
-    ],
-    "manual": {
-      "intent": "Soft breast lift",
-      "parameters": {"lines": [{"tool": "brush", "brushSize": 120, "feather": 0.8, "points": [{"x": 250, "y": 240}, {"x": 270, "y": 270}]}]},
+  "groups": [
+    {
+      "id": "bird-local-lift",
+      "kind": "ai-mask",
+      "partition": "regression",
+      "capture_group": "inspected-bird-capture",
+      "provenance": "Original acquisition and prior-use record",
+      "derived_from_same_image": false,
+      "sources": [{ "path": "/absolute/photos/original.CR3", "sha256": "REPLACE_WITH_ORIGINAL_SHA256" }],
+      "review_criteria": [
+        "Brighten the bird naturally",
+        "Keep the perch unchanged",
+        "Avoid visible halos or painted gaps"
+      ],
+      "ai": { "kind": "subject", "region": { "x": 100, "y": 80, "width": 440, "height": 320 } },
+      "local_adjustments": { "exposure": 0.2, "shadows": 5 },
       "effect_probes": {
-        "selected": {"region": {"x": 250, "y": 240, "width": 16, "height": 16}, "minimum_mean_absolute_difference": 0.002},
-        "protected": {"region": {"x": 450, "y": 360, "width": 8, "height": 8}, "maximum_mean_absolute_difference": 0.001}
-      }
-    },
-    "review_regions": [{"id": "bird-perch-contact", "region": {"x": 200, "y": 200, "width": 320, "height": 240}, "criteria": ["Keep contact edges natural and preserve gaps"]}]
-  }]
+        "selected": {
+          "region": { "x": 250, "y": 240, "width": 16, "height": 16 },
+          "minimum_mean_absolute_difference": 0.002
+        },
+        "protected": {
+          "region": { "x": 450, "y": 360, "width": 8, "height": 8 },
+          "maximum_mean_absolute_difference": 0.001
+        }
+      },
+      "corrections": [
+        {
+          "id": "restore-toe",
+          "mode": "additive",
+          "parameters": {
+            "lines": [
+              {
+                "tool": "brush",
+                "brushSize": 18,
+                "feather": 0.35,
+                "points": [
+                  { "x": 300, "y": 350 },
+                  { "x": 315, "y": 355 }
+                ]
+              }
+            ]
+          },
+          "probe": { "region": { "x": 301, "y": 350, "width": 4, "height": 4 }, "minimum_opacity_delta": 0.1 },
+          "review_criteria": ["Restore the visible toe without joining it to the perch"]
+        },
+        {
+          "id": "remove-perch",
+          "mode": "subtractive",
+          "parameters": {
+            "lines": [
+              {
+                "tool": "brush",
+                "brushSize": 24,
+                "feather": 0.25,
+                "points": [
+                  { "x": 440, "y": 365 },
+                  { "x": 470, "y": 365 }
+                ]
+              }
+            ]
+          },
+          "probe": { "region": { "x": 450, "y": 360, "width": 8, "height": 8 }, "minimum_opacity_delta": 0.1 },
+          "review_criteria": ["Remove selected perch while retaining adjacent feathers"]
+        }
+      ],
+      "manual": {
+        "intent": "Soft breast lift",
+        "parameters": {
+          "lines": [
+            {
+              "tool": "brush",
+              "brushSize": 120,
+              "feather": 0.8,
+              "points": [
+                { "x": 250, "y": 240 },
+                { "x": 270, "y": 270 }
+              ]
+            }
+          ]
+        },
+        "effect_probes": {
+          "selected": {
+            "region": { "x": 250, "y": 240, "width": 16, "height": 16 },
+            "minimum_mean_absolute_difference": 0.002
+          },
+          "protected": {
+            "region": { "x": 450, "y": 360, "width": 8, "height": 8 },
+            "maximum_mean_absolute_difference": 0.001
+          }
+        }
+      },
+      "review_regions": [
+        {
+          "id": "bird-perch-contact",
+          "region": { "x": 200, "y": 200, "width": 320, "height": 240 },
+          "criteria": ["Keep contact edges natural and preserve gaps"]
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -211,16 +275,21 @@ Create a private JSON manifest. The following calibration values come from the [
     "xml_sha256": "REPLACE_WITH_XML_SHA256",
     "coefficients": {
       "model": 1,
-      "k1": 0.0317062, "k2": -0.110518, "k3": 0.089312,
-      "tca_vr": 1.0004398, "tca_vb": 1.0000314,
-      "vig_k1": -0.8702, "vig_k2": 0.5268, "vig_k3": -0.3554
+      "k1": 0.0317062,
+      "k2": -0.110518,
+      "k3": 0.089312,
+      "tca_vr": 1.0004398,
+      "tca_vb": 1.0000314,
+      "vig_k1": -0.8702,
+      "vig_k2": 0.5268,
+      "vig_k3": -0.3554
     }
   },
   "aperture_override": {
     "aperture": 8,
-    "vignetting": {"vig_k1": -0.4258, "vig_k2": 0.0751, "vig_k3": -0.0270}
+    "vignetting": { "vig_k1": -0.4258, "vig_k2": 0.0751, "vig_k3": -0.027 }
   },
-  "review_regions": [{"x": 100, "y": 1350, "width": 512, "height": 512}]
+  "review_regions": [{ "x": 100, "y": 1350, "width": 512, "height": 512 }]
 }
 ```
 
@@ -253,36 +322,64 @@ Inspect only the original photograph or source-only native rendering when prepar
 
 Use a version-1 photographic manifest with these category/mask-kind combinations:
 
-| Category | `mask_kind` | Useful native edge criteria |
-| --- | --- | --- |
-| `person-hair` | `foreground` or `subject` | Flyaway strands, dark neck hair, garment boundaries and adjacent background spill |
-| `wildlife-feet-feathers` | `subject` | Complete feet/claws, feather tips, spaces between limbs/tail and perch rejection |
-| `sky-architecture` | `sky` | Roof/façade edges, thin branches, small sky openings and foreground spill |
+| Category                 | `mask_kind`               | Useful native edge criteria                                                       |
+| ------------------------ | ------------------------- | --------------------------------------------------------------------------------- |
+| `person-hair`            | `foreground` or `subject` | Flyaway strands, dark neck hair, garment boundaries and adjacent background spill |
+| `wildlife-feet-feathers` | `subject`                 | Complete feet/claws, feather tips, spaces between limbs/tail and perch rejection  |
+| `sky-architecture`       | `sky`                     | Roof/façade edges, thin branches, small sky openings and foreground spill         |
 
 Each group requires `kind: "ai-mask"`, `partition: "fresh-holdout"`, one source and at least one annotation of each intent. Subject baselines require a guiding `region`; foreground/sky baselines do not accept an unused guide. The following single group illustrates the structure; add the other distinct categories for a three-photo evaluation. Paths, hashes, coordinates and thresholds are placeholders to replace from source inspection.
 
 ```json
 {
   "version": 1,
-  "groups": [{
-    "id": "wildlife-edges",
-    "kind": "ai-mask",
-    "partition": "fresh-holdout",
-    "category": "wildlife-feet-feathers",
-    "mask_kind": "subject",
-    "capture_group": "distinct-wildlife-capture",
-    "provenance": "Original acquisition and prior-use record",
-    "derived_from_same_image": false,
-    "sources": [{"path": "/absolute/photos/original.CR3", "sha256": "REPLACE_WITH_ORIGINAL_SHA256"}],
-    "region": {"x": 100, "y": 100, "width": 1800, "height": 1400},
-    "review_criteria": ["Keep the entire visible bird", "Exclude the perch and background", "Retain feet and feather-edge gaps"],
-    "annotations": [
-      {"id": "body", "intent": "include", "region": {"x": 400, "y": 400, "width": 128, "height": 128}, "criteria": ["Solid body interior remains selected"], "minimum_opacity": 0.95},
-      {"id": "background", "intent": "exclude", "region": {"x": 2000, "y": 200, "width": 128, "height": 128}, "criteria": ["Separate background stays clear"], "maximum_opacity": 0.05},
-      {"id": "feet", "intent": "edge", "region": {"x": 500, "y": 900, "width": 512, "height": 512}, "criteria": ["Visible toes/claws are complete and adjacent perch is excluded"]},
-      {"id": "feathers", "intent": "edge", "region": {"x": 1000, "y": 600, "width": 512, "height": 512}, "criteria": ["Fine feather tips and intervening background gaps remain distinguishable"]}
-    ]
-  }]
+  "groups": [
+    {
+      "id": "wildlife-edges",
+      "kind": "ai-mask",
+      "partition": "fresh-holdout",
+      "category": "wildlife-feet-feathers",
+      "mask_kind": "subject",
+      "capture_group": "distinct-wildlife-capture",
+      "provenance": "Original acquisition and prior-use record",
+      "derived_from_same_image": false,
+      "sources": [{ "path": "/absolute/photos/original.CR3", "sha256": "REPLACE_WITH_ORIGINAL_SHA256" }],
+      "region": { "x": 100, "y": 100, "width": 1800, "height": 1400 },
+      "review_criteria": [
+        "Keep the entire visible bird",
+        "Exclude the perch and background",
+        "Retain feet and feather-edge gaps"
+      ],
+      "annotations": [
+        {
+          "id": "body",
+          "intent": "include",
+          "region": { "x": 400, "y": 400, "width": 128, "height": 128 },
+          "criteria": ["Solid body interior remains selected"],
+          "minimum_opacity": 0.95
+        },
+        {
+          "id": "background",
+          "intent": "exclude",
+          "region": { "x": 2000, "y": 200, "width": 128, "height": 128 },
+          "criteria": ["Separate background stays clear"],
+          "maximum_opacity": 0.05
+        },
+        {
+          "id": "feet",
+          "intent": "edge",
+          "region": { "x": 500, "y": 900, "width": 512, "height": 512 },
+          "criteria": ["Visible toes/claws are complete and adjacent perch is excluded"]
+        },
+        {
+          "id": "feathers",
+          "intent": "edge",
+          "region": { "x": 1000, "y": 600, "width": 512, "height": 512 },
+          "criteria": ["Fine feather tips and intervening background gaps remain distinguishable"]
+        }
+      ]
+    }
+  ]
 }
 ```
 

@@ -6,12 +6,12 @@
 
 ## What we tested
 
-| Area | Tests |
-| --- | --- |
-| Tasks | Object removal and insertion, recolouring, lettering, replacement, clothing, backgrounds and weather |
-| Models | Klein 4B / 9B KV, Boogu Edit / Turbo, FLUX Fill, Qwen Edit 2511 + Lightning, Z-Image Turbo + Fun, RealVisXL + Fooocus, Krea 2 AnyPaint, full-precision LaMa and Moebius |
-| Workflow changes | Standard and closer context, masked and whole-context generation, tighter and broader masks, 1–2 MP generation and two 4 MP probes |
-| Upscaling | NomosUni SPAN, Real-ESRGAN x2plus and NomosUni DAT on six frozen Klein results; SeedVR2 on three of those cases |
+| Area             | Tests                                                                                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tasks            | Object removal and insertion, recolouring, lettering, replacement, clothing, backgrounds and weather                                                                    |
+| Models           | Klein 4B / 9B KV, Boogu Edit / Turbo, FLUX Fill, Qwen Edit 2511 + Lightning, Z-Image Turbo + Fun, RealVisXL + Fooocus, Krea 2 AnyPaint, full-precision LaMa and Moebius |
+| Workflow changes | Standard and closer context, masked and whole-context generation, tighter and broader masks, 1–2 MP generation and two 4 MP probes                                      |
+| Upscaling        | NomosUni SPAN, Real-ESRGAN x2plus and NomosUni DAT on six frozen Klein results; SeedVR2 on three of those cases                                                         |
 
 Controlled comparisons kept the source, prompt and seed fixed. Mask-size pairs also fixed the processing crop; upscaler tests reused the same generation and included Lanczos controls. We judged the requested change, preservation and native-size texture/boundaries.
 
@@ -27,13 +27,13 @@ Controlled comparisons kept the source, prompt and seed fixed. Mask-size pairs a
 
 Median subsequent **Comfy graph execution** times from the complex screen, excluding cache completions, first observed calls, upload, native preparation, export and display. Case coverage differs between rows.
 
-| Configuration | Median | Samples |
-| --- | ---: | ---: |
-| Klein 4B FP8, 1 MP | 5.63 s | 13 |
-| Klein 4B FP8, 2 MP | 14.64 s | 2 |
-| Klein 9B KV FP8, 1 MP | 7.68 s | 3 |
-| Boogu Turbo INT8, 1 MP | 11.84 s | 7 |
-| Qwen Edit 2511 Q4 + Lightning, 1 MP | 29.29 s | 7 |
+| Configuration                       |  Median | Samples |
+| ----------------------------------- | ------: | ------: |
+| Klein 4B FP8, 1 MP                  |  5.63 s |      13 |
+| Klein 4B FP8, 2 MP                  | 14.64 s |       2 |
+| Klein 9B KV FP8, 1 MP               |  7.68 s |       3 |
+| Boogu Turbo INT8, 1 MP              | 11.84 s |       7 |
+| Qwen Edit 2511 Q4 + Lightning, 1 MP | 29.29 s |       7 |
 
 First observed Klein 9B and Boogu calls exceeded two minutes, making model switching a meaningful part of interactive cost.
 

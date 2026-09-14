@@ -2,12 +2,12 @@
 
 Build finer selections, select scene and portrait regions, recover mild motion blur, and enlarge a finished photograph inside RapidRAW. These optional operations run local ONNX models through the same native implementation in the desktop editor and MCP. They require a current source build of this fork and separately installed model assets.
 
-| Operation | Best use | What to inspect |
-| --- | --- | --- |
-| Refine mask — ViTMatte Small | Improve an existing selection around hair, feathers and soft edges | Fine strands, holes and protected background at native detail. The starting selection still matters. |
-| Semantic mask — UperNet / Face Parsing | Select vegetation, water, sky and other scene categories, or skin, hair, eyes and other portrait parts | Semantic labels are approximate. Isolate a face region when several people appear or the face occupies little of the frame. |
-| Deblur — NAFNet GoPro 32, experimental | Recover mild motion blur on a clean, rendered image | Noise, invented texture, ringing and tile boundaries. Denoise noisy photographs first; this model failed severely on a noisy feather test. |
-| Upscale — SwinIR Lightweight 2× | Make a conservative enlargement of a finished image | Compare with ordinary interpolation at the same display size. Enlarged noise is still noise; missing detail is not reliably recovered. |
+| Operation                              | Best use                                                                                               | What to inspect                                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Refine mask — ViTMatte Small           | Improve an existing selection around hair, feathers and soft edges                                     | Fine strands, holes and protected background at native detail. The starting selection still matters.                                       |
+| Semantic mask — UperNet / Face Parsing | Select vegetation, water, sky and other scene categories, or skin, hair, eyes and other portrait parts | Semantic labels are approximate. Isolate a face region when several people appear or the face occupies little of the frame.                |
+| Deblur — NAFNet GoPro 32, experimental | Recover mild motion blur on a clean, rendered image                                                    | Noise, invented texture, ringing and tile boundaries. Denoise noisy photographs first; this model failed severely on a noisy feather test. |
+| Upscale — SwinIR Lightweight 2×        | Make a conservative enlargement of a finished image                                                    | Compare with ordinary interpolation at the same display size. Enlarged noise is still noise; missing detail is not reliably recovered.     |
 
 Mask operations create or refine ordinary editable masks. Refinement replaces one selected component while retaining its mask grade, siblings, opacity, inversion and combination mode. Deblur and upscale produce a separate 16-bit TIFF or MCP session with the current adjustments baked into rendered sRGB pixels. Keep the original RAW session for further development.
 
@@ -23,11 +23,11 @@ Cancellation stops between processing stages and tiles; a running model call mus
 
 ## Choose speed and detail
 
-| Profile | Mask refinement | Deblur / upscale |
-| --- | --- | --- |
-| Fast | Resize inference to a maximum edge of 512 pixels | 128-pixel tiles, 16-pixel overlap |
-| Balanced | Maximum inference edge of 1536 pixels | 256-pixel tiles, 32-pixel overlap |
-| Quality | Refine native boundary tiles, up to 768 pixels each | 384-pixel tiles, 48-pixel overlap |
+| Profile  | Mask refinement                                     | Deblur / upscale                  |
+| -------- | --------------------------------------------------- | --------------------------------- |
+| Fast     | Resize inference to a maximum edge of 512 pixels    | 128-pixel tiles, 16-pixel overlap |
+| Balanced | Maximum inference edge of 1536 pixels               | 256-pixel tiles, 32-pixel overlap |
+| Quality  | Refine native boundary tiles, up to 768 pixels each | 384-pixel tiles, 48-pixel overlap |
 
 Semantic parsing always runs at 512 × 512; its profile does not change model resolution. Use a face region to give the parser more useful detail. For refinement, **Boundary width** is the search radius in source pixels: increase it when the coarse selection misses strands, but inspect for softened interior coverage and background leakage. It cannot discover details far outside the unknown boundary band.
 
@@ -57,13 +57,13 @@ Local inpainting uses a targeted CPU setting for the bundled 1.30.0 build to avo
 
 The following September 2026 baseline predates the Apple Silicon runtime upgrade. It used a Mac mini M4 with 16 GB unified memory and a Ryzen 7 9700X server with an RTX 5060 Ti 16 GB. These are representative single-photo measurements, not statistical throughput guarantees or a comparison of hardware alone. The Mac used the former bundled ONNX Runtime 1.22.0 with CPU inference; the server used ONNX Runtime 1.30.0 with CUDA. Both used the native application path and four CPU inference threads.
 
-| Workload | Mac mini M4 | RTX 5060 Ti server |
-| --- | ---: | ---: |
-| Hair refinement, 2048 × 2048, Balanced, warm | 5.47 s | 0.85 s |
-| Mild motion deblur, 1280 × 720, Fast, warm | 8.93 s | 1.00 s |
-| 2× enlargement, 1024 × 1024 input, Fast, first use | 159.61 s | 5.21 s |
-| 2× enlargement, 3072 × 2048 input, Balanced, warm | Not run | 30.93 s |
-| Semantic scene mask, 6960 × 4640 input, warm model | 7.99 s | 2.48 s |
+| Workload                                           | Mac mini M4 | RTX 5060 Ti server |
+| -------------------------------------------------- | ----------: | -----------------: |
+| Hair refinement, 2048 × 2048, Balanced, warm       |      5.47 s |             0.85 s |
+| Mild motion deblur, 1280 × 720, Fast, warm         |      8.93 s |             1.00 s |
+| 2× enlargement, 1024 × 1024 input, Fast, first use |    159.61 s |             5.21 s |
+| 2× enlargement, 3072 × 2048 input, Balanced, warm  |     Not run |            30.93 s |
+| Semantic scene mask, 6960 × 4640 input, warm model |      7.99 s |             2.48 s |
 
 Times include native rendering, inference and result creation. Opening the source and final TIFF export are measured separately. The larger server enlargement added 1.31 seconds for TIFF export; the 32-megapixel mask case added 5.42 seconds on Mac and 1.52 seconds on the server. The Mac scene-mask run sampled a peak of 2.68 GiB process-tree RSS. The 22-call server profile sweep sampled a peak of 4.14 GiB process-tree RSS and 3438 MiB whole-device GPU memory, including a 282 MiB baseline. Sampling can miss brief peaks and RSS can count shared pages twice.
 
@@ -71,13 +71,13 @@ An isolated Mac comparison with ONNX Runtime 1.30.0 reduced warm Balanced deblur
 
 A repeat through the Mac app bundle containing the official ONNX Runtime 1.30.0 library measured the following native operations on the same Mac mini. Each warm value has at least one preceding call with that model. These are individual observations, not averages across repeated benchmark sessions:
 
-| Workload | Bundled 1.30.0, Mac CPU |
-| --- | ---: |
-| Hair refinement, 2048 × 2048, Balanced, warm | 2.80 s |
-| Mild motion deblur, 1280 × 720, Fast, warm | 3.99 s |
-| Mild motion deblur, 1280 × 720, Balanced, warm | 4.02 s |
-| 2× enlargement, 1024 × 1024 input, Fast, first use | 137.41 s |
-| Semantic scene mask, 6960 × 4640 input, warm model | 16.28 s |
+| Workload                                           | Bundled 1.30.0, Mac CPU |
+| -------------------------------------------------- | ----------------------: |
+| Hair refinement, 2048 × 2048, Balanced, warm       |                  2.80 s |
+| Mild motion deblur, 1280 × 720, Fast, warm         |                  3.99 s |
+| Mild motion deblur, 1280 × 720, Balanced, warm     |                  4.02 s |
+| 2× enlargement, 1024 × 1024 input, Fast, first use |                137.41 s |
+| Semantic scene mask, 6960 × 4640 input, warm model |                 16.28 s |
 
 Refinement and deblur improved in these examples; enlargement remained expensive, and the full-photo scene mask was slower than the earlier baseline. Its TIFF export added 6.71 seconds. Whole-photo performance includes work outside ONNX and can vary with memory pressure; the newer runtime is not a universal speed improvement.
 
@@ -111,13 +111,13 @@ python3.13 -m venv /path/to/enhancement-venv
 
 Exporters retain source revisions, license references, hashes and numerical parity results. PyTorch is needed for preparation, not for native inference. A successful parity check proves agreement with the source implementation, not photographic quality.
 
-| Model ID | Prepared filename | Upstream |
-| --- | --- | --- |
-| `matting` | `vitmatte-small-f32.onnx` | [ViTMatte checkpoint](https://huggingface.co/hustvl/vitmatte-small-composition-1k), Apache-2.0 checkpoint / MIT implementation |
-| `face` | `face-parsing-resnet18.onnx` | [Face Parsing](https://github.com/yakhyo/face-parsing), MIT |
-| `landscape` | `upernet-convnext-tiny.onnx` | [OpenMMLab UperNet](https://huggingface.co/openmmlab/upernet-convnext-tiny), MIT |
-| `deblur` | `nafnet_gopro_w32.onnx` | [NAFNet](https://github.com/megvii-research/NAFNet), MIT architecture / Apache-2.0 BasicSR utilities |
-| `upscale` | `swinir_lightweight_x2.onnx` | [SwinIR](https://github.com/JingyunLiang/SwinIR), Apache-2.0 |
+| Model ID    | Prepared filename            | Upstream                                                                                                                       |
+| ----------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `matting`   | `vitmatte-small-f32.onnx`    | [ViTMatte checkpoint](https://huggingface.co/hustvl/vitmatte-small-composition-1k), Apache-2.0 checkpoint / MIT implementation |
+| `face`      | `face-parsing-resnet18.onnx` | [Face Parsing](https://github.com/yakhyo/face-parsing), MIT                                                                    |
+| `landscape` | `upernet-convnext-tiny.onnx` | [OpenMMLab UperNet](https://huggingface.co/openmmlab/upernet-convnext-tiny), MIT                                               |
+| `deblur`    | `nafnet_gopro_w32.onnx`      | [NAFNet](https://github.com/megvii-research/NAFNet), MIT architecture / Apache-2.0 BasicSR utilities                           |
+| `upscale`   | `swinir_lightweight_x2.onnx` | [SwinIR](https://github.com/JingyunLiang/SwinIR), Apache-2.0                                                                   |
 
 For ready-made downloads, call `rapidraw_install_enhancement_model` with `model_id`. For a prepared asset, also pass its absolute `path` and the SHA-256 recorded by the exporter. Desktop import computes and records the selected local file's hash. Installed assets are verified before inference and captured with background jobs.
 

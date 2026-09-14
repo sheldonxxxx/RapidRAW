@@ -28,7 +28,11 @@ const digest = async (path) => {
 const sourceDigest = await digest(source);
 const sourceSidecar = `${source}.rrdata`;
 let sidecarBefore;
-try { sidecarBefore = await readFile(sourceSidecar); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+try {
+  sidecarBefore = await readFile(sourceSidecar);
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+}
 const modelDirectory = process.env.RAPIDRAW_INSTALLED_MODELS;
 const originalModels = {};
 let coverage, failure;
@@ -40,32 +44,66 @@ if (modelDirectory) {
 const client = new Client({ name: 'rapidraw-advanced-engine-e2e', version: '1.0.0' });
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: [fileURLToPath(new URL('../dist/index.js', import.meta.url)), '--binary', binary, '--workspace', workspace, '--timeout-ms', '900000'],
+  args: [
+    fileURLToPath(new URL('../dist/index.js', import.meta.url)),
+    '--binary',
+    binary,
+    '--workspace',
+    workspace,
+    '--timeout-ms',
+    '900000',
+  ],
   stderr: 'pipe',
 });
 let diagnostics = '';
-transport.stderr.on('data', (chunk) => { diagnostics += chunk; process.stderr.write(chunk); });
+transport.stderr.on('data', (chunk) => {
+  diagnostics += chunk;
+  process.stderr.write(chunk);
+});
 const records = [];
 async function call(method, args = {}, allowedError) {
   const started = performance.now();
   process.stdout.write(`Running ${method}${args.kind ? ` ${args.kind}` : ''}${args.mode ? ` ${args.mode}` : ''}\n`);
-  const result = coverage ? (await coverage.call(method, args, { ...(allowedError instanceof RegExp ? { allowError: allowedError } : {}), ...(allowedError === 'required' ? { expectError: true } : {}) })).result : await client.callTool({ name: `rapidraw_${method}`, arguments: args }, { timeout: 900000 });
+  const result = coverage
+    ? (
+        await coverage.call(method, args, {
+          ...(allowedError instanceof RegExp ? { allowError: allowedError } : {}),
+          ...(allowedError === 'required' ? { expectError: true } : {}),
+        })
+      ).result
+    : await client.callTool({ name: `rapidraw_${method}`, arguments: args }, { timeout: 900000 });
   const data = result.structuredContent;
   assert.ok(data, `${method} must return structured content`);
-  const record = { method, args, elapsed_ms: Math.round(performance.now() - started), is_error: !!result.isError, result: data };
+  const record = {
+    method,
+    args,
+    elapsed_ms: Math.round(performance.now() - started),
+    is_error: !!result.isError,
+    result: data,
+  };
   // Avoid duplicating large embedded native recipes in evidence.
   if (record.result.adjustments) record.result = { ...record.result, adjustments: '[captured in saved session]' };
   records.push(record);
   await writeEvidence('running');
   if (result.isError) {
-    assert.ok(allowedError === 'required' || allowedError instanceof RegExp && allowedError.test(JSON.stringify(data)), `${method}: ${JSON.stringify(data)}`);
+    assert.ok(
+      allowedError === 'required' || (allowedError instanceof RegExp && allowedError.test(JSON.stringify(data))),
+      `${method}: ${JSON.stringify(data)}`,
+    );
   } else if (allowedError === 'required') {
     assert.fail(`${method} should reject the invalid request`);
   }
   return { result, data, failed: !!result.isError };
 }
 async function writeEvidence(status, error) {
-  await writeFile(join(workspace, `${stamp}-advanced-evidence.json`), JSON.stringify({ status, error, source, source_sha256: sourceDigest, installed_model_sha256: originalModels, records }, null, 2));
+  await writeFile(
+    join(workspace, `${stamp}-advanced-evidence.json`),
+    JSON.stringify(
+      { status, error, source, source_sha256: sourceDigest, installed_model_sha256: originalModels, records },
+      null,
+      2,
+    ),
+  );
   await writeFile(join(workspace, `${stamp}-diagnostics.log`), diagnostics);
 }
 async function preview(result, label) {
@@ -76,12 +114,22 @@ async function preview(result, label) {
 try {
   if (process.env.RAPIDRAW_COVERAGE === '1') {
     coverage = await createNativeHarness({ suite: 'advanced-mechanical', workspace, binary, timeout: 900000 });
-    await coverage.fixture(source, 'Source for small native derived fixtures; merges/negative/AI tests are mechanical, not photographic quality');
+    await coverage.fixture(
+      source,
+      'Source for small native derived fixtures; merges/negative/AI tests are mechanical, not photographic quality',
+    );
   } else await client.connect(transport);
   const opened = (await call('open_photo', { path: source, inherit_sidecar: false })).data;
   const rawSession = opened.session_id;
   const seedPath = join(workspace, 'exports', `${stamp}-advanced-seed.jpg`);
-  await call('export', { session_id: rawSession, path: seedPath, format: 'jpeg', quality: 98, long_edge: 512, keep_metadata: true });
+  await call('export', {
+    session_id: rawSession,
+    path: seedPath,
+    format: 'jpeg',
+    quality: 98,
+    long_edge: 512,
+    keep_metadata: true,
+  });
   const base = (await call('open_photo', { path: seedPath, inherit_sidecar: false })).data;
   const session_id = base.session_id;
   const { width, height } = base.dimensions;
@@ -93,12 +141,21 @@ try {
   for (const kind of ['masks', 'inpaint', 'denoise']) assert.equal(ready.groups[kind].ready, true);
 
   for (const kind of ['subject', 'foreground', 'sky', 'depth']) {
-    const generated = await call('mask_generate', {
-      session_id, kind,
-      ...(kind === 'subject' ? { region: { x: width * 0.1, y: height * 0.05, width: width * 0.8, height: height * 0.9 } } : {}),
-      ...(kind === 'depth' ? { parameters: { minDepth: 20, maxDepth: 80, minFade: 10, maxFade: 10, feather: 5 } } : {}),
-      adjustments: { exposure: 0.2 },
-    }, kind === 'sky' ? /EMPTY_MASK/ : undefined);
+    const generated = await call(
+      'mask_generate',
+      {
+        session_id,
+        kind,
+        ...(kind === 'subject'
+          ? { region: { x: width * 0.1, y: height * 0.05, width: width * 0.8, height: height * 0.9 } }
+          : {}),
+        ...(kind === 'depth'
+          ? { parameters: { minDepth: 20, maxDepth: 80, minFade: 10, maxFade: 10, feather: 5 } }
+          : {}),
+        adjustments: { exposure: 0.2 },
+      },
+      kind === 'sky' ? /EMPTY_MASK/ : undefined,
+    );
     if (!generated.failed) {
       assert.ok(generated.data.mask_statistics.mean_opacity > 0);
       await preview(generated.result, `${kind}-mask`);
@@ -119,11 +176,23 @@ try {
     const label = liquifyMode ? `${mode}-${liquifyMode}` : mode;
     const kind = mode === 'inpaint' ? 'brush' : mode;
     const parameters = {
-      lines: [{ tool: 'brush', brushSize: Math.max(18, width * 0.05), feather: 0.6, points: [{ x: width * 0.45, y: height * 0.45 }, { x: width * 0.5, y: height * 0.5 }] }],
+      lines: [
+        {
+          tool: 'brush',
+          brushSize: Math.max(18, width * 0.05),
+          feather: 0.6,
+          points: [
+            { x: width * 0.45, y: height * 0.45 },
+            { x: width * 0.5, y: height * 0.5 },
+          ],
+        },
+      ],
       ...(mode === 'retouch' ? { intensity: 50 } : {}),
       ...(mode === 'liquify' ? { pressure: 40, liquifyMode } : {}),
     };
-    const retouched = await call('retouch', { session_id, mode,
+    const retouched = await call('retouch', {
+      session_id,
+      mode,
       sub_masks: [{ id: `${stamp}-${label}-stroke`, type: kind, visible: true, mode: 'additive', parameters }],
       ...(['clone', 'heal'].includes(mode) ? { source_point: { x: width * 0.2, y: height * 0.25 } } : {}),
     });
@@ -131,10 +200,31 @@ try {
     assert.ok(retouched.data.mask_statistics.nonzero_fraction > 0);
     await preview(retouched.result, `${label}-mask`);
     await preview((await call('render', { session_id, format: 'png', long_edge: 512 })).result, `${label}-result`);
-    if (coverage && liquifyMode) await coverage.check(`liquify_${liquifyMode}_patch_and_native_render`, ['tool:retouch', `adjustment:aiPatches[].subMasks[]<liquify>.parameters.liquifyMode=${JSON.stringify(liquifyMode)}`], async () => ({ patch_id: retouched.data.patch_id, nonempty_mask: true, native_render_saved: `${label}-result`, photographic_quality: 'not_reviewed' }));
+    if (coverage && liquifyMode)
+      await coverage.check(
+        `liquify_${liquifyMode}_patch_and_native_render`,
+        [
+          'tool:retouch',
+          `adjustment:aiPatches[].subMasks[]<liquify>.parameters.liquifyMode=${JSON.stringify(liquifyMode)}`,
+        ],
+        async () => ({
+          patch_id: retouched.data.patch_id,
+          nonempty_mask: true,
+          native_render_saved: `${label}-result`,
+          photographic_quality: 'not_reviewed',
+        }),
+      );
     await call('undo', { session_id });
   }
-  await call('retouch', { session_id, mode: 'generative', sub_masks: [{ id: `${stamp}-invalid-remote`, type: 'all', visible: true, mode: 'additive', parameters: {} }] }, /INVALID_ARGUMENT|GENERATION_NOT_CONFIGURED/);
+  await call(
+    'retouch',
+    {
+      session_id,
+      mode: 'generative',
+      sub_masks: [{ id: `${stamp}-invalid-remote`, type: 'all', visible: true, mode: 'additive', parameters: {} }],
+    },
+    /INVALID_ARGUMENT|GENERATION_NOT_CONFIGURED/,
+  );
 
   const parentBefore = (await call('get_session', { session_id, include_adjustments: true })).data;
   for (const method of ['ai', 'bm3d']) {
@@ -142,12 +232,23 @@ try {
     assert.notEqual(denoised.session_id, session_id);
     assert.equal(denoised.parent_session_id, session_id);
     assert.equal(denoised.inherited_adjustments, true);
-    await preview((await call('render', { session_id: denoised.session_id, format: 'png', long_edge: 512 })).result, `denoise-${method}`);
+    await preview(
+      (await call('render', { session_id: denoised.session_id, format: 'png', long_edge: 512 })).result,
+      `denoise-${method}`,
+    );
   }
   assert.equal((await call('get_session', { session_id })).data.revision, parentBefore.revision);
-  const negative = (await call('negative_convert', { session_id, parameters: { red_weight: 1, green_weight: 1, blue_weight: 1, exposure: 0, contrast: 1 } })).data;
+  const negative = (
+    await call('negative_convert', {
+      session_id,
+      parameters: { red_weight: 1, green_weight: 1, blue_weight: 1, exposure: 0, contrast: 1 },
+    })
+  ).data;
   assert.notEqual(negative.session_id, session_id);
-  await preview((await call('render', { session_id: negative.session_id, format: 'png', long_edge: 512 })).result, 'negative-conversion');
+  await preview(
+    (await call('render', { session_id: negative.session_id, format: 'png', long_edge: 512 })).result,
+    'negative-conversion',
+  );
   await call('lens_profile', { session_id: rawSession, mode: 'lookup' });
   await call('lens_profile', { session_id: rawSession, mode: 'auto' }, /LENS_PROFILE_NOT_FOUND/);
 
@@ -156,31 +257,72 @@ try {
     let mergePath = seedPath;
     if (kind === 'panorama') {
       mergePath = join(workspace, 'exports', `${stamp}-panorama-seed.jpg`);
-      await call('export', { session_id: rawSession, path: mergePath, format: 'jpeg', quality: 98, long_edge: 2048, keep_metadata: true });
+      await call('export', {
+        session_id: rawSession,
+        path: mergePath,
+        format: 'jpeg',
+        quality: 98,
+        long_edge: 2048,
+        keep_metadata: true,
+      });
     }
     const merged = (await call('merge', { kind, paths: [mergePath, mergePath] })).data;
     assert.equal(merged.parent_session_ids.length, 2);
     assert.equal(merged.merge_kind, kind);
-    await preview((await call('render', { session_id: merged.session_id, format: 'png', long_edge: 512 })).result, `merge-${kind}`);
+    await preview(
+      (await call('render', { session_id: merged.session_id, format: 'png', long_edge: 512 })).result,
+      `merge-${kind}`,
+    );
   }
   await call('save_session', { session_id });
   assert.equal(await digest(source), sourceDigest, 'Original source changed');
   let sidecarAfter;
-  try { sidecarAfter = await readFile(sourceSidecar); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  try {
+    sidecarAfter = await readFile(sourceSidecar);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   assert.deepEqual(sidecarAfter, sidecarBefore, 'Original sidecar changed');
-  for (const [name, before] of Object.entries(originalModels)) assert.equal(await digest(join(modelDirectory, name)), before, `Installed model ${name} changed`);
+  for (const [name, before] of Object.entries(originalModels))
+    assert.equal(await digest(join(modelDirectory, name)), before, `Installed model ${name} changed`);
   await writeEvidence('passed');
-  if (coverage) await coverage.check('advanced_mechanical_assertions_and_source_preservation', [], async () => ({ source_unchanged: true, installed_models_unchanged: true, successful_calls: records.filter((r) => !r.is_error).length, fixture_kind: 'small derived photo; repeated-source HDR/focus/panorama', photographic_quality: 'not_reviewed', detail: 'Assertions inside the legacy runner passed; successful call coverage is separate from photographic quality.' }));
-  console.log(JSON.stringify({ status: 'passed', workspace, calls: records.length, evidence: join(workspace, `${stamp}-advanced-evidence.json`) }, null, 2));
+  if (coverage)
+    await coverage.check('advanced_mechanical_assertions_and_source_preservation', [], async () => ({
+      source_unchanged: true,
+      installed_models_unchanged: true,
+      successful_calls: records.filter((r) => !r.is_error).length,
+      fixture_kind: 'small derived photo; repeated-source HDR/focus/panorama',
+      photographic_quality: 'not_reviewed',
+      detail:
+        'Assertions inside the legacy runner passed; successful call coverage is separate from photographic quality.',
+    }));
+  console.log(
+    JSON.stringify(
+      {
+        status: 'passed',
+        workspace,
+        calls: records.length,
+        evidence: join(workspace, `${stamp}-advanced-evidence.json`),
+      },
+      null,
+      2,
+    ),
+  );
 } catch (error) {
   failure = error;
   await writeEvidence('failed', error.message);
   throw error;
 } finally {
-  if (coverage) await coverage.close(failure); else await client.close();
+  if (coverage) await coverage.close(failure);
+  else await client.close();
   assert.equal(await digest(source), sourceDigest, 'Original source changed');
   let finalSidecar;
-  try { finalSidecar = await readFile(sourceSidecar); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  try {
+    finalSidecar = await readFile(sourceSidecar);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   assert.deepEqual(finalSidecar, sidecarBefore, 'Original sidecar changed');
-  for (const [name, before] of Object.entries(originalModels)) assert.equal(await digest(join(modelDirectory, name)), before, `Installed model ${name} changed`);
+  for (const [name, before] of Object.entries(originalModels))
+    assert.equal(await digest(join(modelDirectory, name)), before, `Installed model ${name} changed`);
 }

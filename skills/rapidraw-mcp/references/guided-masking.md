@@ -4,13 +4,13 @@ Build the selection needed for the photograph's intended local edit. Start with 
 
 ## Choose the starting selection
 
-| Intended edit | Useful starting point |
-| --- | --- |
-| Lift a complete subject against an irregular background | AI subject with an inspected bounding region; foreground when its broader coverage fits the intent |
-| Change the sky across an irregular skyline | AI sky, then inspect foreground spill and openings |
+| Intended edit                                                | Useful starting point                                                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Lift a complete subject against an irregular background      | AI subject with an inspected bounding region; foreground when its broader coverage fits the intent     |
+| Change the sky across an irregular skyline                   | AI sky, then inspect foreground spill and openings                                                     |
 | Dodge part of a face, breast, garment or other local surface | Soft brush or radial mask kept within the intended surface; an exact subject silhouette is unnecessary |
-| Continuous lighting transition | Linear gradient, with its fade judged across the photograph |
-| Select a color or brightness band | Sampled color/luminance, constrained spatially when similar values occur elsewhere |
+| Continuous lighting transition                               | Linear gradient, with its fade judged across the photograph                                            |
+| Select a color or brightness band                            | Sampled color/luminance, constrained spatially when similar values occur elsewhere                     |
 
 These are choices, not a required sequence. Use the user's preferred starting mask if it is adequate. Do not replace a useful mask merely because automatic segmentation misses individual hairs. Recoloring, strong exposure changes and extraction can reveal errors that are invisible in a restrained tonal lift.
 
@@ -36,22 +36,29 @@ For a manual mask from scratch, use `mask_create(type:"brush", parameters:{lines
     "session_id": "SESSION_ID",
     "expected_revision": 7,
     "mask_id": "MASK_ID",
-    "submask_operations": [{
-      "operation": "add",
-      "submask": {
-        "type": "brush",
-        "name": "Remove background spill",
-        "mode": "subtractive",
-        "parameters": {
-          "lines": [{
-            "tool": "brush",
-            "brushSize": 18,
-            "feather": 0.35,
-            "points": [{"x": 420, "y": 280}, {"x": 445, "y": 291}]
-          }]
+    "submask_operations": [
+      {
+        "operation": "add",
+        "submask": {
+          "type": "brush",
+          "name": "Remove background spill",
+          "mode": "subtractive",
+          "parameters": {
+            "lines": [
+              {
+                "tool": "brush",
+                "brushSize": 18,
+                "feather": 0.35,
+                "points": [
+                  { "x": 420, "y": 280 },
+                  { "x": 445, "y": 291 }
+                ]
+              }
+            ]
+          }
         }
       }
-    }]
+    ]
   }
 }
 ```

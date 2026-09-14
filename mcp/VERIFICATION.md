@@ -10,15 +10,15 @@ The [guided-mask workflow](../skills/rapidraw-mcp/references/guided-masking.md) 
 
 The run used native executable SHA-256 `379ad99a9364c5238313cce65ecb4636a2545b4c0b10ba244d8934520d8e587b` and runtime-source SHA-256 `eee06e6cec1ccfdffbb36e4735aa14113564bd08e05d077986ba5ea4f68892f3`, matching the lens-correction build below. This is a reused photographic regression, not a fresh holdout. The earlier native-library result of 125 tests remains attributed to that unchanged build.
 
-| Guided editing check | Measured result |
-| --- | --- |
-| Preserve the starting AI selection | Named version and independent correction fork retain the original mask, local grade and baseline pixels |
-| Restore an omitted toe with an additive brush | Annotated mean coverage increases from 0.6103 to 0.9929; existing AI components remain unchanged |
-| Remove selected perch with a subtractive brush | Annotated mean coverage falls from 1 to 0; existing grade and mask identity remain unchanged |
-| Apply the actual local grade | Exposure 0.4 and shadows 8 change the selected breast probe by mean absolute RGB difference 0.08289; the protected perch probe is exactly unchanged |
-| Create a manual mask independently | A brush-only soft breast lift applies the same grade, with the selected breast changed and protected perch exactly unchanged; no AI submask is present |
-| History and saved editing | Both corrected-AI and manual sessions reject stale edits, restore exact state/pixels through undo/redo, and retain exact adjustment state and PNG bytes after save/reconnect, including captured native regions |
-| Source preservation | Original and existing sidecar integrity checks pass |
+| Guided editing check                           | Measured result                                                                                                                                                                                                 |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preserve the starting AI selection             | Named version and independent correction fork retain the original mask, local grade and baseline pixels                                                                                                         |
+| Restore an omitted toe with an additive brush  | Annotated mean coverage increases from 0.6103 to 0.9929; existing AI components remain unchanged                                                                                                                |
+| Remove selected perch with a subtractive brush | Annotated mean coverage falls from 1 to 0; existing grade and mask identity remain unchanged                                                                                                                    |
+| Apply the actual local grade                   | Exposure 0.4 and shadows 8 change the selected breast probe by mean absolute RGB difference 0.08289; the protected perch probe is exactly unchanged                                                             |
+| Create a manual mask independently             | A brush-only soft breast lift applies the same grade, with the selected breast changed and protected perch exactly unchanged; no AI submask is present                                                          |
+| History and saved editing                      | Both corrected-AI and manual sessions reject stale edits, restore exact state/pixels through undo/redo, and retain exact adjustment state and PNG bytes after save/reconnect, including captured native regions |
+| Source preservation                            | Original and existing sidecar integrity checks pass                                                                                                                                                             |
 
 Named AI review finds the corrected whole-bird lift and independent soft breast lift useful at overview size, with no conspicuous grade halo in the viewed contact details. A separate native 512×512 review of the manual brush transition shows a smooth interior lift while retaining the source outline and neighboring background. The manually restored toe remains a painted approximation with some fine background spill; **this is acceptance of the restrained local edit, not complete-matte approval or a claim of recovered anatomical detail**. The numerical probes cover only their annotated regions. Optional point refinement is supported by the runner but was not exercised in this brush-focused run; its evidence remains in the separate point-refinement record. [Reproduction and review instructions](testing-matrix.md#guided-ai-and-manual-mask-edits) keep contract assertions, photographic review and user approval separate.
 
@@ -28,11 +28,11 @@ Three new RAW capture groups test foreground hair, a guided bird subject, and sk
 
 The mask run uses native executable SHA-256 `42bc39183ddcfa94f6da060c0bd24268ed657113432fc4fa3000b890f65ee602` and runtime-source SHA-256 `771035a2d8e5090311c835a775ff3059ea7cee47f0a38c828e41bc907ef8ea0a`. It completed **53 successful native MCP calls**, including three mask generations and 40 matched renders. The preserved output contains 120 PNGs: three overview triplets and 37 native-region triplets, with no resizing of native detail. Thirteen predeclared interior/background mean-opacity probes produce 11 passes and two failures. Those numerical results do not approve any complete mask.
 
-| Fresh mask | Probe result | Independent AI review of native edges |
-| --- | --- | --- |
-| Person foreground | Three probes pass | Fails: fine crown/neck flyaways are omitted, some hair gaps fill in, and a background pole touching the head is included. The separately sampled pole is correctly excluded; passing that probe does not establish complete background rejection. |
-| Guided bird subject | Five probes pass; left toe and wing–tail opening fail | Fails: the left-toe probe has only 20.22% coverage and the background opening retains 10.54%. Native detail also shows perch spill, incomplete claw selection and filled feather gaps. Many feather tips remain, but the complete matte is inadequate. |
-| Sky around branches/building | Three probes pass | Fails: coarse block boundaries merge foliage, lose internal sky openings and include thin outer branches as sky. Roof exclusion passes. The roof mostly meets foliage, so this does not establish an isolated architectural edge against open sky. |
+| Fresh mask                   | Probe result                                          | Independent AI review of native edges                                                                                                                                                                                                                  |
+| ---------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Person foreground            | Three probes pass                                     | Fails: fine crown/neck flyaways are omitted, some hair gaps fill in, and a background pole touching the head is included. The separately sampled pole is correctly excluded; passing that probe does not establish complete background rejection.      |
+| Guided bird subject          | Five probes pass; left toe and wing–tail opening fail | Fails: the left-toe probe has only 20.22% coverage and the background opening retains 10.54%. Native detail also shows perch spill, incomplete claw selection and filled feather gaps. Many feather tips remain, but the complete matte is inadequate. |
+| Sky around branches/building | Three probes pass                                     | Fails: coarse block boundaries merge foliage, lose internal sky openings and include thin outer branches as sky. Roof exclusion passes. The roof mostly meets foliage, so this does not establish an isolated architectural edge against open sky.     |
 
 All 53 calls completed, but the original suite **failed during editable-state evidence finalization** because a summary-only session response omitted adjustments. It is excluded from passing aggregates. The corrected runner requires full adjustment state, and four separate read-only MCP calls verified all three saved sessions without repeating inference. An independent audit checked all 163 declared image/metadata/state artifacts, recomputed every probe, and confirmed unchanged session/sidecar files and originals. This recovery verifies the retained evidence; it does not change the original suite's failed status or grant visual-review credit.
 
@@ -58,15 +58,15 @@ The fork adds [point-guided subject refinement](SUBJECT-REFINEMENT.md), schema-a
 
 The focused rendering and refinement runs used native executable SHA-256 `7216e7086fca9a2b8bd3214c42b541d4dfe71bcd5d4ceed12dbdb29423bac174` and runtime-source SHA-256 `988de4d6be5ecad9db6f685869d1b8e1f7bd225b172c321aabbc6fd8c39c993c`.
 
-| Check | Result |
-| --- | --- |
-| Full native library tests, including both explicitly enabled Metal tests | 114 passed; zero failed or ignored |
-| MCP TypeScript build and protocol/worker/evidence tests | 93 passed; zero failed or skipped |
-| Focused native rendering acceptance | 353 MCP calls: 350 successes and 3 passing expected errors; 26 pixel scenarios and 3 derived-state checks; zero failures/skips |
-| Point-refinement native contract acceptance | 284 MCP calls: 267 successes and 17 passing expected rejections; 23 pixel scenarios and one native-state check; zero failures/skips |
-| Full-resolution wildlife refinement regression | 28 successful MCP calls; all six annotated inclusion, exclusion and preservation probes passed; photographic limits below |
-| MCP source, scripts and tests ESLint | Passed |
-| Clippy all targets with and without MCP, warnings denied; Rustfmt and whitespace checks | Passed |
+| Check                                                                                   | Result                                                                                                                              |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Full native library tests, including both explicitly enabled Metal tests                | 114 passed; zero failed or ignored                                                                                                  |
+| MCP TypeScript build and protocol/worker/evidence tests                                 | 93 passed; zero failed or skipped                                                                                                   |
+| Focused native rendering acceptance                                                     | 353 MCP calls: 350 successes and 3 passing expected errors; 26 pixel scenarios and 3 derived-state checks; zero failures/skips      |
+| Point-refinement native contract acceptance                                             | 284 MCP calls: 267 successes and 17 passing expected rejections; 23 pixel scenarios and one native-state check; zero failures/skips |
+| Full-resolution wildlife refinement regression                                          | 28 successful MCP calls; all six annotated inclusion, exclusion and preservation probes passed; photographic limits below           |
+| MCP source, scripts and tests ESLint                                                    | Passed                                                                                                                              |
+| Clippy all targets with and without MCP, warnings denied; Rustfmt and whitespace checks | Passed                                                                                                                              |
 
 Signed SAM prior conversion previously clamped logits to the image range, causing a full-resolution correction to recover the tail while dropping the body and selecting background. The repaired conversion preserves signs and amplitudes, with an explicit native regression. Failed photographic attempts remain separate from the corrected acceptance below.
 
@@ -84,14 +84,14 @@ Historical coverage repair uses the original 15 successful ledgers and original 
 
 The subsequent panorama and numeric-validation fixes use native executable SHA-256 `42bc39183ddcfa94f6da060c0bd24268ed657113432fc4fa3000b890f65ee602` and runtime-source SHA-256 `771035a2d8e5090311c835a775ff3059ea7cee47f0a38c828e41bc907ef8ea0a`. The earlier 665-call rendering/refinement record remains a separate build; it is not silently attributed to this executable.
 
-| Check | Result |
-| --- | --- |
-| Full native library tests, including both explicitly enabled Metal tests | 122 passed; zero failed or ignored |
-| MCP TypeScript build and protocol/worker/evidence tests | 93 passed; zero failed or skipped |
-| Native panorama contracts | 10 actual MCP calls and four checks passed; includes three expected error cases and a 901×421 low-contrast three-panel merge with exact restart pixels |
-| Genuine full-resolution panorama regression | 30 successful MCP calls and three checks; two adjacent 4032×3024 originals produce 9455×7124, with exact overview and native-detail pixels after restart |
-| Clippy all targets with and without MCP, warnings denied | Passed |
-| Native locked/offline build, MCP ESLint, Rustfmt and whitespace checks | Passed |
+| Check                                                                    | Result                                                                                                                                                   |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full native library tests, including both explicitly enabled Metal tests | 122 passed; zero failed or ignored                                                                                                                       |
+| MCP TypeScript build and protocol/worker/evidence tests                  | 93 passed; zero failed or skipped                                                                                                                        |
+| Native panorama contracts                                                | 10 actual MCP calls and four checks passed; includes three expected error cases and a 901×421 low-contrast three-panel merge with exact restart pixels   |
+| Genuine full-resolution panorama regression                              | 30 successful MCP calls and three checks; two adjacent 4032×3024 originals produce 9455×7124, with exact overview and native-detail pixels after restart |
+| Clippy all targets with and without MCP, warnings denied                 | Passed                                                                                                                                                   |
+| Native locked/offline build, MCP ESLint, Rustfmt and whitespace checks   | Passed                                                                                                                                                   |
 
 A genuine three-frame drone capture failed its preserved first attempt: the original detector found only 15–56 features per image and could not match the overlapping panels. The same-resolution normalized fallback finds 1,198–1,813 features, recovering 376 and 287 inliers on the adjacent pairs without relaxing ratio, RANSAC or inlier thresholds. Existing accepted match edges are retained. A central matched reference avoids the reference-plane crossing exposed by anchoring the wide sequence at an endpoint; singular/non-finite transforms and remaining plane crossings are rejected.
 
@@ -111,17 +111,17 @@ The local fork now exposes 62 MCP tools: 57 native methods and five host worker 
 
 This run uses macOS arm64/Metal, Rust 1.98.1, the official MCP v2 client and server, and a debug native executable. Native executable SHA-256: `5bed70144ab1d48d61c7f1d901ebc7129c3d5cefb9b8c6d805eb5c61defa366a`. Runtime-source SHA-256: `156a1df83a594e9fc3543363e9a4d0fe5fb16d8083702749f8ddf76df0dfd6b6`. Suite and documentation changes are recorded separately from runtime sources. The results below summarize the recorded run; generated artifacts, source photographs and model weights are not distributed with this repository. Reproduce the checks with the [test-suite instructions](testing-matrix.md#running-the-suites), using your own fixtures where required.
 
-| Check | Result |
-| --- | --- |
-| Native library tests, including both explicitly enabled Metal tests | 102 passed, zero failed/ignored |
-| MCP TypeScript build and protocol/worker/evidence tests | 77 passed, zero failed/skipped |
-| Native locked/offline debug build | Passed |
-| Clippy all targets with MCP, warnings denied | Passed after the final native preview correction |
-| Clippy all targets without MCP, warnings denied | Passed; subsequent native changes are confined to the MCP-only render module |
-| Final native MCP acceptance | 1,490 calls across 15 ledgers / 14 suites; all 62 tools have successful calls; 202 explicit checks |
-| Fresh photographic regressions | Seven operations completed, 366 calls, zero technical failures/skips; separate visual outcomes below |
-| Exact RAW preview cache | 32 MP RAW: 21.54 ms cached versus 5.335 s uncached, identical bytes, edit invalidation and undo equality; one local sample |
-| Final MCP source/scripts/tests ESLint, Rust fmt, whitespace checks and skill validation | Passed |
+| Check                                                                                   | Result                                                                                                                     |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Native library tests, including both explicitly enabled Metal tests                     | 102 passed, zero failed/ignored                                                                                            |
+| MCP TypeScript build and protocol/worker/evidence tests                                 | 77 passed, zero failed/skipped                                                                                             |
+| Native locked/offline debug build                                                       | Passed                                                                                                                     |
+| Clippy all targets with MCP, warnings denied                                            | Passed after the final native preview correction                                                                           |
+| Clippy all targets without MCP, warnings denied                                         | Passed; subsequent native changes are confined to the MCP-only render module                                               |
+| Final native MCP acceptance                                                             | 1,490 calls across 15 ledgers / 14 suites; all 62 tools have successful calls; 202 explicit checks                         |
+| Fresh photographic regressions                                                          | Seven operations completed, 366 calls, zero technical failures/skips; separate visual outcomes below                       |
+| Exact RAW preview cache                                                                 | 32 MP RAW: 21.54 ms cached versus 5.335 s uncached, identical bytes, edit invalidation and undo equality; one local sample |
+| Final MCP source/scripts/tests ESLint, Rust fmt, whitespace checks and skill validation | Passed                                                                                                                     |
 
 ### Defects found by actual execution
 
@@ -140,15 +140,15 @@ The recorded acceptance results were combined using the checked-in [coverage agg
 
 The original inventory is preserved by [historical reclassification](scripts/reclassify-coverage.mjs); no calls or pixel assertions were added by the repair. The inventory includes 62 tool requirements, 482 parameter requirements and 1,349 nested adjustment requirements. All tool requirements have evidence; 161 parameter and 1,058 adjustment requirements still lack evidence after schema-aware historical reclassification corrected seven retouch paths. Across overlapping evidence levels, 664 requirements have native-call evidence, 87 have explicit state assertions and 171 have pixel/delivery assertions. Do not add these overlapping counts or interpret tool coverage as exhaustive parameter coverage. The automatic ledger gives no visual-review credit; named AI reviews of actual artifacts are stored separately.
 
-| Real photographic fixture | Visual outcome |
-| --- | --- |
-| Portrait foreground mask | Needs refinement: main person is selected, but fine flyaway hair is omitted |
-| Guided wildlife subject mask | Fails stated criteria: tail omitted despite lying inside the guide, and perch pixels included; the guide may also be tight around the lower foot |
-| Building sky mask | Partial: broad separation works, but architectural edges are coarse/soft with slight facade spill |
-| Macro depth mask | Passes coarse separation/no-hole criteria in reviewed areas; weak background residuals remain, and silhouette quality is not established |
-| Two-frame mountain panorama | Passes this limited overlap case at overview plus four native detail regions; 8431×6820 output retains uncovered borders requiring a finishing crop |
-| Full-resolution portrait AI denoise | Passes reviewed face/glasses/hair/snow regions with noise reduction and no obvious geometry/tonal drift |
-| Full-resolution 32 MP wildlife BM3D | Passes reviewed crown/eye details with moderate noise reduction and preserved feathers; no full-raster quality guarantee |
+| Real photographic fixture           | Visual outcome                                                                                                                                      |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Portrait foreground mask            | Needs refinement: main person is selected, but fine flyaway hair is omitted                                                                         |
+| Guided wildlife subject mask        | Fails stated criteria: tail omitted despite lying inside the guide, and perch pixels included; the guide may also be tight around the lower foot    |
+| Building sky mask                   | Partial: broad separation works, but architectural edges are coarse/soft with slight facade spill                                                   |
+| Macro depth mask                    | Passes coarse separation/no-hole criteria in reviewed areas; weak background residuals remain, and silhouette quality is not established            |
+| Two-frame mountain panorama         | Passes this limited overlap case at overview plus four native detail regions; 8431×6820 output retains uncovered borders requiring a finishing crop |
+| Full-resolution portrait AI denoise | Passes reviewed face/glasses/hair/snow regions with noise reduction and no obvious geometry/tonal drift                                             |
+| Full-resolution 32 MP wildlife BM3D | Passes reviewed crown/eye details with moderate noise reduction and preserved feathers; no full-raster quality guarantee                            |
 
 The table above summarizes AI visual reviews, not human sign-off. Reviews recorded artifact hashes, native/runtime provenance, criteria, defects and limitations. Five supplemental native-detail reads preserved the existing session manifests and are not added to the strict aggregate. The [photographic runner](scripts/photo-quality-e2e.mjs) and [fixture/review instructions](testing-matrix.md#genuine-photographic-evaluation) describe how to create a separate review record with your own images.
 
@@ -178,17 +178,17 @@ The public setup documentation now includes Skills CLI installation, a macOS deb
 
 Native bridge 1.1.0 now advertises 47 tools. Implemented combined local exposure diagnostics and actual RGB differences, temporary matched comparisons, durable named references, smooth/asymmetric gradient fades (native engine, schema and desktop controls), and recoverable AI/BM3D jobs. The maintained and installed execution skills were updated and validated.
 
-| Check | Result |
-| --- | --- |
-| Native MCP library tests | 70 passed; 1 existing GPU test remains intentionally ignored |
-| MCP TypeScript build and protocol/schema tests | 25 passed |
-| Native debug executable and frontend production build | Passed |
-| ESLint on changed MCP source, protocol tests and new acceptance script | Passed |
-| Real MCP comparison/job acceptance, including AI | Passed |
-| Saved night-photo review regression | Both sessions retained identical state, source and sidecar hashes |
-| Execution skill validation and installed-file matching | Passed |
-| Frontend TypeScript diagnostics | 76, identical to unchanged HEAD after normalizing line positions and generated translation-key union counts |
-| Translation runtime diagnostics | 88, identical to unchanged HEAD |
+| Check                                                                  | Result                                                                                                      |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Native MCP library tests                                               | 70 passed; 1 existing GPU test remains intentionally ignored                                                |
+| MCP TypeScript build and protocol/schema tests                         | 25 passed                                                                                                   |
+| Native debug executable and frontend production build                  | Passed                                                                                                      |
+| ESLint on changed MCP source, protocol tests and new acceptance script | Passed                                                                                                      |
+| Real MCP comparison/job acceptance, including AI                       | Passed                                                                                                      |
+| Saved night-photo review regression                                    | Both sessions retained identical state, source and sidecar hashes                                           |
+| Execution skill validation and installed-file matching                 | Passed                                                                                                      |
+| Frontend TypeScript diagnostics                                        | 76, identical to unchanged HEAD after normalizing line positions and generated translation-key union counts |
+| Translation runtime diagnostics                                        | 88, identical to unchanged HEAD                                                                             |
 
 The real acceptance script tests four distinct native comparison images with matched geometry and unchanged manifests/sidecars, geometry rejection, native gradient output, version restoration after the 32-entry undo history is exceeded, stale-revision rejection, AI/BM3D completion and cancellation, editing/rendering while a worker runs, captured-edit inheritance, result persistence without polling, interruption detection, explicit restart, and preservation of explicitly closed result sessions. AI tests use a 64-pixel native export and verified already-installed assets. They validate worker behavior, not full-resolution denoise quality or star preservation. BM3D tests use a 512-pixel native export for completion and a 2400-pixel source for interruption/cancellation.
 
@@ -204,16 +204,16 @@ Verified on 2026-09-10 on macOS with Metal, Rust 1.98.1 and the optional `mcp` f
 
 ## Build and protocol
 
-| Check | Result |
-| --- | --- |
-| Frontend production build | Passed |
-| Native MCP build | Passed |
-| Native library tests with MCP | 59 passed, 1 GPU integration test intentionally ignored |
-| Explicit Metal precision suite, including ignored test | 5 passed |
-| Native check with MCP feature disabled | Passed |
-| MCP TypeScript build and official-client protocol tests | 18 passed |
-| ESLint for MCP source and acceptance scripts | Passed |
-| Read-only evaluation answer/reference consistency | 10 answers verified |
+| Check                                                   | Result                                                  |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| Frontend production build                               | Passed                                                  |
+| Native MCP build                                        | Passed                                                  |
+| Native library tests with MCP                           | 59 passed, 1 GPU integration test intentionally ignored |
+| Explicit Metal precision suite, including ignored test  | 5 passed                                                |
+| Native check with MCP feature disabled                  | Passed                                                  |
+| MCP TypeScript build and official-client protocol tests | 18 passed                                               |
+| ESLint for MCP source and acceptance scripts            | Passed                                                  |
+| Read-only evaluation answer/reference consistency       | 10 answers verified                                     |
 
 The protocol tests exercise real SDK v2 and SDK v1.30 clients, including the MCP 2025 initialize handshake, against a fake native subprocess. They verify tool schemas, resources, prompts, native image blocks, actionable errors, serialization, cancellation, timeouts and shutdown. They are not image-processing tests. The ten evaluation questions test understanding of the recorded contract; they are not an autonomous model or artistic-quality benchmark.
 
@@ -223,12 +223,12 @@ The separate frontend typecheck still reports errors in unchanged upstream TS/TS
 
 All calls below used an official MCP client, the TypeScript stdio server, and the compiled native bridge.
 
-| Suite | Evidence and result |
-| --- | --- |
-| Core RAW workflow | 65 calls on two CR3 originals: open, original/edited/detail/mask renders, actual pixel changes, validation and stale revisions, history, metadata, recipe/session persistence, restart, exports, partial batch errors and overwrite protections |
-| Local AI and composition | 58 calls: subject/foreground/sky/depth masks, depth-driven blur, clone/heal/retouch/liquify/local inpaint, AI and BM3D denoise, negative conversion, lens lookup/error handling, HDR/focus/panorama and persistence |
-| Assets and delivery | 62 calls, 17 checks, zero skipped cases: auto-adjust/undo, orientation/crop/ROI, recipe roundtrip, installed preset migration, local curve create/update/remove pixel changes, CUBE precision, owned LUT portability/restart, resize modes, watermark, mask exports, six raster formats and source protection |
-| Linear denoise regression | 21 calls: zero-strength exact no-op, retained recipe and RAW interpretation, highlight headroom, actual noise reduction, reconnect render identity and AI-generated local curve rendering |
+| Suite                     | Evidence and result                                                                                                                                                                                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core RAW workflow         | 65 calls on two CR3 originals: open, original/edited/detail/mask renders, actual pixel changes, validation and stale revisions, history, metadata, recipe/session persistence, restart, exports, partial batch errors and overwrite protections                                                               |
+| Local AI and composition  | 58 calls: subject/foreground/sky/depth masks, depth-driven blur, clone/heal/retouch/liquify/local inpaint, AI and BM3D denoise, negative conversion, lens lookup/error handling, HDR/focus/panorama and persistence                                                                                           |
+| Assets and delivery       | 62 calls, 17 checks, zero skipped cases: auto-adjust/undo, orientation/crop/ROI, recipe roundtrip, installed preset migration, local curve create/update/remove pixel changes, CUBE precision, owned LUT portability/restart, resize modes, watermark, mask exports, six raster formats and source protection |
+| Linear denoise regression | 21 calls: zero-strength exact no-op, retained recipe and RAW interpretation, highlight headroom, actual noise reduction, reconnect render identity and AI-generated local curve rendering                                                                                                                     |
 
 Original RAW files and their existing sidecars retained identical hashes and existence. Advanced tests also verified that all seven installed ONNX model files were unchanged. Model installation reused verified local assets; a fresh network download was not exercised. External generative retouch was not configured or called; only its invalid/unconfigured request handling was checked.
 

@@ -11,9 +11,12 @@ Supply `include_points`, `exclude_points`, or both. A new point-guided selection
   "session_id": "SESSION_ID",
   "expected_revision": 4,
   "kind": "subject",
-  "region": {"x": 100, "y": 60, "width": 400, "height": 300},
-  "include_points": [{"x": 240, "y": 180}, {"x": 450, "y": 220}],
-  "exclude_points": [{"x": 390, "y": 120}]
+  "region": { "x": 100, "y": 60, "width": 400, "height": 300 },
+  "include_points": [
+    { "x": 240, "y": 180 },
+    { "x": 450, "y": 220 }
+  ],
+  "exclude_points": [{ "x": 390, "y": 120 }]
 }
 ```
 
@@ -28,9 +31,9 @@ A region-only request that omits both point arrays and `refine` keeps the existi
   "session_id": "SESSION_ID",
   "expected_revision": 5,
   "kind": "subject",
-  "refine": {"mask_id": "MASK_ID", "sub_mask_id": "SUBMASK_ID"},
-  "include_points": [{"x": 450, "y": 220}],
-  "exclude_points": [{"x": 390, "y": 120}]
+  "refine": { "mask_id": "MASK_ID", "sub_mask_id": "SUBMASK_ID" },
+  "include_points": [{ "x": 450, "y": 220 }],
+  "exclude_points": [{ "x": 390, "y": 120 }]
 }
 ```
 
@@ -44,15 +47,15 @@ The new model selection is validated before applying preserved mask composition.
 
 The response includes `mask_id`, `sub_mask_id` and `refinement`, including:
 
-| Field | Meaning |
-| --- | --- |
-| `mode` | `new_mask` or `replace_submask` |
-| `prior_mode` | `none`, `native_logits`, or `coverage_logit_seed` |
-| `coordinate_space`, `canvas_dimensions` | The full mask canvas used for inference |
-| `include_points`, `exclude_points`, `region` | The actual constraints supplied to both decoder passes |
-| `source_sha256`, `geometry_sha256` | Source bytes and canvas identity used by the saved state |
-| `generated_submask_statistics` | Model selection coverage before preserved mask composition |
-| `prior_conversion` | Explanation when a legacy approximate prior was used |
+| Field                                        | Meaning                                                    |
+| -------------------------------------------- | ---------------------------------------------------------- |
+| `mode`                                       | `new_mask` or `replace_submask`                            |
+| `prior_mode`                                 | `none`, `native_logits`, or `coverage_logit_seed`          |
+| `coordinate_space`, `canvas_dimensions`      | The full mask canvas used for inference                    |
+| `include_points`, `exclude_points`, `region` | The actual constraints supplied to both decoder passes     |
+| `source_sha256`, `geometry_sha256`           | Source bytes and canvas identity used by the saved state   |
+| `generated_submask_statistics`               | Model selection coverage before preserved mask composition |
+| `prior_conversion`                           | Explanation when a legacy approximate prior was used       |
 
 New point-guided selections retain the decoder's actual 256×256 floating-point logits in `parameters.samRefinement`, together with source/geometry/bitmap hashes and the latest caller prompts. These are native model inputs, independent of the 8-bit display mask. History, session saves, portable bundles and worker snapshots carry this state with the submask. Do not hand-edit the logits or bitmap data.
 

@@ -8,12 +8,12 @@ Read the live retouch schema and `get_engine_settings`. Native `capabilities` de
 
 Current fork builds accept `generation_options` with `profile`, `megapixels` and `seed`. Use advertised profile IDs and resolutions. The included Comfy Connector advertises:
 
-| Profile | Use | Supported generation MP |
-| --- | --- | --- |
-| `klein4-v1` | Starting point for general removal and creative replacement | 1, 2; default 1 |
-| `klein4-tight2mp` | Compare closer context for a small target when surrounding structure still fits | 1, 2; default 2 |
-| `klein9-kv` | A bounded alternative when 4B misses the requested change | 1 |
-| `boogu-turbo4-context` | A different reconstruction alternative | 1 |
+| Profile                | Use                                                                             | Supported generation MP |
+| ---------------------- | ------------------------------------------------------------------------------- | ----------------------- |
+| `klein4-v1`            | Starting point for general removal and creative replacement                     | 1, 2; default 1         |
+| `klein4-tight2mp`      | Compare closer context for a small target when surrounding structure still fits | 1, 2; default 2         |
+| `klein9-kv`            | A bounded alternative when 4B misses the requested change                       | 1                       |
+| `boogu-turbo4-context` | A different reconstruction alternative                                          | 1                       |
 
 Deployments can change this catalog. The package supports Klein and Boogu workflow families; arbitrary profile names do not add another architecture. Qwen/Z-Image text editing and neural super-resolution are not bundled profiles. `install_model` cannot install connector workflows.
 
@@ -21,14 +21,14 @@ Explicit options require a capable AI Connector and fail before image upload if 
 
 ## Route by the requested result
 
-| Use case | First treatment | Inspect before accepting |
-| --- | --- | --- |
-| Dust, tiny blemish, controllable texture repair | Native clone/heal, or local inpaint when suitable | Repeated texture, sampling edge and lighting |
-| Remove an object from a simple surface | Klein 4B at 1 MP, mask the object and unwanted shadow/reflection | Complete removal, replacement texture, visible boundary |
-| Remove an object crossing rails, branches or architecture | Klein 4B at 1 MP with enough context to continue the structure | Line continuity, occluded landmarks, counts and perspective |
-| Change color while retaining exact shape and texture | Native selective color adjustment; see [recolor guidance](advanced-editing.md#recolor-neutral-clothing) | Selection spill, folds, texture and unchanged geometry |
-| Creative recoloring, adding or replacing content | Klein 4B at 1 MP when reconstruction is intended | Shape, scale, contact shadows, material and protected surroundings |
-| Exact wording, lettering or logo | Establish the required spelling, font and layout; treat generation as a candidate, not typographic verification | Every character, spacing, font, perspective and surface integration |
+| Use case                                                  | First treatment                                                                                                 | Inspect before accepting                                            |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Dust, tiny blemish, controllable texture repair           | Native clone/heal, or local inpaint when suitable                                                               | Repeated texture, sampling edge and lighting                        |
+| Remove an object from a simple surface                    | Klein 4B at 1 MP, mask the object and unwanted shadow/reflection                                                | Complete removal, replacement texture, visible boundary             |
+| Remove an object crossing rails, branches or architecture | Klein 4B at 1 MP with enough context to continue the structure                                                  | Line continuity, occluded landmarks, counts and perspective         |
+| Change color while retaining exact shape and texture      | Native selective color adjustment; see [recolor guidance](advanced-editing.md#recolor-neutral-clothing)         | Selection spill, folds, texture and unchanged geometry              |
+| Creative recoloring, adding or replacing content          | Klein 4B at 1 MP when reconstruction is intended                                                                | Shape, scale, contact shadows, material and protected surroundings  |
+| Exact wording, lettering or logo                          | Establish the required spelling, font and layout; treat generation as a candidate, not typographic verification | Every character, spacing, font, perspective and surface integration |
 
 Prompt the desired visible result and name important retained features. For example: “Remove the bag and its shadow; continue the paving and keep the railing and planter unchanged.” Preservation language helps express intent but does not guarantee fidelity. Klein's bundled graph ignores negative conditioning; put important requirements in the positive prompt. MCP retouch has no `negative_prompt` parameter.
 

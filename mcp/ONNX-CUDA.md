@@ -8,24 +8,24 @@ This guide configures the native MCP process. The desktop application's bundled 
 
 Set these environment variables in the **server-side MCP launcher**, before starting Node and the native engine. Reconnect after changing them; an initialized session keeps its provider.
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `RAPIDRAW_ONNX_PROVIDER` | `cpu` | `cpu` uses CPU; Linux `cuda` requires successful CUDA initialization for supported models; Linux `auto` tries CUDA and creates a CPU session if initialization fails. On other platforms, `auto` uses CPU and `cuda` returns an unsupported-platform error. |
-| `RAPIDRAW_ONNX_DEVICE_ID` | `0` | Nonnegative CUDA device index, read only when CUDA can be attempted. |
-| `RAPIDRAW_ONNX_GPU_MEM_LIMIT_MB` | Model-specific | Optional positive integer overriding the arena limit of **each CUDA session**, in units of 1024 × 1024 bytes. |
-| `ORT_DYLIB_PATH` | Bundled runtime | Absolute path to a compatible ONNX Runtime shared library. CUDA requires a GPU build with its matching provider libraries. |
+| Variable                         | Default         | Meaning                                                                                                                                                                                                                                                     |
+| -------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RAPIDRAW_ONNX_PROVIDER`         | `cpu`           | `cpu` uses CPU; Linux `cuda` requires successful CUDA initialization for supported models; Linux `auto` tries CUDA and creates a CPU session if initialization fails. On other platforms, `auto` uses CPU and `cuda` returns an unsupported-platform error. |
+| `RAPIDRAW_ONNX_DEVICE_ID`        | `0`             | Nonnegative CUDA device index, read only when CUDA can be attempted.                                                                                                                                                                                        |
+| `RAPIDRAW_ONNX_GPU_MEM_LIMIT_MB` | Model-specific  | Optional positive integer overriding the arena limit of **each CUDA session**, in units of 1024 × 1024 bytes.                                                                                                                                               |
+| `ORT_DYLIB_PATH`                 | Bundled runtime | Absolute path to a compatible ONNX Runtime shared library. CUDA requires a GPU build with its matching provider libraries.                                                                                                                                  |
 
 The CUDA policy is deliberately limited to the validated models:
 
-| Operation / model | Linux `cuda` or `auto` | Default CUDA arena limit |
-| --- | --- | --- |
-| Foreground — `u2net.onnx` | CUDA | 2048 MiB |
-| Sky — `skyseg_u2net.onnx` | CUDA | 2048 MiB |
-| Depth — `depth_anything_v2_vits.onnx` | CUDA | 2048 MiB |
-| AI denoise — `nind_denoise_utnet_684.onnx` | CUDA | 8192 MiB |
-| Subject — SAM encoder and decoder | CPU compatibility policy | — |
-| Local inpainting — `lama_fp16.onnx` | CPU compatibility policy | — |
-| CLIP tagging and other unvalidated models | CPU compatibility policy | — |
+| Operation / model                          | Linux `cuda` or `auto`   | Default CUDA arena limit |
+| ------------------------------------------ | ------------------------ | ------------------------ |
+| Foreground — `u2net.onnx`                  | CUDA                     | 2048 MiB                 |
+| Sky — `skyseg_u2net.onnx`                  | CUDA                     | 2048 MiB                 |
+| Depth — `depth_anything_v2_vits.onnx`      | CUDA                     | 2048 MiB                 |
+| AI denoise — `nind_denoise_utnet_684.onnx` | CUDA                     | 8192 MiB                 |
+| Subject — SAM encoder and decoder          | CPU compatibility policy | —                        |
+| Local inpainting — `lama_fp16.onnx`        | CPU compatibility policy | —                        |
+| CLIP tagging and other unvalidated models  | CPU compatibility policy | —                        |
 
 Bundled SAM models contain quantized integer operators that execute on CPU within a CUDA session, with substantial transfer and GPU memory costs. Keeping both sessions on CPU leaves room for denoise and rendering. Bundled FP16 LaMa produced nonfinite output on CUDA at the supported 768 × 768 input boundary, so it remains on CPU; Linux inpainting also rejects nonfinite results before converting pixels. CLIP has not been validated for this CUDA path.
 

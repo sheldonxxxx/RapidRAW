@@ -52,8 +52,10 @@ Configure your MCP host with absolute paths (replace the examples with your chec
       "command": "node",
       "args": [
         "/absolute/RapidRAW/mcp/dist/index.js",
-        "--binary", "/absolute/RapidRAW/src-tauri/target/release/RapidRAW",
-        "--workspace", "/absolute/rapidraw-photo-jobs"
+        "--binary",
+        "/absolute/RapidRAW/src-tauri/target/release/RapidRAW",
+        "--workspace",
+        "/absolute/rapidraw-photo-jobs"
       ]
     }
   }
@@ -105,19 +107,19 @@ Every tool starts with `rapidraw_`; the table shows the suffixes. The engine's l
 
 The [application/MCP/test matrix](CAPABILITY-MATRIX.md) maps the complete application feature areas to their MCP implementation, test boundary and remaining gaps. The generated evidence ledger distinguishes individual tool calls, parameter coverage, pixel assertions and photographic review.
 
-| Area | Tools |
-| --- | --- |
-| Discovery and state | `capabilities`, `list_images`, `open_photo`, `list_sessions`, `get_session`, `close_session` |
-| Editing and review | `set_adjustments`, `render`, `render_compare`, `inspect_adjustments`, `analyze`, `auto_adjust`, `map_coordinates`, `preflight`, `sample_region` |
-| Selective edits | `mask_create`, `mask_update`, `mask_remove`, `mask_generate`, `generate_depth` |
-| Background processing | `start_denoise`, `get_job`, `list_jobs`, `cancel_job`, `resume_job`, `start_operation`, `get_operation_job`, `list_operation_jobs`, `cancel_operation_job`, `resume_operation_job` |
-| Local masks and enhancement | `enhancement_models`, `install_enhancement_model`, `enhance`; [models, profiles and examples](../docs/local-enhancement.md) |
-| Detail and corrections | `retouch`, `denoise`, `lens_profile`, `negative_convert` |
-| History and persistence | `history`, `undo`, `redo`, `save_version`, `list_versions`, `restore_version`, `save_session`, `load_recipe`, `save_recipe` |
-| Presets and assets | `list_presets`, `apply_preset`, `list_luts`, `apply_lut`, `manage_presets`, `manage_luts`, `models`, `install_model` |
-| Delivery and composition | `export`, `batch_export`, `merge` |
-| Portable editing | `fork_session`, `export_session_bundle`, `import_session_bundle`, `diff_versions`, `copy_adjustments` |
-| Metadata and configuration | `get_metadata`, `set_metadata`, `get_engine_settings` |
+| Area                        | Tools                                                                                                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Discovery and state         | `capabilities`, `list_images`, `open_photo`, `list_sessions`, `get_session`, `close_session`                                                                                       |
+| Editing and review          | `set_adjustments`, `render`, `render_compare`, `inspect_adjustments`, `analyze`, `auto_adjust`, `map_coordinates`, `preflight`, `sample_region`                                    |
+| Selective edits             | `mask_create`, `mask_update`, `mask_remove`, `mask_generate`, `generate_depth`                                                                                                     |
+| Background processing       | `start_denoise`, `get_job`, `list_jobs`, `cancel_job`, `resume_job`, `start_operation`, `get_operation_job`, `list_operation_jobs`, `cancel_operation_job`, `resume_operation_job` |
+| Local masks and enhancement | `enhancement_models`, `install_enhancement_model`, `enhance`; [models, profiles and examples](../docs/local-enhancement.md)                                                        |
+| Detail and corrections      | `retouch`, `denoise`, `lens_profile`, `negative_convert`                                                                                                                           |
+| History and persistence     | `history`, `undo`, `redo`, `save_version`, `list_versions`, `restore_version`, `save_session`, `load_recipe`, `save_recipe`                                                        |
+| Presets and assets          | `list_presets`, `apply_preset`, `list_luts`, `apply_lut`, `manage_presets`, `manage_luts`, `models`, `install_model`                                                               |
+| Delivery and composition    | `export`, `batch_export`, `merge`                                                                                                                                                  |
+| Portable editing            | `fork_session`, `export_session_bundle`, `import_session_bundle`, `diff_versions`, `copy_adjustments`                                                                              |
+| Metadata and configuration  | `get_metadata`, `set_metadata`, `get_engine_settings`                                                                                                                              |
 
 Resources:
 

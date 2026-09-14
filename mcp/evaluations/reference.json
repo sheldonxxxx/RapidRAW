@@ -364,15 +364,7 @@
                     "type": "integer"
                   }
                 },
-                "required": [
-                  "color",
-                  "mask",
-                  "offsetX",
-                  "offsetY",
-                  "width",
-                  "height",
-                  "isSrgbEncoded"
-                ],
+                "required": ["color", "mask", "offsetX", "offsetY", "width", "height", "isSrgbEncoded"],
                 "type": "object"
               },
               "prompt": {
@@ -395,11 +387,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -445,14 +433,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "centerX",
-                            "centerY",
-                            "radiusX",
-                            "radiusY",
-                            "rotation",
-                            "feather"
-                          ],
+                          "required": ["centerX", "centerY", "radiusX", "radiusY", "rotation", "feather"],
                           "type": "object"
                         },
                         "type": {
@@ -462,13 +443,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -483,11 +458,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -525,11 +496,7 @@
                               "type": "number"
                             },
                             "falloff": {
-                              "enum": [
-                                "linear",
-                                "smoothstep",
-                                "smootherstep"
-                              ],
+                              "enum": ["linear", "smoothstep", "smootherstep"],
                               "type": "string"
                             },
                             "range": {
@@ -549,12 +516,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "startX",
-                            "startY",
-                            "endX",
-                            "endY"
-                          ],
+                          "required": ["startX", "startY", "endX", "endY"],
                           "type": "object"
                         },
                         "type": {
@@ -564,13 +526,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -585,11 +541,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -638,10 +590,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -649,18 +598,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -668,9 +610,7 @@
                               "type": "array"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -680,13 +620,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -701,11 +635,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -759,10 +689,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -770,18 +697,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -789,9 +709,7 @@
                               "type": "array"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -801,13 +719,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -822,11 +734,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -883,10 +791,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "targetX",
-                            "targetY"
-                          ],
+                          "required": ["targetX", "targetY"],
                           "type": "object"
                         },
                         "type": {
@@ -896,13 +801,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -917,11 +816,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -978,10 +873,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "targetX",
-                            "targetY"
-                          ],
+                          "required": ["targetX", "targetY"],
                           "type": "object"
                         },
                         "type": {
@@ -991,13 +883,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1012,11 +898,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1084,13 +966,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "startX",
-                            "startY",
-                            "endX",
-                            "endY",
-                            "maskDataBase64"
-                          ],
+                          "required": ["startX", "startY", "endX", "endY", "maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -1100,13 +976,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1121,11 +991,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1173,9 +1039,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "maskDataBase64"
-                          ],
+                          "required": ["maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -1185,13 +1049,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1206,11 +1064,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1258,9 +1112,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "maskDataBase64"
-                          ],
+                          "required": ["maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -1270,13 +1122,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1291,11 +1137,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1363,13 +1205,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "minDepth",
-                            "maxDepth",
-                            "minFade",
-                            "maxFade",
-                            "maskDataBase64"
-                          ],
+                          "required": ["minDepth", "maxDepth", "minFade", "maxFade", "maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -1379,13 +1215,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1400,11 +1230,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1472,13 +1298,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "startX",
-                            "startY",
-                            "endX",
-                            "endY",
-                            "maskDataBase64"
-                          ],
+                          "required": ["startX", "startY", "endX", "endY", "maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -1488,13 +1308,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1509,11 +1323,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1538,13 +1348,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1559,11 +1363,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1612,10 +1412,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -1623,18 +1420,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -1652,9 +1442,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -1664,13 +1452,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1685,11 +1467,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1738,10 +1516,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -1749,18 +1524,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -1778,9 +1546,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -1790,13 +1556,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1811,11 +1571,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1864,10 +1620,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -1875,18 +1628,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -1894,12 +1640,7 @@
                               "type": "array"
                             },
                             "liquifyMode": {
-                              "enum": [
-                                "push",
-                                "pinch",
-                                "expand",
-                                "twirl"
-                              ],
+                              "enum": ["push", "pinch", "expand", "twirl"],
                               "type": "string"
                             },
                             "pressure": {
@@ -1908,9 +1649,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -1920,13 +1659,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -1941,11 +1674,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -1999,10 +1728,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -2010,18 +1736,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -2029,9 +1748,7 @@
                               "type": "array"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -2041,13 +1758,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     }
                   ]
@@ -2060,15 +1771,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "id",
-              "name",
-              "visible",
-              "invert",
-              "subMasks",
-              "prompt",
-              "patchData"
-            ],
+            "required": ["id", "name", "visible", "invert", "subMasks", "prompt", "patchData"],
             "type": "object"
           },
           "maxItems": 128,
@@ -2286,9 +1989,7 @@
                   "type": "number"
                 },
                 "unit": {
-                  "enum": [
-                    "px"
-                  ],
+                  "enum": ["px"],
                   "type": "string"
                 },
                 "width": {
@@ -2307,12 +2008,7 @@
                   "type": "number"
                 }
               },
-              "required": [
-                "x",
-                "y",
-                "width",
-                "height"
-              ],
+              "required": ["x", "y", "width", "height"],
               "type": "object"
             },
             {
@@ -2321,10 +2017,7 @@
           ]
         },
         "curveMode": {
-          "enum": [
-            "point",
-            "parametric"
-          ],
+          "enum": ["point", "parametric"],
           "type": "string"
         },
         "curves": {
@@ -2345,10 +2038,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "x",
-                  "y"
-                ],
+                "required": ["x", "y"],
                 "type": "object"
               },
               "maxItems": 16,
@@ -2370,10 +2060,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "x",
-                  "y"
-                ],
+                "required": ["x", "y"],
                 "type": "object"
               },
               "maxItems": 16,
@@ -2395,10 +2082,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "x",
-                  "y"
-                ],
+                "required": ["x", "y"],
                 "type": "object"
               },
               "maxItems": 16,
@@ -2420,10 +2104,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "x",
-                  "y"
-                ],
+                "required": ["x", "y"],
                 "type": "object"
               },
               "maxItems": 16,
@@ -2507,10 +2188,7 @@
                         "type": "number"
                       }
                     },
-                    "required": [
-                      "x",
-                      "y"
-                    ],
+                    "required": ["x", "y"],
                     "type": "object"
                   },
                   "p2": {
@@ -2527,26 +2205,15 @@
                         "type": "number"
                       }
                     },
-                    "required": [
-                      "x",
-                      "y"
-                    ],
+                    "required": ["x", "y"],
                     "type": "object"
                   },
                   "type": {
-                    "enum": [
-                      "vertical",
-                      "horizontal"
-                    ],
+                    "enum": ["vertical", "horizontal"],
                     "type": "string"
                   }
                 },
-                "required": [
-                  "id",
-                  "type",
-                  "p1",
-                  "p2"
-                ],
+                "required": ["id", "type", "p1", "p2"],
                 "type": "object"
               },
               "maxItems": 4,
@@ -2802,19 +2469,11 @@
           "type": "number"
         },
         "lensBlurShape": {
-          "enum": [
-            "circle",
-            "hexagon",
-            "octagon",
-            "ring"
-          ],
+          "enum": ["circle", "hexagon", "octagon", "ring"],
           "type": "string"
         },
         "lensCorrectionMode": {
-          "enum": [
-            "auto",
-            "manual"
-          ],
+          "enum": ["auto", "manual"],
           "type": "string"
         },
         "lensDistortionAmount": {
@@ -3111,10 +2770,7 @@
                     "type": "number"
                   },
                   "curveMode": {
-                    "enum": [
-                      "point",
-                      "parametric"
-                    ],
+                    "enum": ["point", "parametric"],
                     "type": "string"
                   },
                   "curves": {
@@ -3135,10 +2791,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "x",
-                            "y"
-                          ],
+                          "required": ["x", "y"],
                           "type": "object"
                         },
                         "maxItems": 16,
@@ -3160,10 +2813,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "x",
-                            "y"
-                          ],
+                          "required": ["x", "y"],
                           "type": "object"
                         },
                         "maxItems": 16,
@@ -3185,10 +2835,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "x",
-                            "y"
-                          ],
+                          "required": ["x", "y"],
                           "type": "object"
                         },
                         "maxItems": 16,
@@ -3210,10 +2857,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "x",
-                            "y"
-                          ],
+                          "required": ["x", "y"],
                           "type": "object"
                         },
                         "maxItems": 16,
@@ -3685,10 +3329,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "x",
-                            "y"
-                          ],
+                          "required": ["x", "y"],
                           "type": "object"
                         },
                         "maxItems": 16,
@@ -3710,10 +3351,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "x",
-                            "y"
-                          ],
+                          "required": ["x", "y"],
                           "type": "object"
                         },
                         "maxItems": 16,
@@ -3735,10 +3373,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "x",
-                            "y"
-                          ],
+                          "required": ["x", "y"],
                           "type": "object"
                         },
                         "maxItems": 16,
@@ -3760,10 +3395,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "x",
-                            "y"
-                          ],
+                          "required": ["x", "y"],
                           "type": "object"
                         },
                         "maxItems": 16,
@@ -3878,11 +3510,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -3928,14 +3556,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "centerX",
-                            "centerY",
-                            "radiusX",
-                            "radiusY",
-                            "rotation",
-                            "feather"
-                          ],
+                          "required": ["centerX", "centerY", "radiusX", "radiusY", "rotation", "feather"],
                           "type": "object"
                         },
                         "type": {
@@ -3945,13 +3566,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -3966,11 +3581,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4008,11 +3619,7 @@
                               "type": "number"
                             },
                             "falloff": {
-                              "enum": [
-                                "linear",
-                                "smoothstep",
-                                "smootherstep"
-                              ],
+                              "enum": ["linear", "smoothstep", "smootherstep"],
                               "type": "string"
                             },
                             "range": {
@@ -4032,12 +3639,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "startX",
-                            "startY",
-                            "endX",
-                            "endY"
-                          ],
+                          "required": ["startX", "startY", "endX", "endY"],
                           "type": "object"
                         },
                         "type": {
@@ -4047,13 +3649,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4068,11 +3664,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4121,10 +3713,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -4132,18 +3721,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -4151,9 +3733,7 @@
                               "type": "array"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -4163,13 +3743,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4184,11 +3758,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4242,10 +3812,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -4253,18 +3820,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -4272,9 +3832,7 @@
                               "type": "array"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -4284,13 +3842,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4305,11 +3857,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4366,10 +3914,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "targetX",
-                            "targetY"
-                          ],
+                          "required": ["targetX", "targetY"],
                           "type": "object"
                         },
                         "type": {
@@ -4379,13 +3924,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4400,11 +3939,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4461,10 +3996,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "targetX",
-                            "targetY"
-                          ],
+                          "required": ["targetX", "targetY"],
                           "type": "object"
                         },
                         "type": {
@@ -4474,13 +4006,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4495,11 +4021,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4567,13 +4089,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "startX",
-                            "startY",
-                            "endX",
-                            "endY",
-                            "maskDataBase64"
-                          ],
+                          "required": ["startX", "startY", "endX", "endY", "maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -4583,13 +4099,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4604,11 +4114,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4656,9 +4162,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "maskDataBase64"
-                          ],
+                          "required": ["maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -4668,13 +4172,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4689,11 +4187,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4741,9 +4235,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "maskDataBase64"
-                          ],
+                          "required": ["maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -4753,13 +4245,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4774,11 +4260,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4846,13 +4328,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "minDepth",
-                            "maxDepth",
-                            "minFade",
-                            "maxFade",
-                            "maskDataBase64"
-                          ],
+                          "required": ["minDepth", "maxDepth", "minFade", "maxFade", "maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -4862,13 +4338,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4883,11 +4353,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -4955,13 +4421,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "startX",
-                            "startY",
-                            "endX",
-                            "endY",
-                            "maskDataBase64"
-                          ],
+                          "required": ["startX", "startY", "endX", "endY", "maskDataBase64"],
                           "type": "object"
                         },
                         "type": {
@@ -4971,13 +4431,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -4992,11 +4446,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -5021,13 +4471,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -5042,11 +4486,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -5095,10 +4535,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -5106,18 +4543,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -5135,9 +4565,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -5147,13 +4575,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -5168,11 +4590,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -5221,10 +4639,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -5232,18 +4647,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -5261,9 +4669,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -5273,13 +4679,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -5294,11 +4694,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -5347,10 +4743,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -5358,18 +4751,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -5377,12 +4763,7 @@
                               "type": "array"
                             },
                             "liquifyMode": {
-                              "enum": [
-                                "push",
-                                "pinch",
-                                "expand",
-                                "twirl"
-                              ],
+                              "enum": ["push", "pinch", "expand", "twirl"],
                               "type": "string"
                             },
                             "pressure": {
@@ -5391,9 +4772,7 @@
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -5403,13 +4782,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     },
                     {
@@ -5424,11 +4797,7 @@
                           "type": "boolean"
                         },
                         "mode": {
-                          "enum": [
-                            "additive",
-                            "subtractive",
-                            "intersect"
-                          ],
+                          "enum": ["additive", "subtractive", "intersect"],
                           "type": "string"
                         },
                         "name": {
@@ -5482,10 +4851,7 @@
                                           "type": "number"
                                         }
                                       },
-                                      "required": [
-                                        "x",
-                                        "y"
-                                      ],
+                                      "required": ["x", "y"],
                                       "type": "object"
                                     },
                                     "maxItems": 100000,
@@ -5493,18 +4859,11 @@
                                     "type": "array"
                                   },
                                   "tool": {
-                                    "enum": [
-                                      "brush",
-                                      "eraser"
-                                    ],
+                                    "enum": ["brush", "eraser"],
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "tool",
-                                  "brushSize",
-                                  "points"
-                                ],
+                                "required": ["tool", "brushSize", "points"],
                                 "type": "object"
                               },
                               "maxItems": 10000,
@@ -5512,9 +4871,7 @@
                               "type": "array"
                             }
                           },
-                          "required": [
-                            "lines"
-                          ],
+                          "required": ["lines"],
                           "type": "object"
                         },
                         "type": {
@@ -5524,13 +4881,7 @@
                           "type": "boolean"
                         }
                       },
-                      "required": [
-                        "id",
-                        "type",
-                        "visible",
-                        "mode",
-                        "parameters"
-                      ],
+                      "required": ["id", "type", "visible", "mode", "parameters"],
                       "type": "object"
                     }
                   ]
@@ -5543,14 +4894,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "id",
-              "name",
-              "visible",
-              "invert",
-              "subMasks",
-              "adjustments"
-            ],
+            "required": ["id", "name", "visible", "invert", "subMasks", "adjustments"],
             "type": "object"
           },
           "maxItems": 32,
@@ -5795,10 +5139,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "x",
-                  "y"
-                ],
+                "required": ["x", "y"],
                 "type": "object"
               },
               "maxItems": 16,
@@ -5820,10 +5161,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "x",
-                  "y"
-                ],
+                "required": ["x", "y"],
                 "type": "object"
               },
               "maxItems": 16,
@@ -5845,10 +5183,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "x",
-                  "y"
-                ],
+                "required": ["x", "y"],
                 "type": "object"
               },
               "maxItems": 16,
@@ -5870,10 +5205,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "x",
-                  "y"
-                ],
+                "required": ["x", "y"],
                 "type": "object"
               },
               "maxItems": 16,
@@ -5950,10 +5282,7 @@
           "type": "number"
         },
         "toneMapper": {
-          "enum": [
-            "basic",
-            "agx"
-          ],
+          "enum": ["basic", "agx"],
           "type": "string"
         },
         "transformAspect": {
@@ -6098,10 +5427,7 @@
     "originals": "Never overwritten. All source files copied to session workspace.",
     "persistence": "Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.",
     "precision": {
-      "formats_16bit": [
-        "png",
-        "tiff"
-      ],
+      "formats_16bit": ["png", "tiff"],
       "render": "float32 GPU / 16-bit readback"
     },
     "protocol_version": 1,
@@ -6337,9 +5663,7 @@
     "livePreviewQuality": "high",
     "mediumThumbnailResolution": 1280,
     "myLenses": [],
-    "openTreeSections": [
-      "current"
-    ],
+    "openTreeSections": ["current"],
     "pinnedFolders": [],
     "processingBackend": "auto",
     "rawHighlightCompression": 2.5,
@@ -6381,19 +5705,9 @@
       "leftTopHeight": 450,
       "panelLayout": {
         "leftBottom": [],
-        "leftTop": [
-          "metadata",
-          "folderTree",
-          "export"
-        ],
+        "leftTop": ["metadata", "folderTree", "export"],
         "rightBottom": [],
-        "rightTop": [
-          "adjustments",
-          "crop",
-          "masks",
-          "ai",
-          "presets"
-        ]
+        "rightTop": ["adjustments", "crop", "masks", "ai", "presets"]
       },
       "panelSwitcherPlacement": {
         "leftBottom": "bottom",
@@ -6445,12 +5759,7 @@
                 "maximum": 9007199254740991
               }
             },
-            "required": [
-              "x",
-              "y",
-              "width",
-              "height"
-            ],
+            "required": ["x", "y", "width", "height"],
             "additionalProperties": false,
             "description": "Rectangle in full-resolution rendered image pixels AFTER user crop and geometry. Extracted before long_edge resizing; read rendered dimensions first."
           },
@@ -6478,9 +5787,7 @@
             "maximum": 20
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -6536,12 +5843,7 @@
                 "maximum": 9007199254740991
               }
             },
-            "required": [
-              "x",
-              "y",
-              "width",
-              "height"
-            ],
+            "required": ["x", "y", "width", "height"],
             "additionalProperties": false,
             "description": "Rectangle in full-resolution rendered image pixels AFTER user crop and geometry. Extracted before long_edge resizing; read rendered dimensions first."
           },
@@ -6584,17 +5886,12 @@
                   }
                 }
               },
-              "required": [
-                "label"
-              ],
+              "required": ["label"],
               "additionalProperties": false
             }
           }
         },
-        "required": [
-          "session_id",
-          "variants"
-        ],
+        "required": ["session_id", "variants"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -6638,10 +5935,7 @@
             "maxLength": 200
           }
         },
-        "required": [
-          "session_id",
-          "label"
-        ],
+        "required": ["session_id", "label"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -6674,9 +5968,7 @@
             "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -6720,10 +6012,7 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
-        "required": [
-          "session_id",
-          "version_id"
-        ],
+        "required": ["session_id", "version_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -6768,15 +6057,10 @@
           },
           "method": {
             "type": "string",
-            "enum": [
-              "ai",
-              "bm3d"
-            ]
+            "enum": ["ai", "bm3d"]
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -6808,9 +6092,7 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": ["job_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -6867,9 +6149,7 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": ["job_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -6901,9 +6181,7 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": ["job_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -6974,9 +6252,7 @@
             "maximum": 500
           }
         },
-        "required": [
-          "path"
-        ],
+        "required": ["path"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7012,9 +6288,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "path"
-        ],
+        "required": ["path"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7075,9 +6349,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7110,9 +6382,7 @@
             "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7160,16 +6430,10 @@
           },
           "mode": {
             "type": "string",
-            "enum": [
-              "merge",
-              "replace"
-            ]
+            "enum": ["merge", "replace"]
           }
         },
-        "required": [
-          "session_id",
-          "patch"
-        ],
+        "required": ["session_id", "patch"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7231,21 +6495,13 @@
                 "maximum": 9007199254740991
               }
             },
-            "required": [
-              "x",
-              "y",
-              "width",
-              "height"
-            ],
+            "required": ["x", "y", "width", "height"],
             "additionalProperties": false,
             "description": "Rectangle in full-resolution rendered image pixels AFTER user crop and geometry. Extracted before long_edge resizing; read rendered dimensions first."
           },
           "format": {
             "type": "string",
-            "enum": [
-              "jpeg",
-              "png"
-            ]
+            "enum": ["jpeg", "png"]
           },
           "quality": {
             "type": "integer",
@@ -7260,9 +6516,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7324,12 +6578,7 @@
                 "maximum": 9007199254740991
               }
             },
-            "required": [
-              "x",
-              "y",
-              "width",
-              "height"
-            ],
+            "required": ["x", "y", "width", "height"],
             "additionalProperties": false,
             "description": "Rectangle in full-resolution rendered image pixels AFTER user crop and geometry. Extracted before long_edge resizing; read rendered dimensions first."
           },
@@ -7340,9 +6589,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7384,9 +6631,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7430,15 +6675,7 @@
           },
           "type": {
             "type": "string",
-            "enum": [
-              "radial",
-              "linear",
-              "brush",
-              "flow",
-              "color",
-              "luminance",
-              "all"
-            ]
+            "enum": ["radial", "linear", "brush", "flow", "color", "luminance", "all"]
           },
           "parameters": {
             "type": "object",
@@ -7464,11 +6701,7 @@
             "maximum": 100
           }
         },
-        "required": [
-          "session_id",
-          "type",
-          "parameters"
-        ],
+        "required": ["session_id", "type", "parameters"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7518,11 +6751,7 @@
             "additionalProperties": {}
           }
         },
-        "required": [
-          "session_id",
-          "mask_id",
-          "patch"
-        ],
+        "required": ["session_id", "mask_id", "patch"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7565,10 +6794,7 @@
             "minLength": 1
           }
         },
-        "required": [
-          "session_id",
-          "mask_id"
-        ],
+        "required": ["session_id", "mask_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7608,12 +6834,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": [
-              "subject",
-              "foreground",
-              "sky",
-              "depth"
-            ]
+            "enum": ["subject", "foreground", "sky", "depth"]
           },
           "name": {
             "type": "string",
@@ -7639,12 +6860,7 @@
                 "exclusiveMinimum": 0
               }
             },
-            "required": [
-              "x",
-              "y",
-              "width",
-              "height"
-            ],
+            "required": ["x", "y", "width", "height"],
             "additionalProperties": false,
             "description": "Rectangle in oriented full-resolution image pixels, before user crop."
           },
@@ -7664,10 +6880,7 @@
             "description": "Native RapidRAW adjustment object. Read rapidraw://adjustment-schema first; unknown keys and invalid values are rejected by the engine."
           }
         },
-        "required": [
-          "session_id",
-          "kind"
-        ],
+        "required": ["session_id", "kind"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7709,9 +6922,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7751,14 +6962,7 @@
           },
           "mode": {
             "type": "string",
-            "enum": [
-              "clone",
-              "heal",
-              "retouch",
-              "liquify",
-              "inpaint",
-              "generative"
-            ]
+            "enum": ["clone", "heal", "retouch", "liquify", "inpaint", "generative"]
           },
           "name": {
             "type": "string",
@@ -7792,11 +6996,7 @@
                 },
                 "mode": {
                   "type": "string",
-                  "enum": [
-                    "additive",
-                    "subtractive",
-                    "intersect"
-                  ]
+                  "enum": ["additive", "subtractive", "intersect"]
                 },
                 "parameters": {
                   "type": "object",
@@ -7806,13 +7006,7 @@
                   "additionalProperties": {}
                 }
               },
-              "required": [
-                "id",
-                "type",
-                "visible",
-                "mode",
-                "parameters"
-              ],
+              "required": ["id", "type", "visible", "mode", "parameters"],
               "additionalProperties": false
             }
           },
@@ -7828,10 +7022,7 @@
                 "minimum": 0
               }
             },
-            "required": [
-              "x",
-              "y"
-            ],
+            "required": ["x", "y"],
             "additionalProperties": false
           },
           "prompt": {
@@ -7843,11 +7034,7 @@
             "maxLength": 4096
           }
         },
-        "required": [
-          "session_id",
-          "mode",
-          "sub_masks"
-        ],
+        "required": ["session_id", "mode", "sub_masks"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7892,15 +7079,10 @@
           },
           "method": {
             "type": "string",
-            "enum": [
-              "ai",
-              "bm3d"
-            ]
+            "enum": ["ai", "bm3d"]
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -7940,10 +7122,7 @@
           },
           "mode": {
             "type": "string",
-            "enum": [
-              "auto",
-              "lookup"
-            ]
+            "enum": ["auto", "lookup"]
           },
           "maker": {
             "type": "string",
@@ -7966,9 +7145,7 @@
             "exclusiveMinimum": 0
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8001,9 +7178,7 @@
             "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8042,9 +7217,7 @@
             "maximum": 9007199254740991
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8083,9 +7256,7 @@
             "maximum": 9007199254740991
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8118,9 +7289,7 @@
             "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8166,16 +7335,10 @@
           },
           "mode": {
             "type": "string",
-            "enum": [
-              "merge",
-              "replace"
-            ]
+            "enum": ["merge", "replace"]
           }
         },
-        "required": [
-          "session_id",
-          "path"
-        ],
+        "required": ["session_id", "path"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8214,9 +7377,7 @@
             "description": "Absolute local filesystem path. Exports must be inside workspace/exports; saved recipes must be inside workspace/recipes."
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8289,10 +7450,7 @@
             "maximum": 100
           }
         },
-        "required": [
-          "session_id",
-          "preset_id"
-        ],
+        "required": ["session_id", "preset_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8367,10 +7525,7 @@
             "maximum": 100
           }
         },
-        "required": [
-          "session_id",
-          "path"
-        ],
+        "required": ["session_id", "path"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8423,16 +7578,10 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": [
-              "masks",
-              "inpaint",
-              "denoise"
-            ]
+            "enum": ["masks", "inpaint", "denoise"]
           }
         },
-        "required": [
-          "kind"
-        ],
+        "required": ["kind"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8472,15 +7621,7 @@
           },
           "format": {
             "type": "string",
-            "enum": [
-              "jpeg",
-              "png",
-              "tiff",
-              "webp",
-              "avif",
-              "jxl",
-              "cube"
-            ]
+            "enum": ["jpeg", "png", "tiff", "webp", "avif", "jxl", "cube"]
           },
           "quality": {
             "type": "integer",
@@ -8499,12 +7640,7 @@
             "properties": {
               "mode": {
                 "type": "string",
-                "enum": [
-                  "longEdge",
-                  "shortEdge",
-                  "width",
-                  "height"
-                ]
+                "enum": ["longEdge", "shortEdge", "width", "height"]
               },
               "value": {
                 "type": "integer",
@@ -8516,10 +7652,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "mode",
-              "value"
-            ],
+            "required": ["mode", "value"],
             "additionalProperties": false
           },
           "bit_depth": {
@@ -8583,23 +7716,14 @@
                 "maximum": 100
               }
             },
-            "required": [
-              "path",
-              "anchor",
-              "scale",
-              "spacing",
-              "opacity"
-            ],
+            "required": ["path", "anchor", "scale", "spacing", "opacity"],
             "additionalProperties": false
           },
           "export_masks": {
             "type": "boolean"
           }
         },
-        "required": [
-          "session_id",
-          "path"
-        ],
+        "required": ["session_id", "path"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8645,10 +7769,7 @@
                   "description": "Absolute local filesystem path. Exports must be inside workspace/exports; saved recipes must be inside workspace/recipes."
                 }
               },
-              "required": [
-                "session_id",
-                "path"
-              ],
+              "required": ["session_id", "path"],
               "additionalProperties": false
             }
           },
@@ -8657,15 +7778,7 @@
             "properties": {
               "format": {
                 "type": "string",
-                "enum": [
-                  "jpeg",
-                  "png",
-                  "tiff",
-                  "webp",
-                  "avif",
-                  "jxl",
-                  "cube"
-                ]
+                "enum": ["jpeg", "png", "tiff", "webp", "avif", "jxl", "cube"]
               },
               "quality": {
                 "type": "integer",
@@ -8684,12 +7797,7 @@
                 "properties": {
                   "mode": {
                     "type": "string",
-                    "enum": [
-                      "longEdge",
-                      "shortEdge",
-                      "width",
-                      "height"
-                    ]
+                    "enum": ["longEdge", "shortEdge", "width", "height"]
                   },
                   "value": {
                     "type": "integer",
@@ -8701,10 +7809,7 @@
                     "type": "boolean"
                   }
                 },
-                "required": [
-                  "mode",
-                  "value"
-                ],
+                "required": ["mode", "value"],
                 "additionalProperties": false
               },
               "bit_depth": {
@@ -8768,13 +7873,7 @@
                     "maximum": 100
                   }
                 },
-                "required": [
-                  "path",
-                  "anchor",
-                  "scale",
-                  "spacing",
-                  "opacity"
-                ],
+                "required": ["path", "anchor", "scale", "spacing", "opacity"],
                 "additionalProperties": false
               },
               "export_masks": {
@@ -8784,9 +7883,7 @@
             "additionalProperties": false
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8814,11 +7911,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": [
-              "hdr",
-              "focus",
-              "panorama"
-            ]
+            "enum": ["hdr", "focus", "panorama"]
           },
           "paths": {
             "minItems": 2,
@@ -8832,10 +7925,7 @@
             }
           }
         },
-        "required": [
-          "kind",
-          "paths"
-        ],
+        "required": ["kind", "paths"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8881,10 +7971,7 @@
             "additionalProperties": {}
           }
         },
-        "required": [
-          "session_id",
-          "parameters"
-        ],
+        "required": ["session_id", "parameters"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8917,9 +8004,7 @@
             "description": "Session ID returned by rapidraw_open_photo or rapidraw_merge."
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
@@ -8980,9 +8065,7 @@
             }
           }
         },
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },

@@ -9,7 +9,16 @@ Read capabilities first. These tools require a matching native build; do not emu
 Use `render_compare` to compare 2–4 labeled variants. Each begins with the current edit, or its own `version_id`, then applies an optional adjustment `patch` and `disabled_masks`. One integer `region` and `long_edge` apply to all variants. The region uses rendered coordinates after geometry. Default long edge is 1200, maximum 2048; request a bounded region and sufficient long edge for native detail. Different crops/warps are rejected rather than silently misaligned. These renders do not modify session state, history, revision or sidecar.
 
 ```json
-{"session_id":"SESSION_ID","long_edge":1200,"variants":[{"label":"Valued reference","version_id":"VERSION_UUID"},{"label":"Cooler","patch":{"temperature":-15}},{"label":"Warmer","patch":{"temperature":-5}},{"label":"Horizon mask off","disabled_masks":["MASK_ID"]}]}
+{
+  "session_id": "SESSION_ID",
+  "long_edge": 1200,
+  "variants": [
+    { "label": "Valued reference", "version_id": "VERSION_UUID" },
+    { "label": "Cooler", "patch": { "temperature": -15 } },
+    { "label": "Warmer", "patch": { "temperature": -5 } },
+    { "label": "Horizon mask off", "disabled_masks": ["MASK_ID"] }
+  ]
+}
 ```
 
 Replace these illustrative values with the actual reference and source-specific alternatives. Patches contain absolute native slider values, not deltas. Review whole-frame relationships as well as the named defect. Only after choosing a candidate should its patch become a real edit.
