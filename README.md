@@ -29,6 +29,8 @@ _Desktop screenshot from upstream RapidRAW. The MCP interface is an addition mai
 
 Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0 for local AI inference. Intel Mac builds retain the existing runtime. See the [runtime and hardware guide](docs/local-enhancement.md#apple-silicon-runtime).
 
+**Apple Silicon Beta 1 installation:** the published package has an incomplete bundle signature and can be reported as damaged. See the [installation troubleshooting guide](docs/desktop-guide.md#macos-beta-1-signature-error).
+
 **First beta:** `fork-v0.1.0-beta.1`, installed as **RapidRAW MCP** with separate application preferences and model storage. See the [release notes](docs/releases/0.1.0-beta.1.md) for installation and beta limits.
 
 ## What an agent can do
