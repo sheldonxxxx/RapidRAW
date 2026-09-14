@@ -157,6 +157,18 @@ jobs:
           releaseId: ${{ inputs.release-id }}
           retryAttempts: 3
 
+      - name: Verify macOS bundle signatures
+        if: runner.os == 'macOS' && inputs.mobile == ''
+        shell: bash
+        env:
+          BUILD_TARGET: ${{ inputs.target }}
+        run: |
+          bundle_dir="src-tauri/target${BUILD_TARGET:+/$BUILD_TARGET}/release/bundle/macos"
+          for app in "$bundle_dir"/*.app; do
+            test -d "$app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+          done
+
       - name: Build Android
         if: ${{ inputs.mobile == 'android' }}
         shell: bash
