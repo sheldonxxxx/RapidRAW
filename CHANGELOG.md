@@ -52,6 +52,8 @@ The MCP interface grows from 47 to 65 public tools: 60 native methods and five h
 
 ### Fixed
 
+- Desktop-only builds include the color-profile dependency required by local enhancement exports. The MCP bridge remains optional.
+- Closing an MCP session clears the patched preview cache introduced by upstream crop and transform updates.
 - Consecutive AI Connector edits now refresh the cached source when earlier retouching changes its pixels, while identical source images can reuse the cache.
 - AI Connector crop responses outside the photo canvas are rejected before compositing. Stored generation receipts retain only validated dimensions, settings and duration.
 - AI Connector status now verifies backend connectivity and rejects HTTP errors, invalid responses and stalled requests.

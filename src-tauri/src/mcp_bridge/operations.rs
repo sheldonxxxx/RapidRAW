@@ -155,6 +155,7 @@ impl Bridge {
                     *state.original_image.lock().unwrap() = None;
                     *state.cached_preview.lock().unwrap() = None;
                     *state.full_warped_cache.lock().unwrap() = None;
+                    *state.patched_warped_cache.lock().unwrap() = None;
                     *state.full_transformed_cache.lock().unwrap() = None;
                 }
                 return Ok(
