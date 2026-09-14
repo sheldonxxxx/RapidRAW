@@ -66,13 +66,13 @@
       "whiteBalance": "白平衡"
     },
     "curves": {
-      "channelTitle": "{{channel}} 通道",
       "channels": {
         "blue": "藍色",
         "green": "綠色",
         "luma": "亮度",
         "red": "紅色"
       },
+      "channelTitle": "{{channel}} 通道",
       "copyParametric": "複製 {{channel}} 參數曲線",
       "copyPoint": "複製 {{channel}} 點曲線",
       "curveDataUnavailable": "曲線資料不可用。",
@@ -367,6 +367,27 @@
       "editSettingsTitle": "編輯設定",
       "editsTitle": "編輯",
       "generatingDepthMap": "正在計算 AI 深度圖...",
+      "generation": {
+        "chooseDetail": "選擇 AI 解析度",
+        "chooseWorkflow": "選擇工作流程",
+        "connectorDefault": "正在使用連接器的預設工作流程。",
+        "detail": "AI 解析度",
+        "detailHelp": "生成區域的解析度。數值越高，耗時可能越長；照片保持原始尺寸。",
+        "lastResult": "上次生成結果",
+        "legacy": "此連接器使用其預設工作流程。",
+        "loading": "正在載入工作流程選項…",
+        "megapixels": "{{megapixels}} MP",
+        "randomSeed": "每次隨機",
+        "refresh": "重新整理工作流程",
+        "resultSeed": "種子：{{seed}}",
+        "resultSize": "上次結果：為 {{placedWidth}} × {{placedHeight}} 像素的區域生成了 {{width}} × {{height}} 像素的影像。",
+        "retry": "重試",
+        "seed": "種子（選填）",
+        "seedHelp": "若要重現結果，請使用相同的影像、選取範圍、提示詞和設定，並重複使用同一種子。",
+        "unavailable": "工作流程選項無法使用。請重試或使用連接器預設值。",
+        "useDefault": "使用連接器預設值",
+        "workflow": "工作流程"
+      },
       "generativeEditTitle": "生成式編輯",
       "inpaintingTitle": "影像修復",
       "liquify": {
@@ -401,7 +422,8 @@
         "quickErase": "快速擦除 {{count}}",
         "quickErase_one": "快速擦除 {{count}}",
         "quickErase_other": "快速擦除 {{count}}",
-        "retouch": "修飾 {{count}}"
+        "retouch": "修飾 {{count}}",
+        "retouch_other": "修飾 {{count}}"
       },
       "resetInpaintingTooltip": "重置影像修復",
       "settings": {
@@ -535,6 +557,10 @@
         "transform": "透視和梯形校正"
       }
     },
+    "enhancement": {
+      "aiTitle": "AI 編輯",
+      "resultMetrics": "{{dimensions}} 像素 · {{seconds}} 秒"
+    },
     "externalEdit": {
       "done": "完成",
       "exporting": "正在匯出…",
@@ -544,11 +570,14 @@
       "cancel": "取消",
       "drawingActive": "繪圖中",
       "hint": "沿著照片中應該是垂直或水平的邊緣繪製。",
+      "horizontalGuide": "水平參考線 #{{number}}",
+      "lineCount": "{{current}} / {{max}}",
       "linesStatus": "活躍引導線",
       "toast": {
         "angleRejected": "線條角度偏離水平或垂直太遠",
         "maxLines": "最多允許 2 條垂直線和 2 條水平線"
-      }
+      },
+      "verticalGuide": "垂直參考線 #{{number}}"
     },
     "layout": {
       "split": "拆分"
@@ -603,16 +632,16 @@
       "maskingTitle": "遮色片",
       "masksTitle": "遮色片",
       "params": {
+        "fadeAfter": "完整強度邊緣距離",
+        "fadeBefore": "零強度邊緣距離",
+        "falloff": "漸變曲線",
         "feather": "羽化",
         "globalFeather": "全域羽化",
         "grow": "擴張",
-        "tolerance": "容差",
-        "falloff": "漸變曲線",
         "linearFalloff": "線性",
-        "smoothFalloff": "平滑",
         "smootherFalloff": "更平滑",
-        "fadeBefore": "零強度邊緣距離",
-        "fadeAfter": "完整強度邊緣距離"
+        "smoothFalloff": "平滑",
+        "tolerance": "容差"
       },
       "patches": {
         "copyName": "{{name}} 副本",
@@ -690,8 +719,8 @@
       "organization": {
         "addTagPlaceholder": "新增標籤...",
         "colorLabel": "顏色標籤",
-        "noTags": "無標籤",
         "none": "無",
+        "noTags": "無標籤",
         "rating": "評分",
         "ratingLabels": "評分與標籤",
         "tags": "標籤",
@@ -844,12 +873,12 @@
       "estimatedSize": "預計檔案大小：約 {{size}}",
       "estimatedTotalSize": "預計總大小：約 {{size}}",
       "estimatingSize": "正在估算大小...",
+      "exporting": "匯出中…",
+      "exportingProgress": "匯出中…（{{current}}/{{total}}）",
       "exportMultiple": "匯出 {{count}} {{label}}",
       "exportMultiple_one": "匯出 {{count}} {{label}}",
       "exportMultiple_other": "匯出 {{count}} {{label}}",
       "exportSingle": "匯出 {{label}}",
-      "exporting": "匯出中…",
-      "exportingProgress": "匯出中…（{{current}}/{{total}}）",
       "failed": "匯出失敗",
       "noImageSelected": "未選擇要匯出的影像。",
       "noImagesSelected": "未選擇影像。",
@@ -908,8 +937,8 @@
       "iso": "ISO",
       "metadata": "中繼資料",
       "noMetadataAvailable": "無可用中繼資料",
-      "noTagsAdded": "未新增標籤",
       "none": "無",
+      "noTagsAdded": "未新增標籤",
       "rateAndLabel": "評分與標籤",
       "rating": "評分",
       "selectImagesToCompare": "選擇要比較的影像",
@@ -1103,6 +1132,11 @@
       "communityPresets": "社群預設",
       "goHome": "返回首頁",
       "importImages": "匯入影像"
+    },
+    "viewMode": {
+      "culling": "篩選檢視",
+      "grid": "格狀檢視",
+      "list": "清單檢視"
     }
   },
   "masks": {
@@ -1231,9 +1265,9 @@
       "applyButton_one": "應用到 1 張影像",
       "applyButton_other": "應用到 {{count}} 張影像",
       "bestImage": "最佳影像",
+      "blurryImagesTab": "模糊影像",
       "blurThreshold": "模糊臨界值",
       "blurThresholdDesc": "銳度評分低於此值的影像將被標記。值越高越嚴格。",
-      "blurryImagesTab": "模糊影像",
       "cancel": "取消",
       "close": "關閉",
       "cullingFailed": "篩選失敗",
@@ -1798,8 +1832,8 @@
     "tagging": {
       "addCustomPlaceholder": "新增自定義 AI 標籤（逗號分隔）...",
       "addCustomTooltip": "新增 AI 標籤",
-      "addShortcutTooltip": "新增快捷方式",
       "addShortcutsPlaceholder": "新增快捷方式（逗號分隔）...",
+      "addShortcutTooltip": "新增快捷方式",
       "aiTagging": "AI 標籤",
       "aiTaggingDesc": "使用 AI（CLIP）模型啟用自動影像標籤。這將下載額外的模型，並在瀏覽資料夾時影響效能。標籤用於搜尋資料夾。",
       "amount": "數量",

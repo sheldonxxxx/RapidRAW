@@ -25,7 +25,19 @@ interface CullingModalProps {
 
 type CullAction = 'reject' | 'rate_zero' | 'delete';
 
-function ImageThumbnail({ path, thumbnails, isSelected, onToggle, children }: any) {
+function ImageThumbnail({
+  path,
+  thumbnails,
+  isSelected,
+  onToggle,
+  children,
+}: {
+  path: string;
+  thumbnails: Record<string, string>;
+  isSelected: boolean;
+  onToggle(): void;
+  children?: React.ReactNode;
+}) {
   const thumbnailUrl = thumbnails[path];
   return (
     <div
@@ -242,7 +254,7 @@ export default function CullingModal({
         <div className="w-full bg-surface rounded-full h-2.5 mt-2">
           <div
             className="bg-accent h-2.5 rounded-full"
-            style={{ width: `${(progress.current / progress.total) * 100}%` }}
+            style={{ width: `${((progress.current ?? 0) / progress.total) * 100}%` }}
           />
         </div>
       )}

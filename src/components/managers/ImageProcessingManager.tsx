@@ -1,8 +1,8 @@
 import { useImageProcessing } from '../../hooks/useImageProcessing';
 
 interface Props {
-  transformWrapperRef: React.RefObject<any>;
-  prevAdjustmentsRef: React.RefObject<any>;
+  transformWrapperRef: Parameters<typeof useImageProcessing>[0];
+  prevAdjustmentsRef: Parameters<typeof useImageProcessing>[1];
   previewJobIdRef: React.RefObject<number>;
   latestRenderedJobIdRef: React.RefObject<number>;
   currentResRef: React.RefObject<number>;

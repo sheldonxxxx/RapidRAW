@@ -244,7 +244,8 @@ export function forceCropInBounds(crop: Crop, imageW: number, imageH: number, ro
   }
 
   if (rotation === 0) {
-    let { x, y, width, height } = crop;
+    let { x, y } = crop;
+    const { width, height } = crop;
     x = Math.max(0, Math.min(x, imageW - width));
     y = Math.max(0, Math.min(y, imageH - height));
     return { ...crop, x, y };
@@ -290,11 +291,10 @@ export function zoomCrop(
   const MIN_SIZE = 64;
 
   let targetW = crop.width * scaleFactor;
-  let targetH = targetW / A;
+  const targetH = targetW / A;
 
   if (targetW < MIN_SIZE || targetH < MIN_SIZE) {
     targetW = Math.max(MIN_SIZE, MIN_SIZE * A);
-    targetH = targetW / A;
   }
 
   const originX = mouseX ?? crop.x + crop.width / 2;

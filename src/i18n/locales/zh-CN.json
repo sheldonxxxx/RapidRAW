@@ -66,13 +66,13 @@
       "whiteBalance": "白平衡"
     },
     "curves": {
-      "channelTitle": "{{channel}} 通道",
       "channels": {
         "blue": "蓝色",
         "green": "绿色",
         "luma": "亮度",
         "red": "红色"
       },
+      "channelTitle": "{{channel}} 通道",
       "copyParametric": "复制 {{channel}} 参数曲线",
       "copyPoint": "复制 {{channel}} 点曲线",
       "curveDataUnavailable": "曲线数据不可用。",
@@ -367,6 +367,27 @@
       "editSettingsTitle": "编辑设置",
       "editsTitle": "编辑",
       "generatingDepthMap": "正在计算 AI 深度图...",
+      "generation": {
+        "chooseDetail": "选择 AI 分辨率",
+        "chooseWorkflow": "选择工作流程",
+        "connectorDefault": "正在使用连接器的默认工作流程。",
+        "detail": "AI 分辨率",
+        "detailHelp": "生成区域的分辨率。数值越高，耗时可能越长；照片保持原始尺寸。",
+        "lastResult": "上次生成结果",
+        "legacy": "此连接器使用其默认工作流程。",
+        "loading": "正在加载工作流程选项…",
+        "megapixels": "{{megapixels}} MP",
+        "randomSeed": "每次随机",
+        "refresh": "刷新工作流程",
+        "resultSeed": "种子：{{seed}}",
+        "resultSize": "上次结果：为 {{placedWidth}} × {{placedHeight}} 像素的区域生成了 {{width}} × {{height}} 像素的图像。",
+        "retry": "重试",
+        "seed": "种子（可选）",
+        "seedHelp": "要复现结果，请使用相同的图像、选区、提示词和设置，并重复使用同一种子。",
+        "unavailable": "工作流程选项不可用。请重试或使用连接器默认值。",
+        "useDefault": "使用连接器默认值",
+        "workflow": "工作流程"
+      },
       "generativeEditTitle": "生成式编辑",
       "inpaintingTitle": "图像修复",
       "liquify": {
@@ -401,7 +422,8 @@
         "quickErase": "快速擦除 {{count}}",
         "quickErase_one": "快速擦除 {{count}}",
         "quickErase_other": "快速擦除 {{count}}",
-        "retouch": "修饰 {{count}}"
+        "retouch": "修饰 {{count}}",
+        "retouch_other": "修饰 {{count}}"
       },
       "resetInpaintingTooltip": "重置图像修复",
       "settings": {
@@ -535,6 +557,10 @@
         "transform": "透视和梯形校正"
       }
     },
+    "enhancement": {
+      "aiTitle": "AI 编辑",
+      "resultMetrics": "{{dimensions}} 像素 · {{seconds}} 秒"
+    },
     "externalEdit": {
       "done": "完成",
       "exporting": "正在导出…",
@@ -544,11 +570,14 @@
       "cancel": "取消",
       "drawingActive": "绘图中",
       "hint": "沿着照片中应该是垂直或水平的边缘绘制。",
+      "horizontalGuide": "水平参考线 #{{number}}",
+      "lineCount": "{{current}} / {{max}}",
       "linesStatus": "活跃引导线",
       "toast": {
         "angleRejected": "线条角度偏离水平或垂直太远",
         "maxLines": "最多允许 2 条垂直线和 2 条水平线"
-      }
+      },
+      "verticalGuide": "垂直参考线 #{{number}}"
     },
     "layout": {
       "split": "拆分"
@@ -603,16 +632,16 @@
       "maskingTitle": "蒙版",
       "masksTitle": "蒙版",
       "params": {
+        "fadeAfter": "完整强度边缘距离",
+        "fadeBefore": "零强度边缘距离",
+        "falloff": "渐变曲线",
         "feather": "羽化",
         "globalFeather": "全局羽化",
         "grow": "扩展",
-        "tolerance": "容差",
-        "falloff": "渐变曲线",
         "linearFalloff": "线性",
-        "smoothFalloff": "平滑",
         "smootherFalloff": "更平滑",
-        "fadeBefore": "零强度边缘距离",
-        "fadeAfter": "完整强度边缘距离"
+        "smoothFalloff": "平滑",
+        "tolerance": "容差"
       },
       "patches": {
         "copyName": "{{name}} 副本",
@@ -690,8 +719,8 @@
       "organization": {
         "addTagPlaceholder": "添加标签...",
         "colorLabel": "颜色标签",
-        "noTags": "无标签",
         "none": "无",
+        "noTags": "无标签",
         "rating": "评分",
         "ratingLabels": "评分与标签",
         "tags": "标签",
@@ -844,12 +873,12 @@
       "estimatedSize": "预计文件大小：约 {{size}}",
       "estimatedTotalSize": "预计总大小：约 {{size}}",
       "estimatingSize": "正在估算大小...",
+      "exporting": "导出中…",
+      "exportingProgress": "导出中…（{{current}}/{{total}}）",
       "exportMultiple": "导出 {{count}} {{label}}",
       "exportMultiple_one": "导出 {{count}} {{label}}",
       "exportMultiple_other": "导出 {{count}} {{label}}",
       "exportSingle": "导出 {{label}}",
-      "exporting": "导出中…",
-      "exportingProgress": "导出中…（{{current}}/{{total}}）",
       "failed": "导出失败",
       "noImageSelected": "未选择要导出的图像。",
       "noImagesSelected": "未选择图像。",
@@ -908,8 +937,8 @@
       "iso": "ISO",
       "metadata": "元数据",
       "noMetadataAvailable": "无可用元数据",
-      "noTagsAdded": "未添加标签",
       "none": "无",
+      "noTagsAdded": "未添加标签",
       "rateAndLabel": "评分与标签",
       "rating": "评分",
       "selectImagesToCompare": "选择要比较的图像",
@@ -1103,6 +1132,11 @@
       "communityPresets": "社区预设",
       "goHome": "返回首页",
       "importImages": "导入图像"
+    },
+    "viewMode": {
+      "culling": "筛选视图",
+      "grid": "网格视图",
+      "list": "列表视图"
     }
   },
   "masks": {
@@ -1231,9 +1265,9 @@
       "applyButton_one": "应用到 1 张图像",
       "applyButton_other": "应用到 {{count}} 张图像",
       "bestImage": "最佳图像",
+      "blurryImagesTab": "模糊图像",
       "blurThreshold": "模糊阈值",
       "blurThresholdDesc": "锐度评分低于此值的图像将被标记。值越高越严格。",
-      "blurryImagesTab": "模糊图像",
       "cancel": "取消",
       "close": "关闭",
       "cullingFailed": "筛选失败",
@@ -1798,8 +1832,8 @@
     "tagging": {
       "addCustomPlaceholder": "添加自定义 AI 标签（逗号分隔）...",
       "addCustomTooltip": "添加 AI 标签",
-      "addShortcutTooltip": "添加快捷方式",
       "addShortcutsPlaceholder": "添加快捷方式（逗号分隔）...",
+      "addShortcutTooltip": "添加快捷方式",
       "aiTagging": "AI 标签",
       "aiTaggingDesc": "使用 AI（CLIP）模型启用自动图像标签。这将下载额外的模型，并在浏览文件夹时影响性能。标签用于搜索文件夹。",
       "amount": "数量",

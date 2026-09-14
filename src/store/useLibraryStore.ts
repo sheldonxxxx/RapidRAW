@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   FilterCriteria,
   ImageFile,
+  DirectoryTree,
   RawStatus,
   SortCriteria,
   SortDirection,
@@ -17,19 +18,19 @@ export interface NavHistoryItem {
   images?: string[];
 }
 
-interface SearchCriteria {
+export interface SearchCriteria {
   tags: string[];
   text: string;
   mode: 'AND' | 'OR';
 }
 
-interface LibraryState {
+export interface LibraryState {
   // Paths & Trees
   rootPaths: string[];
   currentFolderPath: string | null;
   expandedFolders: Set<string>;
-  folderTrees: any[];
-  pinnedFolderTrees: any[];
+  folderTrees: DirectoryTree[];
+  pinnedFolderTrees: DirectoryTree[];
 
   // Albums
   albumTree: AlbumItem[];

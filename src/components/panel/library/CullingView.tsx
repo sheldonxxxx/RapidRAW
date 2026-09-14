@@ -1,3 +1,6 @@
+import type { MainLibraryProps } from '../MainLibrary';
+import type { RowComponentProps } from 'react-window';
+import type { ImageMetadata } from '../../ui/AppProperties';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -7,7 +10,6 @@ import {
   Star as StarIcon,
   ZoomIn,
   ZoomOut,
-  Maximize,
   Link,
   SquarePen,
   Tag,
@@ -161,8 +163,8 @@ function CullingPreview({
     };
   }, [image.exif]);
 
-  const imageWidth = (image as any).width || image.exif?.ExifImageWidth || image.exif?.PixelXDimension;
-  const imageHeight = (image as any).height || image.exif?.ExifImageHeight || image.exif?.PixelYDimension;
+  const imageWidth = image.exif?.ExifImageWidth || image.exif?.PixelXDimension;
+  const imageHeight = image.exif?.ExifImageHeight || image.exif?.PixelYDimension;
 
   const handleAddTag = async (tagToAdd: string) => {
     const newTagValue = tagToAdd.trim().toLowerCase();
@@ -251,11 +253,10 @@ function CullingPreview({
 
     const fetchPreviewWithAdjustments = async () => {
       try {
-        const metadata: any = await invoke(Invokes.LoadMetadata, { path: image.path });
+        const metadata = await invoke<ImageMetadata>(Invokes.LoadMetadata, { path: image.path });
         if (!active) return;
 
-        const adjustments =
-          metadata && metadata.adjustments && !metadata.adjustments.is_null ? metadata.adjustments : {};
+        const adjustments = metadata?.adjustments ?? {};
 
         const bytes = await invoke<Uint8Array>(Invokes.GeneratePreviewForPath, {
           path: image.path,
@@ -935,62 +936,72 @@ function CullingPreview({
   );
 }
 
-const Row = React.memo(
-  ({
-    index,
-    style,
-    imageList,
-    multiSelectedPaths,
-    activePath,
-    onContextMenu,
-    onImageDoubleClick,
-    thumbnailAspectRatio,
-    imageRatings,
-    onImageClick,
-    queueThumbnailRequest,
-    hoveredCullingPath,
-  }: any) => {
-    const image: ImageFile = imageList[index];
-    const isSelected = multiSelectedPaths.includes(image.path);
+const Row = ({
+  index,
+  style,
+  imageList,
+  multiSelectedPaths,
+  activePath,
+  onContextMenu,
+  onImageDoubleClick,
+  thumbnailAspectRatio,
+  imageRatings,
+  onImageClick,
+  queueThumbnailRequest,
+  hoveredCullingPath,
+}: RowComponentProps<
+  Pick<
+    MainLibraryProps,
+    | 'imageList'
+    | 'multiSelectedPaths'
+    | 'activePath'
+    | 'onContextMenu'
+    | 'onImageDoubleClick'
+    | 'thumbnailAspectRatio'
+    | 'imageRatings'
+    | 'onImageClick'
+  > & { queueThumbnailRequest(path: string): void; hoveredCullingPath: string | null }
+>) => {
+  const image: ImageFile = imageList[index];
+  const isSelected = multiSelectedPaths.includes(image.path);
 
-    useEffect(() => {
-      if (!image || !queueThumbnailRequest) return;
-      queueThumbnailRequest(image.path);
+  useEffect(() => {
+    if (!image || !queueThumbnailRequest) return;
+    queueThumbnailRequest(image.path);
 
-      if (image.is_cloud_placeholder) {
-        const interval = setInterval(() => {
-          queueThumbnailRequest(image.path);
-        }, 5000);
-        return () => clearInterval(interval);
-      }
-    }, [image, queueThumbnailRequest]);
+    if (image.is_cloud_placeholder) {
+      const interval = setInterval(() => {
+        queueThumbnailRequest(image.path);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [image, queueThumbnailRequest]);
 
-    return (
-      <div style={style} className="p-2 box-border">
-        <div className="w-full h-full">
-          <Thumbnail
-            path={image.path}
-            isSelected={isSelected}
-            isActive={activePath === image.path}
-            isForcedHover={hoveredCullingPath === image.path}
-            onImageClick={(path: string, e: any) => onImageClick(path, e)}
-            onContextMenu={onContextMenu}
-            onImageDoubleClick={onImageDoubleClick}
-            onLoad={() => {}}
-            rating={imageRatings?.[image.path] || 0}
-            tags={image.tags}
-            exif={image.exif}
-            isEdited={image.is_edited}
-            aspectRatio={thumbnailAspectRatio}
-            isCloudPlaceholder={image.is_cloud_placeholder}
-          />
-        </div>
+  return (
+    <div style={style} className="p-2 box-border">
+      <div className="w-full h-full">
+        <Thumbnail
+          path={image.path}
+          isSelected={isSelected}
+          isActive={activePath === image.path}
+          isForcedHover={hoveredCullingPath === image.path}
+          onImageClick={(path, e) => onImageClick(path, e)}
+          onContextMenu={onContextMenu}
+          onImageDoubleClick={onImageDoubleClick}
+          onLoad={() => {}}
+          rating={imageRatings?.[image.path] || 0}
+          tags={image.tags}
+          exif={image.exif}
+          isEdited={image.is_edited}
+          aspectRatio={thumbnailAspectRatio}
+          isCloudPlaceholder={image.is_cloud_placeholder}
+        />
       </div>
-    );
-  },
-);
+    </div>
+  );
+};
 
-export default function CullingView(props: any) {
+export default function CullingView(props: MainLibraryProps) {
   const { t } = useTranslation();
   const {
     imageList,
@@ -1012,7 +1023,7 @@ export default function CullingView(props: any) {
   const isResizing = useRef(false);
 
   const requestQueueRef = useRef<Set<string>>(new Set());
-  const requestTimeoutRef = useRef<any>(null);
+  const requestTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [hoveredCullingPath, setHoveredCullingPath] = useState<string | null>(null);
 
@@ -1167,7 +1178,7 @@ export default function CullingView(props: any) {
   const displayPaths = multiSelectedPaths.slice(-6);
   const displayImages = displayPaths
     .map((p: string) => imageList.find((img: ImageFile) => img.path === p))
-    .filter(Boolean);
+    .filter((image) => image !== undefined);
   const displayCount = displayImages.length;
 
   const handleSidebarEmptyClick = (e: React.MouseEvent) => {

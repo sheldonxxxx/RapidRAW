@@ -22,13 +22,13 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 The MCP interface grows from 47 to 65 public tools: 60 native methods and five host worker methods. Tool names below omit the `rapidraw_` prefix.
 
-| Addition | New tools |
-| --- | --- |
-| Local learned masks and photographic reconstruction | `enhancement_models`, `install_enhancement_model`, `enhance` |
-| Independent editing copies, portable bundles, version differences and selective synchronization | `fork_session`, `export_session_bundle`, `import_session_bundle`, `diff_versions`, `copy_adjustments` |
-| Coordinate conversion, resource checks and regional color/white-balance diagnostics | `map_coordinates`, `preflight`, `sample_region` |
-| Owned workspace preset and LUT libraries | `manage_presets`, `manage_luts` |
-| Isolated background operations with durable status, cancellation and explicit resume | `start_operation`, `get_operation_job`, `list_operation_jobs`, `cancel_operation_job`, `resume_operation_job` |
+| Addition                                                                                        | New tools                                                                                                     |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Local learned masks and photographic reconstruction                                             | `enhancement_models`, `install_enhancement_model`, `enhance`                                                  |
+| Independent editing copies, portable bundles, version differences and selective synchronization | `fork_session`, `export_session_bundle`, `import_session_bundle`, `diff_versions`, `copy_adjustments`         |
+| Coordinate conversion, resource checks and regional color/white-balance diagnostics             | `map_coordinates`, `preflight`, `sample_region`                                                               |
+| Owned workspace preset and LUT libraries                                                        | `manage_presets`, `manage_luts`                                                                               |
+| Isolated background operations with durable status, cancellation and explicit resume            | `start_operation`, `get_operation_job`, `list_operation_jobs`, `cancel_operation_job`, `resume_operation_job` |
 
 - Matched photograph, overlay and grayscale mask previews, selection bounds/statistics, and atomic submask add/edit/remove/duplicate/reorder operations.
 - Include/exclude point prompts and in-place AI-subject refinement, with retained mask IDs and edits, revision guards, saved native logits, explicit approximate legacy-mask seeds, and captured worker support.
@@ -52,6 +52,9 @@ The MCP interface grows from 47 to 65 public tools: 60 native methods and five h
 
 ### Fixed
 
+- Frontend type and lint checks now cover concrete editor, mask, library, settings and native-response contracts. Clipboard actions tolerate settings that have not loaded, partial metadata refreshes preserve omitted lens values, and legacy masks receive missing defaults without replacing saved values.
+- Dragging a new submask into the mask list preserves its insertion position and additive mode. Frontend state regressions, strict type checks, warning-free lint, formatting and translation synchronization are required by the frontend CI job.
+- Completed missing translations for AI workflow settings, guide and mask fade controls, view labels and plural forms across supported interface languages.
 - Desktop-only builds include the color-profile dependency required by local enhancement exports. The MCP bridge remains optional.
 - Closing an MCP session clears the patched preview cache introduced by upstream crop and transform updates.
 - Consecutive AI Connector edits now refresh the cached source when earlier retouching changes its pixels, while identical source images can reuse the cache.

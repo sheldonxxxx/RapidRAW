@@ -8,23 +8,34 @@ import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useProcessStore } from '../store/useProcessStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { Invokes, LibraryViewMode, ImageFile } from '../components/ui/AppProperties';
-import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
-import { globalImageCache } from '../utils/ImageLRUCache';
+import {
+  Invokes,
+  LibraryViewMode,
+  ImageFile,
+  DirectoryTree,
+  ImageMetadata,
+  AlbumItem,
+  Album,
+} from '../components/ui/AppProperties';
+import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments, Adjustments } from '../utils/adjustments';
+import { globalImageCache, ImageCacheEntry } from '../utils/ImageLRUCache';
 import { debouncedSave, debouncedSetHistory } from './useEditorActions';
+
+import type { CanvasTransformHandle } from '../components/panel/Editor';
+import type { PreloadedData, PreviousAdjustments, LoadImageResult } from './hookTypes';
 
 export interface AppNavigationProps {
   clearThumbnailQueue: () => void;
   refs: {
-    transformWrapperRef: React.RefObject<any>;
-    preloadedDataRef: React.RefObject<any>;
-    cachedEditStateRef: React.RefObject<any>;
+    transformWrapperRef: React.RefObject<CanvasTransformHandle | null>;
+    preloadedDataRef: React.RefObject<PreloadedData | null>;
+    cachedEditStateRef: React.RefObject<ImageCacheEntry | null>;
     selectedImagePathRef: React.RefObject<string | null>;
     isBackendReadyRef: React.RefObject<boolean>;
     latestRenderedJobIdRef: React.RefObject<number>;
     previewJobIdRef: React.RefObject<number>;
     currentResRef: React.RefObject<number>;
-    prevAdjustmentsRef: React.RefObject<any>;
+    prevAdjustmentsRef: React.RefObject<PreviousAdjustments | null>;
   };
 }
 
@@ -32,7 +43,7 @@ const loadExifForImages = async (
   files: ImageFile[],
   expectedFolderPath: string | null,
   sortKey: string,
-  setLibrary: (updater: any) => void,
+  setLibrary: ReturnType<typeof useLibraryStore.getState>['setLibrary'],
 ) => {
   const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
   const isExifSortActive = exifSortKeys.includes(sortKey);
@@ -45,13 +56,13 @@ const loadExifForImages = async (
   const paths = files.map((f: ImageFile) => f.path);
 
   if (isExifSortActive) {
-    let combinedExifMap: Record<string, any> = {};
+    let combinedExifMap: Record<string, ImageFile['exif']> = {};
     const chunkSize = 100;
 
     for (let i = 0; i < paths.length; i += chunkSize) {
       const chunk = paths.slice(i, i + chunkSize);
       try {
-        const chunkExif: any = await invoke(Invokes.ReadExifForPaths, { paths: chunk });
+        const chunkExif: Record<string, ImageFile['exif']> = await invoke(Invokes.ReadExifForPaths, { paths: chunk });
         combinedExifMap = { ...combinedExifMap, ...chunkExif };
       } catch (err) {
         console.error('Failed to read EXIF chunk:', err);
@@ -74,8 +85,10 @@ const loadExifForImages = async (
 
           const chunk = paths.slice(i, i + chunkSize);
           try {
-            const chunkExif: any = await invoke(Invokes.ReadExifForPaths, { paths: chunk });
-            setLibrary((state: any) => ({
+            const chunkExif: Record<string, ImageFile['exif']> = await invoke(Invokes.ReadExifForPaths, {
+              paths: chunk,
+            });
+            setLibrary((state) => ({
               imageList: state.imageList.map((image: ImageFile) => ({
                 ...image,
                 exif: chunkExif[image.path] || image.exif || null,
@@ -170,7 +183,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
       const cachedMedium = useProcessStore.getState().mediumThumbnails[path] || cachedThumb;
 
       const cached = globalImageCache.get(path);
-      const isFrontendCached = Boolean(cached && cached.selectedImage?.isReady);
+      const isFrontendCached = cached && cached.selectedImage.isReady;
       const isCachedInBackend = isFrontendCached
         ? await invoke<boolean>('is_image_cached', { path }).catch(() => false)
         : false;
@@ -209,7 +222,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         compactEditorPanelHeightOverride: null,
       });
 
-      if (isFrontendCached) {
+      if (cached && isFrontendCached) {
         setEditor({
           selectedImage: {
             ...cached.selectedImage,
@@ -233,25 +246,25 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         isBackendReadyRef.current = false;
         currentResRef.current = Infinity;
 
-        invoke(Invokes.LoadImage, { path })
-          .then((_result: any) => {
+        invoke<LoadImageResult>(Invokes.LoadImage, { path })
+          .then((_result) => {
             if (selectedImagePathRef.current !== path) return;
             isBackendReadyRef.current = true;
             currentResRef.current = 0;
             setEditor({ originalSize: { width: _result.width, height: _result.height } });
           })
-          .catch((err: any) => {
+          .catch((err) => {
             if (String(err).includes('cancelled')) return;
             console.error('Background load_image failed on cache hit:', err);
             isBackendReadyRef.current = true;
             currentResRef.current = 0;
           });
 
-        invoke(Invokes.LoadMetadata, { path })
-          .then((metadata: any) => {
+        invoke<ImageMetadata>(Invokes.LoadMetadata, { path })
+          .then((metadata) => {
             if (selectedImagePathRef.current !== path) return;
-            let freshAdjustments: any;
-            if (metadata.adjustments && !metadata.adjustments.is_null) {
+            let freshAdjustments: Adjustments;
+            if (metadata.adjustments) {
               freshAdjustments = normalizeLoadedAdjustments(metadata.adjustments);
             } else {
               freshAdjustments = { ...INITIAL_ADJUSTMENTS };
@@ -354,7 +367,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         if (isNewRoot && path) {
           newExpandedFolders = new Set([path]);
           if (appSettings) {
-            handleSettingsChange({ ...appSettings, lastRootPath: path } as any);
+            handleSettingsChange({ ...appSettings, lastRootPath: path });
           }
         } else if (path && expandParents) {
           const allRoots = [...(rootPaths || []), ...(pinnedFolders || [])].filter(Boolean) as string[];
@@ -530,12 +543,12 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
           setLibrary({ rootPaths: newRootPaths });
 
           if (appSettings) {
-            handleSettingsChange({ ...appSettings, rootFolders: newRootPaths } as any);
+            handleSettingsChange({ ...appSettings, rootFolders: newRootPaths });
           }
 
           setLibrary({ isTreeLoading: true });
           try {
-            const newTree = await invoke(Invokes.GetFolderTree, {
+            const newTree = await invoke<DirectoryTree>(Invokes.GetFolderTree, {
               path: selectedPath,
               expandedFolders: [selectedPath],
               showImageCounts:
@@ -591,7 +604,7 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
           const expandedArr = folderState?.expandedFolders
             ? Array.from(new Set(folderState.expandedFolders))
             : rootFolders;
-          treesData = await invoke(Invokes.GetPinnedFolderTrees, {
+          treesData = await invoke<DirectoryTree[]>(Invokes.GetPinnedFolderTrees, {
             paths: rootFolders,
             expandedFolders: expandedArr,
             showImageCounts: appSettings?.enableFolderImageCounts || appSettings?.folderTreeSort?.key === 'imageCount',
@@ -618,12 +631,12 @@ export function useAppNavigation({ clearThumbnailQueue, refs }: AppNavigationPro
         const activeAlbumId = folderState?.activeAlbumId;
         if (activeAlbumId) {
           try {
-            const albumTree: any = await invoke(Invokes.GetAlbums);
+            const albumTree: AlbumItem[] = await invoke(Invokes.GetAlbums);
             setLibrary({ albumTree });
 
-            const findObj = (nodes: any[]): any => {
+            const findObj = (nodes: AlbumItem[]): Album | null => {
               for (const n of nodes) {
-                if (n.id === activeAlbumId) return n;
+                if (n.type === 'album' && n.id === activeAlbumId) return n;
                 if (n.type === 'group') {
                   const f = findObj(n.children);
                   if (f) return f;

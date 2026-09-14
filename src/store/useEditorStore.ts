@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import { Adjustments, INITIAL_ADJUSTMENTS, MaskContainer, AiPatch } from '../utils/adjustments';
+import { AdjustmentSection, Adjustments, INITIAL_ADJUSTMENTS, MaskContainer } from '../utils/adjustments';
 import { SelectedImage, WaveformData, BrushSettings } from '../components/ui/AppProperties';
 import { ChannelConfig } from '../components/adjustments/Curves';
 import { ImageDimensions } from '../hooks/useImageRenderSize';
 import { ToolType } from '../components/panel/right/Masks';
 import { OverlayMode } from '../components/panel/right/CropPanel';
 
-interface InteractivePatch {
+export interface InteractivePatch {
   url: string;
   normX: number;
   normY: number;
@@ -14,14 +14,14 @@ interface InteractivePatch {
   normH: number;
 }
 
-interface BaseRenderSize extends ImageDimensions {
+export interface BaseRenderSize extends ImageDimensions {
   containerHeight: number;
   containerWidth: number;
   offsetX: number;
   offsetY: number;
 }
 
-interface EditorState {
+export interface EditorState {
   // Core Image & Adjustments
   selectedImage: SelectedImage | null;
   adjustments: Adjustments;
@@ -75,9 +75,9 @@ interface EditorState {
   patchesSentToBackend: Set<string>;
 
   // Clipboard
-  copiedSectionAdjustments: any | null;
+  copiedSectionAdjustments: { section: AdjustmentSection; values: Partial<Adjustments> } | null;
   copiedMask: MaskContainer | null;
-  copiedAdjustments: Adjustments | null;
+  copiedAdjustments: Partial<Adjustments> | null;
 
   // Actions
   setEditor: (updater: Partial<EditorState> | ((state: EditorState) => Partial<EditorState>)) => void;

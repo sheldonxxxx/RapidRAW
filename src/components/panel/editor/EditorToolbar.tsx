@@ -1,3 +1,4 @@
+import type { Adjustments, MaskAdjustments } from '../../../utils/adjustments';
 import { memo, useState, useEffect, useRef, useMemo } from 'react';
 import { Eye, EyeOff, ArrowLeft, Maximize, Loader2, Undo, Redo } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,7 +18,7 @@ interface EditorToolbarProps {
   isAndroid: boolean;
   isLoading: boolean;
   onBackToLibrary(): void;
-  onImageSelect?(path: string, event?: any): void;
+  onImageSelect?(path: string, event?: React.MouseEvent): void;
   onRedo(): void;
   onToggleFullScreen(): void;
   onToggleShowOriginal(): void;
@@ -26,7 +27,7 @@ interface EditorToolbarProps {
   showOriginal: boolean;
   showDateView: boolean;
   onToggleDateView(): void;
-  adjustmentsHistory: any[];
+  adjustmentsHistory: Adjustments[];
   adjustmentsHistoryIndex: number;
   goToAdjustmentsHistoryIndex(index: number): void;
 }
@@ -275,7 +276,7 @@ const EditorToolbar = memo(
         const prev = adjustmentsHistory[i - 1];
         const changed: string[] = [];
 
-        for (const key of Object.keys(curr)) {
+        for (const key of Object.keys(curr) as (keyof Adjustments)[]) {
           if (prev[key] === curr[key]) continue;
 
           if (key === 'masks') {
@@ -285,8 +286,8 @@ const EditorToolbar = memo(
             if (currMasks.length > prevMasks.length) changed.push('Added Mask');
             else if (currMasks.length < prevMasks.length) changed.push('Deleted Mask');
             else {
-              currMasks.forEach((cMask: any) => {
-                const pMask = prevMasks.find((m: any) => m.id === cMask.id);
+              currMasks.forEach((cMask) => {
+                const pMask = prevMasks.find((m) => m.id === cMask.id);
                 if (pMask) {
                   if (pMask.opacity !== cMask.opacity) changed.push('Mask Opacity');
                   if (pMask.invert !== cMask.invert) changed.push('Mask Invert');
@@ -294,7 +295,7 @@ const EditorToolbar = memo(
                   if (pMask.subMasks !== cMask.subMasks) changed.push('Mask Area / Brush');
 
                   if (pMask.adjustments !== cMask.adjustments) {
-                    for (const adjKey of Object.keys(cMask.adjustments || {})) {
+                    for (const adjKey of Object.keys(cMask.adjustments || {}) as (keyof MaskAdjustments)[]) {
                       if (pMask.adjustments[adjKey] !== cMask.adjustments[adjKey]) {
                         changed.push(`Mask ${formatKey(adjKey)}`);
                       }
@@ -310,8 +311,8 @@ const EditorToolbar = memo(
             if (currPatches.length > prevPatches.length) changed.push('Added AI Patch');
             else if (currPatches.length < prevPatches.length) changed.push('Deleted AI Patch');
             else {
-              currPatches.forEach((cPatch: any) => {
-                const pPatch = prevPatches.find((p: any) => p.id === cPatch.id);
+              currPatches.forEach((cPatch) => {
+                const pPatch = prevPatches.find((p) => p.id === cPatch.id);
                 if (pPatch) {
                   if (pPatch.visible !== cPatch.visible) changed.push('AI Patch Visibility');
                   if (pPatch.subMasks !== cPatch.subMasks) changed.push('AI Patch Area');

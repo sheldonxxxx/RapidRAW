@@ -1,7 +1,8 @@
+import type { AppSettings } from '../ui/AppProperties';
+import type { Variants } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
-  Cloud,
   Cpu,
   ExternalLink as ExternalLinkIcon,
   Server,
@@ -60,9 +61,9 @@ interface ConfirmModalState {
 interface DataActionItemProps {
   buttonAction(): void;
   buttonText: string;
-  description: any;
+  description: React.ReactNode;
   disabled?: boolean;
-  icon: any;
+  icon: React.ReactNode;
   isProcessing: boolean;
   message: string;
   title: string;
@@ -79,16 +80,16 @@ interface KeybindRowProps {
 }
 
 interface SettingItemProps {
-  children: any;
+  children: React.ReactNode;
   description?: string;
   label: string;
 }
 
 interface SettingsPanelProps {
-  appSettings: any;
+  appSettings: AppSettings;
   onBack(): void;
   onLibraryRefresh(): void;
-  onSettingsChange(settings: any): Promise<void>;
+  onSettingsChange(settings: AppSettings): Promise<void>;
   rootPaths: string[];
 }
 
@@ -102,6 +103,64 @@ interface MyLens {
   maker: string;
   model: string;
 }
+
+const ACKNOWLEDGMENTS = [
+  {
+    url: 'https://github.com/dnglab/dnglab/tree/main/rawler',
+    name: 'rawler',
+    description: 'settings.thanks.list.rawler',
+  },
+  {
+    url: 'https://lensfun.github.io/',
+    name: 'lensfun',
+    description: 'settings.thanks.list.lensfun',
+  },
+  {
+    url: 'https://github.com/andreavolpato/spektrafilm',
+    name: 'spektrafilm',
+    description: 'settings.thanks.list.spektrafilm',
+  },
+  {
+    url: 'https://github.com/marcinz606/NegPy',
+    name: 'NegPy',
+    description: 'settings.thanks.list.negpy',
+  },
+  {
+    url: 'https://github.com/advimman/lama',
+    name: 'LaMa',
+    description: 'settings.thanks.list.lama',
+  },
+  {
+    url: 'https://github.com/facebookresearch/sam2',
+    name: 'SAM 2',
+    description: 'settings.thanks.list.sam2',
+  },
+  {
+    url: 'https://github.com/xuebinqin/U-2-Net',
+    name: 'U-2-Net',
+    description: 'settings.thanks.list.u2net',
+  },
+  {
+    url: 'https://github.com/DepthAnything/Depth-Anything-V2',
+    name: 'Depth Anything V2',
+    description: 'settings.thanks.list.depth',
+  },
+  {
+    url: 'https://github.com/trougnouf/nind-denoise',
+    name: 'nind-denoise',
+    description: 'settings.thanks.list.nind',
+  },
+  {
+    url: 'http://gphoto.org/',
+    name: 'libgphoto2',
+    description: 'settings.thanks.list.libgphoto2',
+  },
+  {
+    url: 'https://github.com/darktable-org/darktable',
+    name: 'darktable & co.',
+    description: 'settings.thanks.list.darktable',
+  },
+] as const;
 
 const EXECUTE_TIMEOUT = 3000;
 
@@ -181,7 +240,7 @@ const KeybindRow = ({
 
   return (
     <div className="flex justify-between items-center py-2">
-      <Text variant={TextVariants.label}>{t(def.description as any)}</Text>
+      <Text variant={TextVariants.label}>{t(def.description)}</Text>
       <div className="flex items-center gap-1">
         {isConflicting && <span className="text-yellow-400 text-xs">⚠</span>}
         <button onClick={() => onStartRecording(def.action)} className="flex items-center gap-1 flex-wrap shrink-0">
@@ -690,7 +749,7 @@ export default function SettingsPanel({
     invoke<string[]>('get_lensfun_makers').then(setLensMakers).catch(console.error);
   }, []);
 
-  const handleProcessingSettingChange = async (key: string, value: any) => {
+  const handleProcessingSettingChange = async <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setProcessingSettings((prev) => ({ ...prev, [key]: value }));
 
     if (
@@ -736,8 +795,8 @@ export default function SettingsPanel({
     setTempLensModel('');
     setLensModels([]);
     if (maker) {
-      invoke('get_lensfun_lenses_for_maker', { maker })
-        .then((l: any) => setLensModels(l))
+      invoke<string[]>('get_lensfun_lenses_for_maker', { maker })
+        .then((l) => setLensModels(l))
         .catch(console.error);
     }
   };
@@ -785,7 +844,7 @@ export default function SettingsPanel({
       }
       setClearMessage(t('settings.data.statuses.sidecarSuccess', { count: totalCount }));
       onLibraryRefresh();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to clear sidecars:', err);
       setClearMessage(`Error: ${err}`);
     } finally {
@@ -809,7 +868,7 @@ export default function SettingsPanel({
       });
 
       setLayoutResetMessage(t('settings.data.statuses.layoutResetSuccess'));
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to reset workspace layout:', err);
       setLayoutResetMessage(`Error: ${err}`);
     } finally {
@@ -853,7 +912,7 @@ export default function SettingsPanel({
       }
       setAiTagsClearMessage(t('settings.data.statuses.aiSuccess', { count: totalCount }));
       onLibraryRefresh();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to clear AI tags:', err);
       setAiTagsClearMessage(`Error: ${err}`);
     } finally {
@@ -886,7 +945,7 @@ export default function SettingsPanel({
       }
       setTagsClearMessage(t('settings.data.statuses.allSuccess', { count: totalCount }));
       onLibraryRefresh();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to clear tags:', err);
       setTagsClearMessage(`Error: ${err}`);
     } finally {
@@ -908,7 +967,7 @@ export default function SettingsPanel({
     });
   };
 
-  const shortcutTagVariants = {
+  const shortcutTagVariants: Variants = {
     visible: { opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 500, damping: 30 } },
     exit: { opacity: 0, scale: 0.8, transition: { duration: 0.15 } },
   };
@@ -920,7 +979,7 @@ export default function SettingsPanel({
       await invoke(Invokes.ClearThumbnailCache);
       setCacheClearMessage(t('settings.data.statuses.cacheSuccess'));
       onLibraryRefresh();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to clear thumbnail cache:', err);
       setCacheClearMessage(`Error: ${err}`);
     } finally {
@@ -1105,10 +1164,10 @@ export default function SettingsPanel({
                     <div className="space-y-8">
                       <SettingItem label={t('settings.general.theme')} description={t('settings.general.themeDesc')}>
                         <Dropdown
-                          onChange={(value: any) => onSettingsChange({ ...appSettings, theme: value })}
+                          onChange={(value) => onSettingsChange({ ...appSettings, theme: value })}
                           options={THEMES.map((theme: ThemeProps) => ({
                             value: theme.id,
-                            label: t(theme.name as any),
+                            label: t(theme.name),
                           }))}
                           value={appSettings?.theme || DEFAULT_THEME_ID}
                           triggerClassName="bg-bg-primary"
@@ -1117,7 +1176,7 @@ export default function SettingsPanel({
 
                       <SettingItem label={t('settings.language')} description={t('settings.languageDesc')}>
                         <Dropdown
-                          onChange={(value: any) => onSettingsChange({ ...appSettings, language: value })}
+                          onChange={(value) => onSettingsChange({ ...appSettings, language: value })}
                           options={[
                             { value: 'en', label: 'English' },
                             { value: 'ca', label: 'Català' },
@@ -1224,7 +1283,7 @@ export default function SettingsPanel({
 
                       <SettingItem label={t('settings.general.font')} description={t('settings.general.fontDesc')}>
                         <Dropdown
-                          onChange={(value: any) => onSettingsChange({ ...appSettings, fontFamily: value })}
+                          onChange={(value) => onSettingsChange({ ...appSettings, fontFamily: value })}
                           options={fontOptions}
                           value={appSettings?.fontFamily || 'poppins'}
                           triggerClassName="bg-bg-primary"
@@ -1424,8 +1483,11 @@ export default function SettingsPanel({
                                     step={1}
                                     value={appSettings?.aiTagCount ?? 10}
                                     defaultValue={10}
-                                    onChange={(e: any) =>
-                                      onSettingsChange({ ...appSettings, aiTagCount: parseInt(e.target.value) })
+                                    onChange={(e) =>
+                                      onSettingsChange({
+                                        ...appSettings,
+                                        aiTagCount: parseInt(String(e.target.value), 10),
+                                      })
                                     }
                                   />
                                 </SettingItem>
@@ -1615,127 +1677,19 @@ export default function SettingsPanel({
                     </Text>
                     <Text className="mb-4">{t('settings.thanks.description')}</Text>
                     <Text as="ul" className="space-y-3 list-disc ml-5 pl-1">
-                      <li>
-                        <a
-                          href="https://github.com/dnglab/dnglab/tree/main/rawler"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          rawler
-                        </a>
-                        : {t('settings.thanks.list.rawler')}
-                      </li>
-                      <li>
-                        <a
-                          href="https://lensfun.github.io/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          lensfun
-                        </a>
-                        : {t('settings.thanks.list.lensfun')}
-                      </li>
-                      <li>
-                        <a
-                          href="https://github.com/andreavolpato/spektrafilm"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          spektrafilm
-                        </a>
-                        : {t('settings.thanks.list.spektrafilm')}
-                      </li>
-                      <li>
-                        <a
-                          href="https://github.com/marcinz606/NegPy"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          NegPy
-                        </a>
-                        : {t('settings.thanks.list.negpy')}
-                      </li>
-                      <li>
-                        <a
-                          href="https://github.com/advimman/lama"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          LaMa
-                        </a>
-                        : {t('settings.thanks.list.lama')}
-                      </li>
-                      <li>
-                        <a
-                          href="https://github.com/facebookresearch/sam2"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          SAM 2
-                        </a>
-                        : {t('settings.thanks.list.sam2')}
-                      </li>
-                      <li>
-                        <a
-                          href="https://github.com/xuebinqin/U-2-Net"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          U-2-Net
-                        </a>
-                        : {t('settings.thanks.list.u2net')}
-                      </li>
-                      <li>
-                        <a
-                          href="https://github.com/DepthAnything/Depth-Anything-V2"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          Depth Anything V2
-                        </a>
-                        : {t('settings.thanks.list.depth')}
-                      </li>
-                      <li>
-                        <a
-                          href="https://github.com/trougnouf/nind-denoise"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          nind-denoise
-                        </a>
-                        : {t('settings.thanks.list.nind')}
-                      </li>
-                      <li>
-                        <a
-                          href="http://gphoto.org/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          libgphoto2
-                        </a>
-                        : {t('settings.thanks.list.libgphoto2')}
-                      </li>
-                      <li>
-                        <a
-                          href="https://github.com/darktable-org/darktable"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          darktable & co.
-                        </a>
-                        : {t('settings.thanks.list.darktable')}
-                      </li>
+                      {ACKNOWLEDGMENTS.map((project) => (
+                        <li key={project.url}>
+                          <a
+                            href={project.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-semibold text-accent hover:underline"
+                          >
+                            {project.name}
+                          </a>
+                          : {t(project.description)}
+                        </li>
+                      ))}
                       <li>
                         <span className="font-semibold text-accent">{t('settings.thanks.list.youLabel')}</span>:{' '}
                         {t('settings.thanks.list.you')}
@@ -1786,7 +1740,7 @@ export default function SettingsPanel({
                                     label={t('settings.processing.previewRes')}
                                   >
                                     <Dropdown
-                                      onChange={(value: any) =>
+                                      onChange={(value) =>
                                         handleProcessingSettingChange('editorPreviewResolution', value)
                                       }
                                       options={resolutions}
@@ -1813,7 +1767,7 @@ export default function SettingsPanel({
                                     label={t('settings.processing.staticPreviewRes')}
                                   >
                                     <Dropdown
-                                      onChange={(value: any) =>
+                                      onChange={(value) =>
                                         handleProcessingSettingChange('editorPreviewResolution', value)
                                       }
                                       options={resolutions}
@@ -1827,7 +1781,7 @@ export default function SettingsPanel({
                                     description={t('settings.processing.renderScaleDesc')}
                                   >
                                     <Dropdown
-                                      onChange={(value: any) =>
+                                      onChange={(value) =>
                                         handleProcessingSettingChange('highResZoomMultiplier', value)
                                       }
                                       options={zoomMultiplierOptions}
@@ -1891,7 +1845,7 @@ export default function SettingsPanel({
                                   description={t('settings.processing.livePreviewQualityDesc')}
                                 >
                                   <Dropdown
-                                    onChange={(value: any) =>
+                                    onChange={(value) =>
                                       onSettingsChange({ ...appSettings, livePreviewQuality: value })
                                     }
                                     options={livePreviewQualityOptions}
@@ -1910,7 +1864,7 @@ export default function SettingsPanel({
                         label={t('settings.processing.smallThumbnailRes')}
                       >
                         <Dropdown
-                          onChange={(value: any) => handleProcessingSettingChange('smallThumbnailResolution', value)}
+                          onChange={(value) => handleProcessingSettingChange('smallThumbnailResolution', value)}
                           options={smallThumbnailResolutions}
                           value={processingSettings.smallThumbnailResolution}
                           triggerClassName="bg-bg-primary"
@@ -1922,7 +1876,7 @@ export default function SettingsPanel({
                         label={t('settings.processing.mediumThumbnailRes')}
                       >
                         <Dropdown
-                          onChange={(value: any) => handleProcessingSettingChange('mediumThumbnailResolution', value)}
+                          onChange={(value) => handleProcessingSettingChange('mediumThumbnailResolution', value)}
                           options={mediumThumbnailResolutions}
                           value={processingSettings.mediumThumbnailResolution}
                           triggerClassName="bg-bg-primary"
@@ -1954,8 +1908,11 @@ export default function SettingsPanel({
                           step={1}
                           value={processingSettings.thumbnailWorkerThreads}
                           defaultValue={4}
-                          onChange={(e: any) =>
-                            handleProcessingSettingChange('thumbnailWorkerThreads', parseInt(e.target.value))
+                          onChange={(e) =>
+                            handleProcessingSettingChange(
+                              'thumbnailWorkerThreads',
+                              parseInt(String(e.target.value), 10),
+                            )
                           }
                           fillOrigin="min"
                         />
@@ -1972,8 +1929,8 @@ export default function SettingsPanel({
                           step={1}
                           value={processingSettings.imageCacheSize}
                           defaultValue={5}
-                          onChange={(e: any) =>
-                            handleProcessingSettingChange('imageCacheSize', parseInt(e.target.value))
+                          onChange={(e) =>
+                            handleProcessingSettingChange('imageCacheSize', parseInt(String(e.target.value), 10))
                           }
                           fillOrigin="min"
                         />
@@ -2003,7 +1960,7 @@ export default function SettingsPanel({
                         description={t('settings.processing.backendDesc')}
                       >
                         <Dropdown
-                          onChange={(value: any) => handleProcessingSettingChange('processingBackend', value)}
+                          onChange={(value) => handleProcessingSettingChange('processingBackend', value)}
                           options={filteredBackendOptions}
                           value={
                             filteredBackendOptions.some(
@@ -2064,8 +2021,8 @@ export default function SettingsPanel({
                           step={0.1}
                           value={processingSettings.rawHighlightCompression}
                           defaultValue={2.5}
-                          onChange={(e: any) =>
-                            handleProcessingSettingChange('rawHighlightCompression', parseFloat(e.target.value))
+                          onChange={(e) =>
+                            handleProcessingSettingChange('rawHighlightCompression', parseFloat(String(e.target.value)))
                           }
                           fillOrigin="min"
                         />
@@ -2082,8 +2039,8 @@ export default function SettingsPanel({
                           step={0.05}
                           value={processingSettings.rawPreprocessingColorNr}
                           defaultValue={0.5}
-                          onChange={(e: any) =>
-                            handleProcessingSettingChange('rawPreprocessingColorNr', parseFloat(e.target.value))
+                          onChange={(e) =>
+                            handleProcessingSettingChange('rawPreprocessingColorNr', parseFloat(String(e.target.value)))
                           }
                           fillOrigin="min"
                         />
@@ -2100,8 +2057,11 @@ export default function SettingsPanel({
                           step={0.05}
                           value={processingSettings.rawPreprocessingSharpening}
                           defaultValue={0.35}
-                          onChange={(e: any) =>
-                            handleProcessingSettingChange('rawPreprocessingSharpening', parseFloat(e.target.value))
+                          onChange={(e) =>
+                            handleProcessingSettingChange(
+                              'rawPreprocessingSharpening',
+                              parseFloat(String(e.target.value)),
+                            )
                           }
                           fillOrigin="min"
                         />
@@ -2124,7 +2084,7 @@ export default function SettingsPanel({
                         description={t('settings.processing.preprocessing.linearRawDesc')}
                       >
                         <Dropdown
-                          onChange={(value: any) => onSettingsChange({ ...appSettings, linearRawMode: value })}
+                          onChange={(value) => onSettingsChange({ ...appSettings, linearRawMode: value })}
                           options={linearRawOptions}
                           value={appSettings?.linearRawMode || 'auto'}
                           triggerClassName="bg-bg-primary"
@@ -2160,7 +2120,7 @@ export default function SettingsPanel({
                                   description={t('settings.processing.preprocessing.defaultRawTonemapperDesc')}
                                 >
                                   <Dropdown
-                                    onChange={(value: any) =>
+                                    onChange={(value) =>
                                       onSettingsChange({ ...appSettings, defaultRawTonemapper: value })
                                     }
                                     options={tonemapperOptions}
@@ -2174,7 +2134,7 @@ export default function SettingsPanel({
                                   description={t('settings.processing.preprocessing.defaultNonRawTonemapperDesc')}
                                 >
                                   <Dropdown
-                                    onChange={(value: any) =>
+                                    onChange={(value) =>
                                       onSettingsChange({ ...appSettings, defaultNonRawTonemapper: value })
                                     }
                                     options={tonemapperOptions}
@@ -2249,8 +2209,8 @@ export default function SettingsPanel({
                                     onBlur={() =>
                                       onSettingsChange({ ...appSettings, aiConnectorAddress: aiConnectorAddress })
                                     }
-                                    onChange={(e: any) => setAiConnectorAddress(e.target.value)}
-                                    onKeyDown={(e: any) => e.stopPropagation()}
+                                    onChange={(e) => setAiConnectorAddress(e.target.value)}
+                                    onKeyDown={(e) => e.stopPropagation()}
                                     placeholder="127.0.0.1:5000"
                                     type="text"
                                     value={aiConnectorAddress}
@@ -2382,9 +2342,7 @@ export default function SettingsPanel({
                         buttonText={t('settings.data.clearSidecarsButton')}
                         description={
                           <Text as="span" variant={TextVariants.small}>
-                            {t('settings.data.clearSidecarsDesc')}{' '}
-                            <code className="bg-bg-primary px-1 rounded-sm text-text-primary">.rrdata</code> files
-                            (containing your edits) within your root folders:
+                            {t('settings.data.clearSidecarsDesc')}
                             <span className="block font-mono bg-bg-primary p-2 rounded-sm mt-2 break-all border border-border-color whitespace-pre-wrap">
                               {effectiveRootPaths.length > 0
                                 ? effectiveRootPaths.join('\n')
@@ -2484,8 +2442,11 @@ export default function SettingsPanel({
                           step={0.1}
                           value={appSettings?.zoomSpeedMultiplier ?? 1.0}
                           defaultValue={1.0}
-                          onChange={(e: any) =>
-                            onSettingsChange({ ...appSettings, zoomSpeedMultiplier: parseFloat(e.target.value) })
+                          onChange={(e) =>
+                            onSettingsChange({
+                              ...appSettings,
+                              zoomSpeedMultiplier: parseFloat(String(e.target.value)),
+                            })
                           }
                           fillOrigin="min"
                         />
@@ -2517,7 +2478,7 @@ export default function SettingsPanel({
                         const userKb = appSettings?.keybinds || {};
                         return (
                           <div key={section.id}>
-                            <Text variant={TextVariants.heading}>{t(section.label as any)}</Text>
+                            <Text variant={TextVariants.heading}>{t(section.label)}</Text>
                             <div className="divide-y divide-border-color">
                               {sectionDefs.map((def) => (
                                 <KeybindRow

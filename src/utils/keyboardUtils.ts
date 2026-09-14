@@ -1,13 +1,13 @@
 export interface KeybindDefinition {
   action: string;
-  description: string;
+  description: import('i18next').ParseKeys;
   defaultCombo: string[];
   section: 'library' | 'view' | 'rating' | 'panels' | 'editing';
 }
 
 export interface KeybindSection {
   id: KeybindDefinition['section'];
-  label: string;
+  label: import('i18next').ParseKeys;
 }
 
 export const KEYBIND_SECTIONS: KeybindSection[] = [

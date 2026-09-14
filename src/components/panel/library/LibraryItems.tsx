@@ -1,3 +1,4 @@
+import type { ThumbnailProps, ListItemProps, LibraryRowProps } from './libraryTypes';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Image as ImageIcon,
@@ -43,7 +44,7 @@ const ThumbnailComponent = ({
   isCloudPlaceholder,
   groupBadgeLabel,
   onAspectRatioLoaded,
-}: any) => {
+}: ThumbnailProps) => {
   const { t } = useTranslation();
   const data = useProcessStore((s) => s.thumbnails[path]);
   const exifOverlay = useSettingsStore((s) => s.appSettings?.exifOverlay || ExifOverlay.Off);
@@ -173,11 +174,11 @@ const ThumbnailComponent = ({
         isDragging && 'opacity-50 ring-2 ring-accent z-50',
       )}
       data-bench-id="thumbnail"
-      onClick={(e: any) => {
+      onClick={(e) => {
         e.stopPropagation();
         onImageClick(path, e);
       }}
-      onContextMenu={(e: any) => onContextMenu(e, path)}
+      onContextMenu={(e) => onContextMenu(e, path)}
       onDoubleClick={() => onImageDoubleClick(path)}
     >
       <div className="relative w-full flex-1 min-h-0 z-0 bg-surface">
@@ -203,7 +204,7 @@ const ThumbnailComponent = ({
                   decoding="async"
                   loading="lazy"
                   src={layer.url}
-                  onLoad={(e: any) => {
+                  onLoad={(e) => {
                     onLoad(path);
                     if (thumbnailAspectRatio === ThumbnailAspectRatio.Justified && onAspectRatioLoaded) {
                       const img = e.target as HTMLImageElement;
@@ -481,7 +482,7 @@ const ListItemComponent = ({
   isCloudPlaceholder,
   isPrevSelected,
   isNextSelected,
-}: any) => {
+}: ListItemProps) => {
   const { t } = useTranslation();
   const data = useProcessStore((s) => s.thumbnails[path]);
   const exifOverlay = useSettingsStore((s) => s.appSettings?.exifOverlay || ExifOverlay.Off);
@@ -624,11 +625,11 @@ const ListItemComponent = ({
       {...listeners}
       {...attributes}
       className={`flex items-center w-full h-full cursor-pointer transition-all duration-150 ${borderClass} ${roundingClass} ${stateClass} ${isDragging ? 'opacity-50 ring-2 ring-accent z-50' : ''}`}
-      onClick={(e: any) => {
+      onClick={(e) => {
         e.stopPropagation();
         onImageClick(path, e);
       }}
-      onContextMenu={(e: any) => onContextMenu(e, path)}
+      onContextMenu={(e) => onContextMenu(e, path)}
       onDoubleClick={() => onImageDoubleClick(path)}
     >
       <div
@@ -791,7 +792,7 @@ const RowComponent = ({
   onToggleRecursiveFolder,
   groupBadgeInfo,
   onAspectRatioLoaded,
-}: any) => {
+}: LibraryRowProps) => {
   const { t } = useTranslation();
   const row = rows[index];
 
@@ -814,10 +815,10 @@ const RowComponent = ({
     return () => clearInterval(interval);
   }, [row, queueThumbnailRequest]);
 
-  if (row.type === 'footer') return null;
+  if (!row || row.type === 'footer') return null;
   const shiftedStyle = {
     ...style,
-    transform: (style.transform as string).replace(
+    transform: (style.transform ?? '').replace(
       /translateY\(([^)]+)\)/,
       (_: string, y: string) => `translateY(${parseFloat(y) + outerPadding}px)`,
     ),
@@ -953,4 +954,4 @@ const RowComponent = ({
   );
 };
 
-export const Row = React.memo(RowComponent);
+export const Row = RowComponent;

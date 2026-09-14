@@ -17,7 +17,7 @@ import { useLibraryActions } from '../../../hooks/useLibraryActions';
 import { expandGroupedPaths } from '../../../utils/imageGrouping';
 
 interface CameraSetting {
-  format?(value: number): string | number;
+  format?(value: string | number): string | number;
   label: string;
 }
 
@@ -31,14 +31,14 @@ interface CameraSettings {
 }
 
 interface GPSData {
-  altitude: number | null;
+  altitude: string | number | null;
   lat: number | null;
   lon: number | null;
 }
 
 interface MetaDataItemProps {
   label: string;
-  value: any;
+  value: React.ReactNode;
 }
 
 const USER_TAG_PREFIX = 'user:';
@@ -203,30 +203,30 @@ const EDITABLE_FIELDS = [
   { key: 'Artist', label: 'author' },
   { key: 'Copyright', label: 'copyright' },
   { key: 'UserComment', label: 'comments' },
-];
+] as const;
 
 const KEY_CAMERA_SETTINGS_MAP: CameraSettings = {
   FNumber: {
-    format: (value: number) => {
+    format: (value: string | number) => {
       const fStr = String(value);
       return fStr.toLowerCase().startsWith('f') ? fStr : `f/${fStr}`;
     },
     label: 'Aperture',
   },
   ExposureTime: {
-    format: (value: number) => (String(value).endsWith('s') ? value : `${value}s`),
+    format: (value: string | number) => (String(value).endsWith('s') ? value : `${value}s`),
     label: 'Shutter Speed',
   },
   PhotographicSensitivity: {
-    format: (value: number) => `${value}`,
+    format: (value: string | number) => `${value}`,
     label: 'ISO',
   },
   FocalLengthIn35mmFilm: {
-    format: (value: number) => (String(value).endsWith('mm') ? value : `${value} mm`),
+    format: (value: string | number) => (String(value).endsWith('mm') ? value : `${value} mm`),
     label: 'Focal Length',
   },
   LensModel: {
-    format: (value: number) => String(value).replace(/"/g, ''),
+    format: (value: string | number) => String(value).replace(/"/g, ''),
     label: 'Lens',
   },
 };
@@ -283,7 +283,7 @@ export default function MetadataPanel() {
         label: translatedLabel,
         value:
           hasValue && KEY_CAMERA_SETTINGS_MAP[key].format
-            ? KEY_CAMERA_SETTINGS_MAP[key].format!(value as number)
+            ? KEY_CAMERA_SETTINGS_MAP[key].format!(value)
             : hasValue
               ? value
               : '-',
@@ -297,7 +297,7 @@ export default function MetadataPanel() {
       label: t('editor.metadata.camera.lens'),
       value:
         hasLensValue && KEY_CAMERA_SETTINGS_MAP['LensModel'].format
-          ? KEY_CAMERA_SETTINGS_MAP['LensModel'].format(lensValue as number)
+          ? KEY_CAMERA_SETTINGS_MAP['LensModel'].format(lensValue)
           : hasLensValue
             ? lensValue
             : '-',
@@ -460,7 +460,7 @@ export default function MetadataPanel() {
               </Text>
               <div className="flex flex-col gap-2">
                 <div className="grid grid-cols-2 gap-2">
-                  {cameraGridSettings.map((item: any) => {
+                  {cameraGridSettings.map((item) => {
                     const Icon = CAMERA_ICONS[item.key];
                     return (
                       <div

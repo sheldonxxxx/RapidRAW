@@ -1,3 +1,5 @@
+import type { Option } from '../../ui/AppProperties';
+import type { UserPreset } from '../../../hooks/usePresets';
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import {
   Camera,
@@ -17,7 +19,6 @@ import {
   BatteryWarning,
   Focus,
   Gauge,
-  Sliders,
   Folder as FolderIcon,
   X,
 } from 'lucide-react';
@@ -349,9 +350,9 @@ export default function TetheringPanel({ onLibraryRefresh, onImageSelect }: Teth
 
   const fetchSettings = useCallback(async () => {
     try {
-      const config = await invoke<Record<string, any>>(Invokes.TetherGetSettings);
+      const config = await invoke<Record<string, CameraSetting>>(Invokes.TetherGetSettings);
       setTethering({ settings: config });
-    } catch (e) {
+    } catch {
       handleDisconnect(t('tethering.toasts.communicationFailed'));
     }
   }, [setTethering, handleDisconnect, t]);
@@ -383,7 +384,7 @@ export default function TetheringPanel({ onLibraryRefresh, onImageSelect }: Teth
     setIsFocusing(true);
     try {
       await invoke('tether_autofocus');
-    } catch (e) {
+    } catch {
       toast.error(t('tethering.toasts.afFailed'));
     } finally {
       setIsFocusing(false);
@@ -408,7 +409,7 @@ export default function TetheringPanel({ onLibraryRefresh, onImageSelect }: Teth
             paths: [filePath],
             adjustments: autoApplyPreset.adjustments,
           });
-        } catch (presetErr) {
+        } catch {
           toast.error(t('tethering.toasts.presetApplyFailed'));
         }
       }
@@ -522,26 +523,14 @@ export default function TetheringPanel({ onLibraryRefresh, onImageSelect }: Teth
     };
   }, [liveViewEnabled, isConnected, handleDisconnect, t]);
 
-  const generatePresetSubmenu = (presetList: any[]): any[] => {
-    return presetList
-      .map((item: any) => {
-        if (item.folder) {
-          return {
-            label: item.folder.name,
-            icon: FolderIcon,
-            submenu: generatePresetSubmenu(item.folder.children),
-          };
-        }
-        if (item.preset || item.adjustments) {
-          const presetObj = item.preset || item;
-          return {
-            label: presetObj.name,
-            onClick: () => setAutoApplyPreset(presetObj),
-          };
-        }
-        return null;
-      })
-      .filter(Boolean);
+  const generatePresetSubmenu = (presetList: (UserPreset | Preset)[]): Option[] => {
+    return presetList.flatMap((item): Option[] => {
+      if (item.folder) {
+        return [{ label: item.folder.name, icon: FolderIcon, submenu: generatePresetSubmenu(item.folder.children) }];
+      }
+      const presetObj = 'adjustments' in item ? item : item.preset;
+      return presetObj ? [{ label: presetObj.name, onClick: () => setAutoApplyPreset(presetObj) }] : [];
+    });
   };
 
   const handleOpenPresetMenu = () => {
@@ -556,7 +545,12 @@ export default function TetheringPanel({ onLibraryRefresh, onImageSelect }: Teth
     }
   };
 
-  const renderInputSetting = (key: string, label: string, IconComponent: React.FC<any>, placeholder: string) => {
+  const renderInputSetting = (
+    key: string,
+    label: string,
+    IconComponent: React.ComponentType<React.SVGProps<SVGSVGElement>>,
+    placeholder: string,
+  ) => {
     const setting = settings[key];
     if (!setting) return null;
 

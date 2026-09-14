@@ -66,13 +66,13 @@
       "whiteBalance": "White Balance"
     },
     "curves": {
-      "channelTitle": "{{channel}} Channel",
       "channels": {
         "blue": "Blue",
         "green": "Green",
         "luma": "Luma",
         "red": "Red"
       },
+      "channelTitle": "{{channel}} Channel",
       "copyParametric": "Copy {{channel}} Parametric Curve",
       "copyPoint": "Copy {{channel}} Point Curve",
       "curveDataUnavailable": "Curve data not available.",
@@ -367,6 +367,35 @@
       "editSettingsTitle": "Edit Settings",
       "editsTitle": "Edits",
       "generatingDepthMap": "Calculating AI Depth Map...",
+      "generation": {
+        "chooseDetail": "Choose AI resolution",
+        "chooseWorkflow": "Choose workflow",
+        "connectorDefault": "Using the connector’s default workflow.",
+        "detail": "AI resolution",
+        "detailHelp": "Resolution of the generated area. Higher values may take longer; your photo keeps its original size.",
+        "errors": {
+          "detail": "The saved AI resolution is unavailable. Choose a supported resolution.",
+          "loading": "Workflow options are still loading.",
+          "profile": "The saved workflow is unavailable. Choose a workflow to continue.",
+          "seed": "Enter a whole number from 1 to 9007199254740991, or leave blank for a random seed.",
+          "seedUnsupported": "This connector cannot reuse the saved seed. Use the connector default to continue.",
+          "unavailable": "Saved generation settings are not supported by this connector."
+        },
+        "lastResult": "Last generated result",
+        "legacy": "This connector uses its default workflow.",
+        "loading": "Loading workflow options…",
+        "megapixels": "{{megapixels}} MP",
+        "randomSeed": "Random each time",
+        "refresh": "Refresh workflows",
+        "resultSeed": "Seed: {{seed}}",
+        "resultSize": "Last result: {{width}} × {{height}} px generated for a {{placedWidth}} × {{placedHeight}} px area.",
+        "retry": "Retry",
+        "seed": "Seed (optional)",
+        "seedHelp": "For repeatable results, reuse the seed with the same image, selection, prompt and settings.",
+        "unavailable": "Workflow options are unavailable. Retry or use the connector default.",
+        "useDefault": "Use connector default",
+        "workflow": "Workflow"
+      },
       "generativeEditTitle": "Generative Edit",
       "inpaintingTitle": "Inpainting",
       "liquify": {
@@ -403,7 +432,9 @@
         "quickErase": "Quick Erase {{count}}",
         "quickErase_one": "Quick Erase {{count}}",
         "quickErase_other": "Quick Erase {{count}}",
-        "retouch": "Retouch {{count}}"
+        "retouch": "Retouch {{count}}",
+        "retouch_one": "Retouch {{count}}",
+        "retouch_other": "Retouch {{count}}"
       },
       "resetInpaintingTooltip": "Reset Inpainting",
       "settings": {
@@ -425,36 +456,7 @@
         "selectionPropertiesTitle": "Selection Properties",
         "useBasicInpaint": "Use basic inpainting"
       },
-      "touchUpTitle": "Touch Up",
-      "generation": {
-        "workflow": "Workflow",
-        "detail": "AI resolution",
-        "megapixels": "{{megapixels}} MP",
-        "detailHelp": "Resolution of the generated area. Higher values may take longer; your photo keeps its original size.",
-        "seed": "Seed (optional)",
-        "randomSeed": "Random each time",
-        "seedHelp": "For repeatable results, reuse the seed with the same image, selection, prompt and settings.",
-        "loading": "Loading workflow options…",
-        "legacy": "This connector uses its default workflow.",
-        "unavailable": "Workflow options are unavailable. Retry or use the connector default.",
-        "connectorDefault": "Using the connector’s default workflow.",
-        "chooseWorkflow": "Choose workflow",
-        "chooseDetail": "Choose AI resolution",
-        "retry": "Retry",
-        "useDefault": "Use connector default",
-        "lastResult": "Last generated result",
-        "resultSize": "Last result: {{width}} × {{height}} px generated for a {{placedWidth}} × {{placedHeight}} px area.",
-        "resultSeed": "Seed: {{seed}}",
-        "errors": {
-          "loading": "Workflow options are still loading.",
-          "unavailable": "Saved generation settings are not supported by this connector.",
-          "profile": "The saved workflow is unavailable. Choose a workflow to continue.",
-          "detail": "The saved AI resolution is unavailable. Choose a supported resolution.",
-          "seed": "Enter a whole number from 1 to 9007199254740991, or leave blank for a random seed.",
-          "seedUnsupported": "This connector cannot reuse the saved seed. Use the connector default to continue."
-        },
-        "refresh": "Refresh workflows"
-      }
+      "touchUpTitle": "Touch Up"
     },
     "crop": {
       "aspectRatioHeading": "Aspect Ratio",
@@ -566,6 +568,10 @@
         "transform": "Perspective and keystone correction"
       }
     },
+    "enhancement": {
+      "aiTitle": "AI editing",
+      "resultMetrics": "{{dimensions}} px · {{seconds}} s"
+    },
     "externalEdit": {
       "done": "Done",
       "exporting": "Exporting…",
@@ -575,11 +581,14 @@
       "cancel": "Cancel",
       "drawingActive": "Drawing Active",
       "hint": "Draw along edges in your photo that should be vertical or horizontal.",
+      "horizontalGuide": "Horizontal Guide #{{number}}",
+      "lineCount": "{{current}} / {{max}}",
       "linesStatus": "Active Guide Lines",
       "toast": {
         "angleRejected": "Line angle is too far from horizontal or vertical",
         "maxLines": "Maximum 2 vertical and 2 horizontal lines allowed"
-      }
+      },
+      "verticalGuide": "Vertical Guide #{{number}}"
     },
     "layout": {
       "split": "Split"
@@ -634,16 +643,16 @@
       "maskingTitle": "Masking",
       "masksTitle": "Masks",
       "params": {
+        "fadeAfter": "Full edge distance",
+        "fadeBefore": "Zero edge distance",
+        "falloff": "Fade curve",
         "feather": "Feather",
         "globalFeather": "Global Feather",
         "grow": "Grow",
-        "tolerance": "Tolerance",
-        "falloff": "Fade curve",
         "linearFalloff": "Linear",
-        "smoothFalloff": "Smooth",
         "smootherFalloff": "Extra smooth",
-        "fadeBefore": "Zero edge distance",
-        "fadeAfter": "Full edge distance"
+        "smoothFalloff": "Smooth",
+        "tolerance": "Tolerance"
       },
       "patches": {
         "copyName": "{{name}} Copy",
@@ -721,8 +730,8 @@
       "organization": {
         "addTagPlaceholder": "Add tag...",
         "colorLabel": "Color Label",
-        "noTags": "No tags",
         "none": "None",
+        "noTags": "No tags",
         "rating": "Rating",
         "ratingLabels": "Rating & Labels",
         "tags": "Tags",
@@ -875,12 +884,12 @@
       "estimatedSize": "Estimated file size: ~{{size}}",
       "estimatedTotalSize": "Estimated total size: ~{{size}}",
       "estimatingSize": "Estimating size...",
+      "exporting": "Exporting…",
+      "exportingProgress": "Exporting… ({{current}}/{{total}})",
       "exportMultiple": "Export {{count}} {{label}}",
       "exportMultiple_one": "Export {{count}} {{label}}",
       "exportMultiple_other": "Export {{count}} {{label}}",
       "exportSingle": "Export {{label}}",
-      "exporting": "Exporting…",
-      "exportingProgress": "Exporting… ({{current}}/{{total}})",
       "failed": "Export failed",
       "noImageSelected": "No image selected for export.",
       "noImagesSelected": "No images selected.",
@@ -939,8 +948,8 @@
       "iso": "ISO",
       "metadata": "Metadata",
       "noMetadataAvailable": "No metadata available",
-      "noTagsAdded": "No tags added",
       "none": "None",
+      "noTagsAdded": "No tags added",
       "rateAndLabel": "Rate & Label",
       "rating": "Rating",
       "selectImagesToCompare": "Select images to compare",
@@ -1134,6 +1143,11 @@
       "communityPresets": "Community Presets",
       "goHome": "Go to Home",
       "importImages": "Import Images"
+    },
+    "viewMode": {
+      "culling": "Culling View",
+      "grid": "Grid View",
+      "list": "List View"
     }
   },
   "masks": {
@@ -1262,9 +1276,9 @@
       "applyButton_one": "Apply to 1 image",
       "applyButton_other": "Apply to {{count}} images",
       "bestImage": "Best Image",
+      "blurryImagesTab": "Blurry Images",
       "blurThreshold": "Blur Threshold",
       "blurThresholdDesc": "Images with a sharpness score below this value are flagged. Higher is stricter.",
-      "blurryImagesTab": "Blurry Images",
       "cancel": "Cancel",
       "close": "Close",
       "cullingFailed": "Culling Failed",
@@ -1829,8 +1843,8 @@
     "tagging": {
       "addCustomPlaceholder": "Add custom AI tags (comma separated)...",
       "addCustomTooltip": "Add AI tag",
-      "addShortcutTooltip": "Add Shortcut",
       "addShortcutsPlaceholder": "Add shortcuts (comma separated)...",
+      "addShortcutTooltip": "Add Shortcut",
       "aiTagging": "AI Tagging",
       "aiTaggingDesc": "Enables automatic image tagging using an AI (CLIP) model. This will download an additional model and impact performance while browsing folders. Tags are used for searching a folder.",
       "amount": "Amount",

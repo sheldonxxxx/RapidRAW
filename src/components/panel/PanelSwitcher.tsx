@@ -30,7 +30,7 @@ export const PANEL_ICONS: Record<Panel, LucideIcon> = {
   [Panel.Tethering]: Camera,
 };
 
-const PANEL_TITLES: Record<Panel, string> = {
+const PANEL_TITLES = {
   [Panel.Metadata]: 'editor.switcher.tooltips.info',
   [Panel.Adjustments]: 'editor.switcher.tooltips.adjust',
   [Panel.Crop]: 'editor.switcher.tooltips.crop',
@@ -40,7 +40,7 @@ const PANEL_TITLES: Record<Panel, string> = {
   [Panel.Export]: 'editor.switcher.tooltips.export',
   [Panel.FolderTree]: 'library.folders.sourcesTitle',
   [Panel.Tethering]: 'editor.switcher.tooltips.tethering',
-};
+} as const;
 
 function PanelTab({ panel, region, side }: { panel: Panel; region: PanelRegion; side: 'left' | 'right' }) {
   const { t } = useTranslation();
@@ -111,7 +111,9 @@ export default function PanelSwitcher({
   const movePanelToIndex = useUIStore((s) => s.movePanelToIndex);
 
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const [indicatorProps, setIndicatorProps] = useState<any>({});
+  const [indicatorProps, setIndicatorProps] = useState<
+    Pick<React.CSSProperties, 'top' | 'left' | 'right' | 'bottom' | 'height' | 'width'>
+  >({});
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const { setNodeRef, isOver } = useDroppable({
@@ -166,7 +168,7 @@ export default function PanelSwitcher({
         }
       }
 
-      let style: any = {};
+      let style: Pick<React.CSSProperties, 'top' | 'left' | 'right' | 'bottom' | 'height' | 'width'>;
       if (tabs.length === 0) {
         style = isVertical ? { top: 4, left: 4, right: 4, height: 2 } : { left: 4, top: 4, bottom: 4, width: 2 };
       } else if (insertIndex < tabs.length) {
@@ -262,10 +264,14 @@ export function MobilePanelSwitcher({
   const isVertical = placement === 'right';
 
   return (
-    <div className={clsx(
-      'flex items-center p-1.5 gap-1 shrink-0 custom-scrollbar',
-      isVertical ? 'flex-col overflow-y-auto h-full border-l border-surface' : 'flex-row overflow-x-auto w-full border-t border-surface',
-    )}>
+    <div
+      className={clsx(
+        'flex items-center p-1.5 gap-1 shrink-0 custom-scrollbar',
+        isVertical
+          ? 'flex-col overflow-y-auto h-full border-l border-surface'
+          : 'flex-row overflow-x-auto w-full border-t border-surface',
+      )}
+    >
       {MOBILE_PANELS.map((id) => {
         const Icon = PANEL_ICONS[id];
         const isActive = activePanel === id;

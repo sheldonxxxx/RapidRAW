@@ -1,3 +1,4 @@
+import type { MainLibraryProps } from '../panel/MainLibrary';
 import { useShallow } from 'zustand/react/shallow';
 
 import CommunityPage from '../panel/CommunityPage';
@@ -25,20 +26,20 @@ interface LibraryViewProps {
   setThumbnailAspectRatio: (ratio: ThumbnailAspectRatio) => void;
   setLibraryViewMode: (mode: LibraryViewMode) => void;
   handleClearSelection: () => void;
-  handleLibraryImageSingleClick: (...args: any) => void;
-  handleImageSelect: (...args: any) => void;
-  handleRate: (...args: any) => void;
-  handleThumbnailContextMenu: (...args: any) => void;
-  handleMainLibraryContextMenu: (...args: any) => void;
-  handleContinueSession: (...args: any) => void;
-  handleGoHome: (...args: any) => void;
-  handleOpenFolder: (...args: any) => void;
+  handleLibraryImageSingleClick: MainLibraryProps['onImageClick'];
+  handleImageSelect: MainLibraryProps['onImageDoubleClick'];
+  handleRate: (rating: number) => void;
+  handleThumbnailContextMenu: MainLibraryProps['onContextMenu'];
+  handleMainLibraryContextMenu: MainLibraryProps['onEmptyAreaContextMenu'];
+  handleContinueSession: () => void;
+  handleGoHome: () => void;
+  handleOpenFolder: () => void;
   handleImportClick: (path: string) => void;
   handleLibraryRefresh: () => Promise<void>;
   handleCopyAdjustments: () => void;
   handlePasteAdjustments: () => void;
   handleResetAdjustments: () => void;
-  requestThumbnails: any;
+  requestThumbnails: MainLibraryProps['onRequestThumbnails'];
 }
 
 export default function LibraryView({
@@ -153,7 +154,9 @@ export default function LibraryView({
             onGoHome={handleGoHome}
             onImageClick={handleLibraryImageSingleClick}
             onImageDoubleClick={handleImageSelect}
-            onImportClick={() => handleImportClick(currentFolderPath as string)}
+            onImportClick={() => {
+              if (currentFolderPath) handleImportClick(currentFolderPath);
+            }}
             onLibraryRefresh={handleLibraryRefresh}
             onOpenFolder={handleOpenFolder}
             onSettingsChange={handleSettingsChange}

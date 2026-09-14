@@ -1,3 +1,80 @@
+interface SettingsPanelProps {
+  container: AiPatch | null;
+  activeSubMask: SubMask | null;
+  aiModelDownloadStatus: string | null;
+  brushSettings: BrushSettings;
+  setBrushSettings: React.Dispatch<React.SetStateAction<BrushSettings>>;
+  updateContainer: (id: string, data: Partial<AiPatch>) => void;
+  updateSubMask: (id: string, data: Partial<SubMask>) => void;
+  isGeneratingAi: boolean;
+  isGeneratingAiMask: boolean;
+  onGenerativeReplace: ReturnType<typeof useAiMasking>['handleGenerativeReplace'];
+  collapsibleState: { generative: boolean; properties: boolean };
+  setCollapsibleState: React.Dispatch<React.SetStateAction<{ generative: boolean; properties: boolean }>>;
+  isGenerativeAvailable: boolean;
+  capabilityState: CapabilityState;
+  retryCapabilities: () => void;
+  onManualCleanup: ReturnType<typeof useAiMasking>['handleDirectPatch'];
+}
+interface SubMaskRowProps {
+  subMask: SubMask;
+  index: number;
+  totalCount: number;
+  containerId: string;
+  isActive: boolean;
+  parentVisible: boolean;
+  onSelect: () => void;
+  updateSubMask: (id: string, data: Partial<SubMask>) => void;
+  handleDelete: () => void;
+  handleDuplicate: () => void;
+  handleDuplicateAndInvert: () => void;
+  handlePaste: () => void;
+  handleCopy: () => void;
+  hasCopiedSubMask: boolean;
+  activeDragItem: DragData | null;
+  analyzingSubMaskId: string | null;
+  renamingId: string | null;
+  setRenamingId: (id: string | null) => void;
+  tempName: string;
+  setTempName: (value: string) => void;
+  isParentLoading: boolean;
+}
+interface ContainerRowProps {
+  container: AiPatch;
+  isSelected: boolean;
+  hasActiveChild: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onSelect: () => void;
+  renamingId: string | null;
+  setRenamingId: (id: string | null) => void;
+  tempName: string;
+  setTempName: (value: string) => void;
+  updateContainer: (id: string, data: Partial<AiPatch>) => void;
+  handleDelete: (id: string) => void;
+  handleDuplicate: (container: AiPatch) => void;
+  handleDuplicateAndInvert: (container: AiPatch) => void;
+  handlePastePatch: (insertAfterContainerId?: string) => void;
+  copyPatchToClipboard: (container: AiPatch) => void;
+  copiedPatch: AiPatch | null;
+  activeDragItem: DragData | null;
+  activeSubMaskId: string | null;
+  activePatchContainerId: string | null;
+  onSelectContainer: (id: string | null) => void;
+  onSelectSubMask: (id: string | null) => void;
+  updateSubMask: (id: string, data: Partial<SubMask>) => void;
+  handleDeleteSubMask: (containerId: string, subMaskId: string) => void;
+  handleDuplicateSubMask: (containerId: string, subMask: SubMask, insertIndex?: number) => void;
+  handleDuplicateAndInvertSubMask: (containerId: string, subMask: SubMask) => void;
+  handlePasteSubMask: (containerId: string, insertIndex?: number) => void;
+  copySubMaskToClipboard: (subMask: SubMask) => void;
+  copiedSubMask: SubMask | null;
+  analyzingSubMaskId: string | null;
+  onAddComponent: (event: React.MouseEvent) => void;
+}
+import type { BrushSettings, Option } from '../../ui/AppProperties';
+import type { SubMaskConfig } from './Masks';
+import type { CapabilityState } from '../../../utils/generationOptions';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -98,7 +175,7 @@ const PLACEHOLDER_PATCH: AiPatch = {
   patchData: null,
 };
 
-const SUB_MASK_CONFIG: any = {
+const SUB_MASK_CONFIG: Partial<Record<Mask, SubMaskConfig>> = {
   [Mask.Radial]: {
     parameters: [{ key: 'feather', min: 0, max: 100, step: 1, multiplier: 100, defaultValue: 50 }],
   },
@@ -140,7 +217,13 @@ const SUB_MASK_CONFIG: any = {
   },
 };
 
-const BrushTools = ({ settings, onSettingsChange }: { settings: any; onSettingsChange: any }) => {
+const BrushTools = ({
+  settings,
+  onSettingsChange,
+}: {
+  settings: BrushSettings;
+  onSettingsChange: React.Dispatch<React.SetStateAction<BrushSettings>>;
+}) => {
   const { t } = useTranslation();
 
   return (
@@ -150,7 +233,7 @@ const BrushTools = ({ settings, onSettingsChange }: { settings: any; onSettingsC
         label={t('editor.ai.brush.size')}
         max={200}
         min={1}
-        onChange={(e: any) => onSettingsChange((s: any) => ({ ...s, size: Number(e.target.value) }))}
+        onChange={(e) => onSettingsChange((s) => ({ ...s, size: Number(e.target.value) }))}
         step={1}
         value={settings.size}
         fillOrigin="min"
@@ -160,7 +243,7 @@ const BrushTools = ({ settings, onSettingsChange }: { settings: any; onSettingsC
         label={t('editor.ai.brush.feather')}
         max={100}
         min={0}
-        onChange={(e: any) => onSettingsChange((s: any) => ({ ...s, feather: Number(e.target.value) }))}
+        onChange={(e) => onSettingsChange((s) => ({ ...s, feather: Number(e.target.value) }))}
         step={1}
         value={settings.feather}
         fillOrigin="min"
@@ -172,7 +255,7 @@ const BrushTools = ({ settings, onSettingsChange }: { settings: any; onSettingsC
               ? 'text-primary bg-surface'
               : 'bg-surface text-text-secondary hover:bg-card-active'
           }`}
-          onClick={() => onSettingsChange((s: any) => ({ ...s, tool: ToolType.Brush }))}
+          onClick={() => onSettingsChange((s) => ({ ...s, tool: ToolType.Brush }))}
         >
           {t('editor.ai.brush.add')}
         </button>
@@ -182,7 +265,7 @@ const BrushTools = ({ settings, onSettingsChange }: { settings: any; onSettingsC
               ? 'text-primary bg-surface'
               : 'bg-surface text-text-secondary hover:bg-card-active'
           }`}
-          onClick={() => onSettingsChange((s: any) => ({ ...s, tool: ToolType.Eraser }))}
+          onClick={() => onSettingsChange((s) => ({ ...s, tool: ToolType.Eraser }))}
         >
           {t('editor.ai.brush.erase')}
         </button>
@@ -209,10 +292,10 @@ const ConnectionStatus = ({
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
 
-  let statusColor = 'bg-green-500';
-  let statusText = t('editor.ai.connection.ready');
-  let titleText = t('editor.ai.connection.backendLabel');
-  let hoverContent: React.ReactNode = null;
+  let statusColor: string;
+  let statusText: string;
+  let titleText: string;
+  let hoverContent: React.ReactNode;
 
   if (aiProvider === 'cloud') {
     titleText = t('editor.ai.connection.cloudLabel');
@@ -308,7 +391,7 @@ function AiListRoot({
 }: {
   children: React.ReactNode;
   onClick: () => void;
-  activeDragItem: any;
+  activeDragItem: DragData | null;
   hasPatches: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: 'ai-list-root' });
@@ -391,8 +474,13 @@ export default function AIPanel() {
   }, [aiProvider, isSignedIn, isPro, getToken]);
 
   const setBrushSettings = useCallback(
-    (updater: any) =>
-      setEditor((state) => ({ brushSettings: typeof updater === 'function' ? updater(state.brushSettings) : updater })),
+    (updater: React.SetStateAction<BrushSettings>) =>
+      setEditor((state) => ({
+        brushSettings:
+          typeof updater === 'function'
+            ? updater(state.brushSettings ?? { size: 100, feather: 50, tool: ToolType.Brush })
+            : updater,
+      })),
     [setEditor],
   );
 
@@ -533,7 +621,7 @@ export default function AIPanel() {
   };
 
   const createMaskLogic = (type: Mask, mode: SubMaskMode = SubMaskMode.Additive) => {
-    if (!selectedImage) return createSubMask(type, {} as any, mode);
+    if (!selectedImage) return createSubMask(type, null, mode);
     const subMask = createSubMask(type, selectedImage, mode);
 
     const steps = adjustments?.orientationSteps || 0;
@@ -543,7 +631,7 @@ export default function AIPanel() {
 
     const config = SUB_MASK_CONFIG[type];
     if (config && config.parameters) {
-      config.parameters.forEach((param: any) => {
+      config.parameters.forEach((param) => {
         if (param.defaultValue !== undefined) {
           subMask.parameters[param.key] = param.defaultValue / (param.multiplier || 1);
         }
@@ -690,7 +778,7 @@ export default function AIPanel() {
 
     const hasComponents = container && container.subMasks.length > 0;
 
-    let options: any[];
+    let options: Option[];
 
     if (!targetContainerId) {
       options = [
@@ -723,13 +811,13 @@ export default function AIPanel() {
     showContextMenu(rect.left, rect.bottom + 5, options);
   };
 
-  const updatePatch = (id: string, data: any) =>
+  const updatePatch = (id: string, data: Partial<AiPatch>) =>
     setAdjustments((prev: Adjustments) => ({
       ...prev,
       aiPatches: prev.aiPatches.map((p) => (p.id === id ? { ...p, ...data } : p)),
     }));
 
-  const updateSubMask = (id: string, data: any) =>
+  const updateSubMask = (id: string, data: Partial<SubMask>) =>
     setAdjustments((prev: Adjustments) => ({
       ...prev,
       aiPatches: prev.aiPatches.map((p) => ({
@@ -1227,7 +1315,6 @@ export default function AIPanel() {
                           handlePastePatch={handlePastePatch}
                           copyPatchToClipboard={copyPatchToClipboard}
                           copiedPatch={copiedPatch}
-                          setAdjustments={setAdjustments}
                           activeDragItem={activeDragItem}
                           activeSubMaskId={activeSubMaskId}
                           activePatchContainerId={activePatchContainerId}
@@ -1279,7 +1366,7 @@ export default function AIPanel() {
                       container={activeContainer || null}
                       activeSubMask={activeSubMaskData || null}
                       aiModelDownloadStatus={aiModelDownloadStatus}
-                      brushSettings={brushSettings}
+                      brushSettings={brushSettings ?? { size: 100, feather: 50, tool: ToolType.Brush }}
                       setBrushSettings={setBrushSettings}
                       updateContainer={updatePatch}
                       updateSubMask={updateSubMask}
@@ -1363,7 +1450,15 @@ export default function AIPanel() {
   );
 }
 
-function DraggableGridItem({ maskType, isGenerating, onClick }: any) {
+function DraggableGridItem({
+  maskType,
+  isGenerating,
+  onClick,
+}: {
+  maskType: MaskType;
+  isGenerating: boolean;
+  onClick: () => void;
+}) {
   const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `create-ai-${maskType.type}`,
@@ -1436,7 +1531,7 @@ function ContainerRow({
   copiedSubMask,
   analyzingSubMaskId,
   onAddComponent,
-}: any) {
+}: ContainerRowProps) {
   const { t } = useTranslation();
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id: container.id,
@@ -1470,7 +1565,7 @@ function ContainerRow({
     e.preventDefault();
     e.stopPropagation();
 
-    const menuOptions: any[] = [
+    const menuOptions: Option[] = [
       {
         label: t('editor.ai.actions.rename'),
         icon: FileEdit,
@@ -1726,7 +1821,7 @@ function SubMaskRow({
   tempName,
   setTempName,
   isParentLoading,
-}: any) {
+}: SubMaskRowProps) {
   const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: subMask.id,
@@ -1944,7 +2039,7 @@ function SettingsPanel({
   capabilityState,
   retryCapabilities,
   onManualCleanup,
-}: any) {
+}: SettingsPanelProps) {
   const { t } = useTranslation();
   const isActive = !!container;
   const isComponentMode = !!activeSubMask;
@@ -2011,8 +2106,8 @@ function SettingsPanel({
     onGenerativeReplace(container.id, prompt, useFastInpaint, useFastInpaint ? undefined : generationSelection.options);
   };
 
-  const handleToggleSection = (section: string) =>
-    setCollapsibleState((prev: any) => ({ ...prev, [section]: !prev[section] }));
+  const handleToggleSection = (section: 'generative' | 'properties') =>
+    setCollapsibleState((prev) => ({ ...prev, [section]: !prev[section] }));
 
   return (
     <div
@@ -2078,11 +2173,11 @@ function SettingsPanel({
                       <Input
                         className="grow"
                         disabled={isGeneratingAi || displayContainer.isLoading}
-                        onChange={(e: any) => {
+                        onChange={(e) => {
                           setPrompt(e.target.value);
                         }}
                         onBlur={() => isActive && updateContainer(container.id, { prompt })}
-                        onKeyDown={(e: any) => {
+                        onKeyDown={(e) => {
                           if (e.key === 'Enter') handleGenerateClick();
                         }}
                         placeholder={t('editor.ai.settings.placeholder')}
@@ -2157,7 +2252,7 @@ function SettingsPanel({
               onChange={(v) =>
                 isComponentMode
                   ? updateSubMask(activeSubMask.id, { invert: v })
-                  : updateContainer(container.id, { invert: v })
+                  : container && updateContainer(container.id, { invert: v })
               }
             />
           )}
@@ -2180,7 +2275,7 @@ function SettingsPanel({
                 </Text>
               )}
 
-              {subMaskConfig.parameters?.map((param: any) => (
+              {subMaskConfig.parameters?.map((param) => (
                 <Slider
                   key={param.key}
                   label={t('editor.ai.params.' + param.key, param.key)}
@@ -2189,18 +2284,18 @@ function SettingsPanel({
                   step={param.step}
                   defaultValue={param.defaultValue}
                   value={(activeSubMask.parameters[param.key] ?? param.defaultValue) * (param.multiplier || 1)}
-                  onChange={(e: any) =>
+                  onChange={(e) =>
                     updateSubMask(activeSubMask.id, {
                       parameters: {
                         ...activeSubMask.parameters,
-                        [param.key]: parseFloat(e.target.value) / (param.multiplier || 1),
+                        [param.key]: Number(e.target.value) / (param.multiplier || 1),
                       },
                     })
                   }
                   onPointerUp={() => {
                     const isDirectTool = activeSubMask.type === Mask.Liquify || activeSubMask.type === Mask.Retouch;
 
-                    if (isDirectTool && activeSubMask.parameters?.lines?.length > 0) {
+                    if (isDirectTool && (activeSubMask.parameters?.lines?.length ?? 0) > 0) {
                       setTimeout(() => {
                         onManualCleanup(activeSubMask.id, 0, 0);
                       }, 0);
@@ -2229,7 +2324,7 @@ function SettingsPanel({
                       });
 
                       setTimeout(() => {
-                        if (activeSubMask.parameters?.lines?.length > 0) {
+                        if ((activeSubMask.parameters?.lines?.length ?? 0) > 0) {
                           onManualCleanup(activeSubMask.id, 0, 0);
                         }
                       }, 0);

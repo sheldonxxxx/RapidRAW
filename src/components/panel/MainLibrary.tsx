@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import type { TFunction } from 'i18next';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { open } from '@tauri-apps/plugin-shell';
 import {
@@ -44,6 +45,8 @@ import SettingsPanel from './SettingsPanel';
 import LibraryGrid from './library/LibraryGrid';
 import { SearchInput, ViewOptionsDropdown } from './library/LibraryHeader';
 
+const SPLASH_PHOTOGRAPHER = 'Timon Käch';
+
 export interface ColumnWidths {
   thumbnail: number;
   name: number;
@@ -56,7 +59,7 @@ export interface ColumnWidths {
   focal: number;
 }
 
-interface MainLibraryProps {
+export interface MainLibraryProps {
   activePath: string | null;
   aiModelDownloadStatus: string | null;
   appSettings: AppSettings | null;
@@ -73,11 +76,11 @@ interface MainLibraryProps {
   libraryViewMode: LibraryViewMode;
   multiSelectedPaths: Array<string>;
   onClearSelection(): void;
-  onContextMenu(event: any, path: string): void;
+  onContextMenu(event: React.MouseEvent, path: string): void;
   onContinueSession(): void;
-  onEmptyAreaContextMenu(event: any): void;
+  onEmptyAreaContextMenu(event: React.MouseEvent): void;
   onGoHome(): void;
-  onImageClick(path: string, event: any): void;
+  onImageClick(path: string, event: React.MouseEvent): void;
   onImageDoubleClick(path: string): void;
   onImportClick(): void;
   onLibraryRefresh(): void;
@@ -98,7 +101,7 @@ interface MainLibraryProps {
 interface DisplayModeSwitchProps {
   displayMode: LibraryDisplayMode;
   setDisplayMode: (mode: LibraryDisplayMode) => void;
-  t: any;
+  t: TFunction;
 }
 
 function DisplayModeSwitch({ displayMode, setDisplayMode, t }: DisplayModeSwitchProps) {
@@ -435,7 +438,7 @@ export default function MainLibrary(props: MainLibraryProps) {
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        Timon Käch
+                        {SPLASH_PHOTOGRAPHER}
                       </a>
                     </p>
                     {appVersion && (

@@ -172,7 +172,6 @@ export interface ParametricCurve {
 }
 
 export interface Adjustments {
-  [index: string]: any;
   aiPatches: Array<AiPatch>;
   aspectRatio: number | null;
   blacks: number;
@@ -269,6 +268,12 @@ export interface Adjustments {
   whites: number;
 }
 
+export type AdjustmentSetter = (value: Partial<Adjustments> | ((previous: Adjustments) => Adjustments)) => void;
+
+export type MaskAdjustmentSetter = (
+  value: Partial<MaskAdjustments> | ((previous: MaskAdjustments) => MaskAdjustments),
+) => void;
+
 export interface GenerationOptions {
   seed?: number;
   profile?: string;
@@ -287,7 +292,13 @@ export interface AiPatchGeneration {
 }
 
 export interface AiPatchData {
-  [key: string]: any;
+  color: string;
+  mask: string;
+  offsetX?: number;
+  offsetY?: number;
+  width?: number;
+  height?: number;
+  isSrgbEncoded?: boolean;
   generation?: AiPatchGeneration;
 }
 
@@ -305,10 +316,10 @@ export interface AiPatch {
 
 export interface Color {
   color: string;
-  name: string;
+  name: 'red' | 'yellow' | 'green' | 'blue' | 'purple';
 }
 
-interface ColorGradingProps {
+export interface ColorGradingProps {
   [index: string]: number | HueSatLum;
   balance: number;
   blending: number;
@@ -337,7 +348,7 @@ export interface HueSatLum {
   luminance: number;
 }
 
-interface Hsl {
+export interface Hsl {
   [index: string]: HueSatLum;
   aquas: HueSatLum;
   blues: HueSatLum;
@@ -350,7 +361,6 @@ interface Hsl {
 }
 
 export interface MaskAdjustments {
-  [index: string]: any;
   blacks: number;
   brightness: number;
   clarity: number;
@@ -385,7 +395,7 @@ export interface MaskAdjustments {
 
 export interface MaskContainer {
   adjustments: MaskAdjustments;
-  id?: any;
+  id: string;
   invert: boolean;
   name: string;
   opacity: number;
@@ -394,13 +404,14 @@ export interface MaskContainer {
 }
 
 export interface Sections {
-  [index: string]: Array<string>;
-  basic: Array<string>;
-  curves: Array<string>;
-  color: Array<string>;
-  details: Array<string>;
-  effects: Array<string>;
+  basic: Array<keyof Adjustments>;
+  curves: Array<keyof Adjustments>;
+  color: Array<keyof Adjustments>;
+  details: Array<keyof Adjustments>;
+  effects: Array<keyof Adjustments>;
 }
+
+export type AdjustmentSection = keyof Sections;
 
 export interface SectionVisibility {
   [index: string]: boolean;
@@ -525,7 +536,7 @@ export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
   whites: 0,
 };
 
-export const INITIAL_MASK_CONTAINER: MaskContainer = {
+export const INITIAL_MASK_CONTAINER: Omit<MaskContainer, 'id'> = {
   adjustments: INITIAL_MASK_ADJUSTMENTS,
   invert: false,
   name: 'New Mask',
@@ -636,7 +647,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   whites: 0,
 };
 
-const deepCloneCurves = (curves: any): Curves => ({
+const deepCloneCurves = (curves: Partial<Curves> | undefined): Curves => ({
   blue: curves?.blue?.map((p: Coord) => ({ ...p })) || [
     { x: 0, y: 0 },
     { x: 255, y: 255 },
@@ -655,25 +666,26 @@ const deepCloneCurves = (curves: any): Curves => ({
   ],
 });
 
-const deepCloneParametric = (pCurve: any): ParametricCurve => ({
+const deepCloneParametric = (pCurve: Partial<ParametricCurve> | undefined): ParametricCurve => ({
   luma: { ...DEFAULT_PARAMETRIC_CURVE_SETTINGS, ...(pCurve?.luma || {}) },
   red: { ...DEFAULT_PARAMETRIC_CURVE_SETTINGS, ...(pCurve?.red || {}) },
   green: { ...DEFAULT_PARAMETRIC_CURVE_SETTINGS, ...(pCurve?.green || {}) },
   blue: { ...DEFAULT_PARAMETRIC_CURVE_SETTINGS, ...(pCurve?.blue || {}) },
 });
 
-export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any => {
+export const normalizeLoadedAdjustments = (loadedAdjustments: Partial<Adjustments> | null | undefined): Adjustments => {
   if (!loadedAdjustments) {
     return INITIAL_ADJUSTMENTS;
   }
 
-  const normalizeSubMasks = (subMasks: any[]) => {
-    return (subMasks || []).map((subMask: Partial<SubMask>) => ({
-      visible: true,
-      mode: SubMaskMode.Additive,
-      invert: false,
-      opacity: 100,
+  const normalizeSubMasks = (subMasks: SubMask[] | undefined): SubMask[] => {
+    return (subMasks || []).map((subMask) => ({
       ...subMask,
+      visible: subMask.visible ?? true,
+      mode: subMask.mode ?? SubMaskMode.Additive,
+      invert: subMask.invert ?? false,
+      opacity: subMask.opacity ?? 100,
+      parameters: subMask.parameters ?? {},
     }));
   };
 
@@ -683,8 +695,8 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
 
     return {
       ...INITIAL_MASK_CONTAINER,
-      id: maskContainer.id || uuidv4(),
       ...maskContainer,
+      id: maskContainer.id || uuidv4(),
       adjustments: {
         ...INITIAL_MASK_ADJUSTMENTS,
         ...containerAdjustments,
@@ -712,9 +724,9 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     };
   });
 
-  const normalizedAiPatches = (loadedAdjustments.aiPatches || []).map((patch: any) => ({
-    visible: true,
+  const normalizedAiPatches = (loadedAdjustments.aiPatches || []).map((patch) => ({
     ...patch,
+    visible: patch.visible ?? true,
     subMasks: normalizeSubMasks(patch.subMasks),
   }));
 
@@ -725,7 +737,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
       enabled: loadedAdjustments.guidedPerspective?.enabled ?? false,
       lines: (() => {
         const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
-        const raw = (loadedAdjustments.guidedPerspective?.lines || []).map((l: any) => ({
+        const raw = (loadedAdjustments.guidedPerspective?.lines || []).map((l) => ({
           id: l.id || uuidv4(),
           type: (l.type === 'horizontal' ? 'horizontal' : 'vertical') as 'vertical' | 'horizontal',
           p1: { x: clamp01(l.p1?.x ?? 0), y: clamp01(l.p1?.y ?? 0) },
@@ -787,9 +799,32 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
   };
 };
 
+export function isAdjustmentKey(key: string): key is keyof Adjustments {
+  return Object.hasOwn(INITIAL_ADJUSTMENTS, key);
+}
+
+export function copyAdjustmentKeys<K extends keyof Adjustments>(
+  target: Partial<Adjustments>,
+  source: Partial<Adjustments>,
+  keys: readonly K[],
+): void {
+  for (const key of keys) {
+    if (key in source) target[key] = source[key];
+  }
+}
+
+export function pickAdjustments(
+  source: Partial<Adjustments>,
+  keys: readonly (keyof Adjustments)[],
+): Partial<Adjustments> {
+  const selected: Partial<Adjustments> = {};
+  copyAdjustmentKeys(selected, source, keys);
+  return selected;
+}
+
 export interface AdjustmentGroup {
-  label: string;
-  keys: string[];
+  label: import('i18next').ParseKeys;
+  keys: (keyof Adjustments)[];
 }
 
 export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
@@ -911,7 +946,7 @@ export const ADJUSTMENT_GROUPS: Record<string, AdjustmentGroup[]> = {
   masks: [{ label: 'modals.copyPaste.groups.masks', keys: ['masks'] }],
 };
 
-export const COPYABLE_ADJUSTMENT_KEYS: string[] = Object.values(ADJUSTMENT_GROUPS)
+export const COPYABLE_ADJUSTMENT_KEYS: (keyof Adjustments)[] = Object.values(ADJUSTMENT_GROUPS)
   .flat()
   .flatMap((group) => group.keys);
 

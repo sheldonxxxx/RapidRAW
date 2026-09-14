@@ -4,10 +4,13 @@ import { toast } from 'react-toastify';
 import { useEditorStore } from '../store/useEditorStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { Invokes } from '../components/ui/AppProperties';
+import { Invokes, ImageMetadata } from '../components/ui/AppProperties';
 import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
 
-export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
+import type { ImageCacheEntry } from '../utils/ImageLRUCache';
+import type { LoadImageResult } from './hookTypes';
+
+export function useImageLoader(cachedEditStateRef: React.RefObject<ImageCacheEntry | null>) {
   const selectedImage = useEditorStore((s) => s.selectedImage);
   const adjustments = useEditorStore((s) => s.adjustments);
   const histogram = useEditorStore((s) => s.histogram);
@@ -34,11 +37,11 @@ export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
           useEditorStore.getState().patchesSentToBackend.clear();
           await invoke('clear_session_caches').catch((e) => console.warn('Cache clear failed:', e));
 
-          const metadata: any = await invoke(Invokes.LoadMetadata, { path: selectedImage.path });
+          const metadata: ImageMetadata = await invoke(Invokes.LoadMetadata, { path: selectedImage.path });
           if (!isEffectActive) return;
 
           let initialAdjusts;
-          if (metadata.adjustments && !metadata.adjustments.is_null) {
+          if (metadata.adjustments) {
             initialAdjusts = normalizeLoadedAdjustments(metadata.adjustments);
           } else {
             initialAdjusts = { ...INITIAL_ADJUSTMENTS };
@@ -53,7 +56,7 @@ export function useImageLoader(cachedEditStateRef: React.RefObject<any>) {
 
       const loadFullImageData = async () => {
         try {
-          const loadImageResult: any = await invoke(Invokes.LoadImage, { path: selectedImage.path });
+          const loadImageResult: LoadImageResult = await invoke(Invokes.LoadImage, { path: selectedImage.path });
           if (!isEffectActive) return;
 
           const { width, height } = loadImageResult;

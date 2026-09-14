@@ -6,14 +6,17 @@ import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useLibraryStore } from '../store/useLibraryStore';
-import { Adjustments, COPYABLE_ADJUSTMENT_KEYS } from '../utils/adjustments';
+import { Adjustments, COPYABLE_ADJUSTMENT_KEYS, copyAdjustmentKeys } from '../utils/adjustments';
 import { Invokes, Panel } from '../components/ui/AppProperties';
 import { debouncedSave } from './useEditorActions';
 import { globalImageCache } from '../utils/ImageLRUCache';
 
+import type { AppNavigationProps } from './useAppNavigation';
+import type { SubMask } from '../components/panel/right/Masks';
+
 export function useImageProcessing(
-  transformWrapperRef: any,
-  prevAdjustmentsRef: React.RefObject<any>,
+  transformWrapperRef: AppNavigationProps['refs']['transformWrapperRef'],
+  prevAdjustmentsRef: AppNavigationProps['refs']['prevAdjustmentsRef'],
   renderRefs: {
     previewJobIdRef: React.RefObject<number>;
     latestRenderedJobIdRef: React.RefObject<number>;
@@ -130,11 +133,11 @@ export function useImageProcessing(
       const { patchesSentToBackend } = useEditorStore.getState();
       const newlySentPatches = new Set<string>();
 
-      const processSubMasks = (subMasks: any[]) => {
+      const processSubMasks = (subMasks: SubMask[]) => {
         if (!Array.isArray(subMasks)) return;
-        subMasks.forEach((sm: any) => {
+        subMasks.forEach((sm) => {
           if (sm.id && sm.parameters) {
-            const keys = ['mask_data_base64', 'maskDataBase64'];
+            const keys = ['mask_data_base64', 'maskDataBase64'] as const;
             let foundMaskData = false;
 
             for (const key of keys) {
@@ -153,7 +156,7 @@ export function useImageProcessing(
       };
 
       if (payload.aiPatches && Array.isArray(payload.aiPatches)) {
-        payload.aiPatches.forEach((p: any) => {
+        payload.aiPatches.forEach((p) => {
           if (p.id && p.patchData && !p.isLoading) {
             if (patchesSentToBackend.has(p.id)) {
               p.patchData = null;
@@ -166,7 +169,7 @@ export function useImageProcessing(
       }
 
       if (payload.masks && Array.isArray(payload.masks)) {
-        payload.masks.forEach((container: any) => {
+        payload.masks.forEach((container) => {
           if (container.subMasks) processSubMasks(container.subMasks);
         });
       }
@@ -218,8 +221,8 @@ export function useImageProcessing(
             const url = URL.createObjectURL(blob);
 
             setEditor((state) => {
-              if (state.interactivePatch && state.interactivePatch.url)
-                setTimeout(() => URL.revokeObjectURL(state.interactivePatch.url), 100);
+              const previousPatchUrl = state.interactivePatch?.url;
+              if (previousPatchUrl) setTimeout(() => URL.revokeObjectURL(previousPatchUrl), 100);
               return {
                 interactivePatch: {
                   url,
@@ -252,9 +255,8 @@ export function useImageProcessing(
             });
 
             setEditor((state) => {
-              if (state.interactivePatch && state.interactivePatch.url) {
-                setTimeout(() => URL.revokeObjectURL(state.interactivePatch.url), 500);
-              }
+              const previousPatchUrl = state.interactivePatch?.url;
+              if (previousPatchUrl) setTimeout(() => URL.revokeObjectURL(previousPatchUrl), 500);
               return { interactivePatch: null };
             });
           }
@@ -406,7 +408,6 @@ export function useImageProcessing(
     return () => {
       requestHiFiZoom.cancel();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeView,
     displaySize.width,
@@ -461,7 +462,7 @@ export function useImageProcessing(
             for (const key of Object.keys(adjustments) as Array<keyof Adjustments>) {
               if (includedKeys.includes(key as string)) {
                 if (JSON.stringify(adjustments[key]) !== JSON.stringify(prev.adjustments[key])) {
-                  (delta as any)[key] = adjustments[key];
+                  copyAdjustmentKeys(delta, adjustments, [key]);
                 }
               }
             }
@@ -481,7 +482,6 @@ export function useImageProcessing(
     return () => {
       if (dragIdleTimer.current) clearTimeout(dragIdleTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeView,
     adjustments,

@@ -1,3 +1,6 @@
+import { pickAdjustments } from '../../../utils/adjustments';
+import type { AdjustmentSection } from '../../../utils/adjustments';
+import type { Option } from '../../ui/AppProperties';
 import React, { useCallback } from 'react';
 import { RotateCcw, Copy, ClipboardPaste, PencilSparkles, ChartArea } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -71,7 +74,7 @@ export default function Controls() {
   );
 
   const setCopiedSectionAdjustments = useCallback(
-    (val: any) => setEditor({ copiedSectionAdjustments: val }),
+    (val: typeof copiedSectionAdjustments) => setEditor({ copiedSectionAdjustments: val }),
     [setEditor],
   );
 
@@ -86,14 +89,14 @@ export default function Controls() {
   );
 
   const setCollapsibleState = useCallback(
-    (updater: any) =>
+    (updater: React.SetStateAction<typeof collapsibleSectionsState>) =>
       setUI((state) => ({
         collapsibleSectionsState: typeof updater === 'function' ? updater(state.collapsibleSectionsState) : updater,
       })),
     [setUI],
   );
 
-  const handleToggleVisibility = (sectionName: string) => {
+  const handleToggleVisibility = (sectionName: 'basic' | 'curves' | 'color' | 'details' | 'effects') => {
     setAdjustments((prev: Adjustments) => {
       const currentVisibility: SectionVisibility = prev.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
       return {
@@ -109,22 +112,17 @@ export default function Controls() {
   const handleResetAdjustments = () => {
     setAdjustments((prev: Adjustments) => ({
       ...prev,
-      ...Object.keys(ADJUSTMENT_SECTIONS)
-        .flatMap((s) => ADJUSTMENT_SECTIONS[s])
-        .reduce((acc: any, key: string) => {
-          acc[key] = INITIAL_ADJUSTMENTS[key as keyof Adjustments];
-          return acc;
-        }, {}),
+      ...pickAdjustments(INITIAL_ADJUSTMENTS, Object.values(ADJUSTMENT_SECTIONS).flat()),
       sectionVisibility: { ...INITIAL_ADJUSTMENTS.sectionVisibility },
     }));
   };
 
-  const handleToggleSection = (section: string) => {
-    setCollapsibleState((prev: any) => {
+  const handleToggleSection = (section: AdjustmentSection) => {
+    setCollapsibleState((prev) => {
       const isOpening = !prev[section];
       if (appSettings?.enableFocusMode && isOpening) {
         const newState = { ...prev };
-        Object.keys(newState).forEach((key) => {
+        (Object.keys(newState) as AdjustmentSection[]).forEach((key) => {
           newState[key] = false;
         });
         newState[section] = true;
@@ -134,7 +132,10 @@ export default function Controls() {
     });
   };
 
-  const handleSectionContextMenu = (event: any, sectionName: string) => {
+  const handleSectionContextMenu = (
+    event: React.MouseEvent,
+    sectionName: 'basic' | 'curves' | 'color' | 'details' | 'effects',
+  ) => {
     event.preventDefault();
     event.stopPropagation();
 
@@ -144,12 +145,7 @@ export default function Controls() {
     }
 
     const handleCopy = () => {
-      const adjustmentsToCopy: any = {};
-      for (const key of sectionKeys) {
-        if (Object.prototype.hasOwnProperty.call(adjustments, key)) {
-          adjustmentsToCopy[key] = JSON.parse(JSON.stringify(adjustments[key as keyof Adjustments]));
-        }
-      }
+      const adjustmentsToCopy = structuredClone(pickAdjustments(adjustments, sectionKeys));
       setCopiedSectionAdjustments({ section: sectionName, values: adjustmentsToCopy });
     };
 
@@ -168,10 +164,7 @@ export default function Controls() {
     };
 
     const handleReset = () => {
-      const resetValues: any = {};
-      for (const key of sectionKeys) {
-        resetValues[key] = JSON.parse(JSON.stringify(INITIAL_ADJUSTMENTS[key as keyof Adjustments]));
-      }
+      const resetValues = structuredClone(pickAdjustments(INITIAL_ADJUSTMENTS, sectionKeys));
       setAdjustments((prev: Adjustments) => ({
         ...prev,
         ...resetValues,
@@ -189,7 +182,7 @@ export default function Controls() {
       ? t('editor.adjustments.actions.pasteLabel', { section: translatedSection })
       : t('editor.adjustments.actions.pasteSettings');
 
-    const options: any = [
+    const options: Option[] = [
       {
         label: t('editor.adjustments.actions.copySectionSettings', { section: translatedSection }),
         icon: Copy,
@@ -273,44 +266,46 @@ export default function Controls() {
 
       <div className="grow overflow-y-scroll p-3 flex flex-col gap-2">
         {selectedImage ? (
-          Object.keys(ADJUSTMENT_SECTIONS).map((sectionName: string) => {
-            const SectionComponent: any = {
-              basic: BasicAdjustments,
-              curves: CurveGraph,
-              color: ColorPanel,
-              details: DetailsPanel,
-              effects: EffectsPanel,
-            }[sectionName];
+          (['basic', 'curves', 'color', 'details', 'effects'] as const).map(
+            (sectionName: 'basic' | 'curves' | 'color' | 'details' | 'effects') => {
+              const SectionComponent = {
+                basic: BasicAdjustments,
+                curves: CurveGraph,
+                color: ColorPanel,
+                details: DetailsPanel,
+                effects: EffectsPanel,
+              }[sectionName];
 
-            const title = t(`editor.adjustments.sections.${sectionName}`);
-            const sectionVisibility = adjustments.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
+              const title = t(`editor.adjustments.sections.${sectionName}`);
+              const sectionVisibility = adjustments.sectionVisibility || INITIAL_ADJUSTMENTS.sectionVisibility;
 
-            return (
-              <div className="shrink-0 group" key={sectionName}>
-                <CollapsibleSection
-                  isContentVisible={sectionVisibility[sectionName as keyof SectionVisibility]}
-                  isOpen={collapsibleSectionsState[sectionName as keyof typeof collapsibleSectionsState]}
-                  onContextMenu={(e: any) => handleSectionContextMenu(e, sectionName)}
-                  onToggle={() => handleToggleSection(sectionName)}
-                  onToggleVisibility={() => handleToggleVisibility(sectionName)}
-                  title={title}
-                >
-                  <SectionComponent
-                    adjustments={adjustments}
-                    setAdjustments={setAdjustments}
-                    histogram={histogram}
-                    theme={theme}
-                    handleLutSelect={handleLutSelect}
-                    onLutHover={setLutPreviewOverride}
-                    appSettings={appSettings}
-                    isWbPickerActive={isWbPickerActive}
-                    toggleWbPicker={toggleWbPicker}
-                    onDragStateChange={onDragStateChange}
-                  />
-                </CollapsibleSection>
-              </div>
-            );
-          })
+              return (
+                <div className="shrink-0 group" key={sectionName}>
+                  <CollapsibleSection
+                    isContentVisible={sectionVisibility[sectionName as keyof SectionVisibility]}
+                    isOpen={collapsibleSectionsState[sectionName as keyof typeof collapsibleSectionsState]}
+                    onContextMenu={(e) => handleSectionContextMenu(e, sectionName)}
+                    onToggle={() => handleToggleSection(sectionName)}
+                    onToggleVisibility={() => handleToggleVisibility(sectionName)}
+                    title={title}
+                  >
+                    <SectionComponent
+                      adjustments={adjustments}
+                      setAdjustments={setAdjustments}
+                      histogram={histogram}
+                      theme={theme}
+                      handleLutSelect={handleLutSelect}
+                      onLutHover={setLutPreviewOverride}
+                      appSettings={appSettings}
+                      isWbPickerActive={isWbPickerActive}
+                      toggleWbPicker={toggleWbPicker}
+                      onDragStateChange={onDragStateChange}
+                    />
+                  </CollapsibleSection>
+                </div>
+              );
+            },
+          )
         ) : (
           <div className="flex items-center justify-center h-full">
             <Text

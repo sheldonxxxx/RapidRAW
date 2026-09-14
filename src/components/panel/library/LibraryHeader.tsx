@@ -1,3 +1,4 @@
+import type { Progress } from '../../ui/AppProperties';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -27,7 +28,7 @@ import {
   ThumbnailSize,
   ThumbnailAspectRatio,
 } from '../../ui/AppProperties';
-import { COLOR_LABELS, Color } from '../../../utils/adjustments';
+import { COLOR_LABELS } from '../../../utils/adjustments';
 import Text from '../../ui/Text';
 import { TextColors, TextVariants, TextWeights, TEXT_COLOR_KEYS } from '../../../types/typography';
 import Button from '../../ui/Button';
@@ -37,13 +38,23 @@ import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
 import { ADVANCED_QUERY_REGEX } from '../../../hooks/useSortedLibrary';
 
-function DropdownMenu({ buttonContent, buttonTitle, children, contentClassName = 'w-56' }: any) {
+function DropdownMenu({
+  buttonContent,
+  buttonTitle,
+  children,
+  contentClassName = 'w-56',
+}: {
+  buttonContent: React.ReactNode;
+  buttonTitle: string;
+  children: React.ReactNode;
+  contentClassName?: string;
+}) {
   const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<any>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (event: any) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && event.target instanceof Node && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false);
       }
     };
@@ -85,13 +96,13 @@ function DropdownMenu({ buttonContent, buttonTitle, children, contentClassName =
   );
 }
 
-interface SegmentedSwitchProps {
-  options: { id: string | number; label: string }[];
-  value: string | number;
-  onChange: (id: any) => void;
+interface SegmentedSwitchProps<T extends string | number> {
+  options: { id: T; label: string }[];
+  value: T;
+  onChange: (id: T) => void;
 }
 
-const SegmentedSwitch = ({ options, value, onChange }: SegmentedSwitchProps) => {
+const SegmentedSwitch = <T extends string | number>({ options, value, onChange }: SegmentedSwitchProps<T>) => {
   const [bubbleStyle, setBubbleStyle] = useState({});
   const isInitialAnimation = useRef(true);
 
@@ -143,7 +154,15 @@ const SegmentedSwitch = ({ options, value, onChange }: SegmentedSwitchProps) => 
   );
 };
 
-const RatingSegmentedSwitch = ({ rating, onChange, ratingFilterOptions }: any) => {
+const RatingSegmentedSwitch = ({
+  rating,
+  onChange,
+  ratingFilterOptions,
+}: {
+  rating: number;
+  onChange(rating: number): void;
+  ratingFilterOptions: { value: number; label: string }[];
+}) => {
   const [bubbleStyle, setBubbleStyle] = useState({});
   const isInitialAnimation = useRef(true);
 
@@ -185,7 +204,7 @@ const RatingSegmentedSwitch = ({ rating, onChange, ratingFilterOptions }: any) =
             activeIndex === 0 ? 'text-text-primary font-semibold' : 'text-text-secondary hover:text-text-primary',
           )}
         >
-          <span className="relative z-10">{ratingFilterOptions.find((o: any) => o.value === 0)?.label || 'All'}</span>
+          <span className="relative z-10">{ratingFilterOptions.find((o) => o.value === 0)?.label || 'All'}</span>
         </button>
 
         <button
@@ -195,9 +214,7 @@ const RatingSegmentedSwitch = ({ rating, onChange, ratingFilterOptions }: any) =
             activeIndex === 1 ? 'text-text-primary font-semibold' : 'text-text-secondary hover:text-text-primary',
           )}
         >
-          <span className="relative z-10">
-            {ratingFilterOptions.find((o: any) => o.value === -1)?.label || 'Unrated'}
-          </span>
+          <span className="relative z-10">{ratingFilterOptions.find((o) => o.value === -1)?.label || 'Unrated'}</span>
         </button>
 
         <div
@@ -210,7 +227,7 @@ const RatingSegmentedSwitch = ({ rating, onChange, ratingFilterOptions }: any) =
             {[...Array(5)].map((_, index) => {
               const starValue = index + 1;
               const isFilled = rating > 0 && starValue <= rating;
-              const optionLabel = ratingFilterOptions.find((o: any) => o.value === starValue)?.label;
+              const optionLabel = ratingFilterOptions.find((o) => o.value === starValue)?.label;
 
               return (
                 <button
@@ -238,7 +255,7 @@ const RatingSegmentedSwitch = ({ rating, onChange, ratingFilterOptions }: any) =
   );
 };
 
-export function SearchInput({ indexingProgress, isIndexing }: any) {
+export function SearchInput({ indexingProgress, isIndexing }: { indexingProgress: Progress; isIndexing: boolean }) {
   const { t } = useTranslation();
   const { searchCriteria, setSearchCriteria } = useLibraryStore(
     useShallow((state) => ({ searchCriteria: state.searchCriteria, setSearchCriteria: state.setSearchCriteria })),
@@ -267,8 +284,14 @@ export function SearchInput({ indexingProgress, isIndexing }: any) {
   }, [searchFocusRequest]);
 
   useEffect(() => {
-    function handleClickOutside(event: any) {
-      if (containerRef.current && !containerRef.current.contains(event.target) && tags.length === 0 && !text) {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        event.target instanceof Node &&
+        !containerRef.current.contains(event.target) &&
+        tags.length === 0 &&
+        !text
+      ) {
         setIsSearchActive(false);
       }
     }
@@ -531,7 +554,7 @@ export function ViewOptionsDropdown({
     (filterCriteria.colors && filterCriteria.colors.length > 0);
 
   const [lastClickedColor, setLastClickedColor] = useState<string | null>(null);
-  const allColors = useMemo(() => [...COLOR_LABELS, { name: 'none', color: '#9ca3af' }], []);
+  const allColors = useMemo(() => [...COLOR_LABELS, { name: 'none' as const, color: '#9ca3af' }], []);
 
   const metadataOptions = useMemo(
     () => [
@@ -542,7 +565,7 @@ export function ViewOptionsDropdown({
     [t],
   );
 
-  const handleColorClick = (colorName: string, event: any) => {
+  const handleColorClick = (colorName: string, event: React.MouseEvent) => {
     const { ctrlKey, metaKey, shiftKey } = event;
     const isCtrlPressed = ctrlKey || metaKey;
     const currentColors = filterCriteria.colors || [];
@@ -553,7 +576,7 @@ export function ViewOptionsDropdown({
       if (lastIndex !== -1 && currentIndex !== -1) {
         const start = Math.min(lastIndex, currentIndex);
         const end = Math.max(lastIndex, currentIndex);
-        const range = allColors.slice(start, end + 1).map((c: Color) => c.name);
+        const range = allColors.slice(start, end + 1).map((c) => c.name);
         const baseSelection = isCtrlPressed ? currentColors : [lastClickedColor];
         const newColors = Array.from(new Set([...baseSelection, ...range]));
         setFilterCriteria((prev: FilterCriteria) => ({ ...prev, colors: newColors }));
@@ -773,7 +796,7 @@ export function ViewOptionsDropdown({
               {t('library.header.viewOptions.filterByColorLabel')}
             </Text>
             <div className="flex flex-wrap gap-2.5 px-3 py-1.5">
-              {allColors.map((color: Color) => {
+              {allColors.map((color) => {
                 const isSelected = (filterCriteria.colors || []).includes(color.name);
                 const title =
                   color.name === 'none'
@@ -785,7 +808,7 @@ export function ViewOptionsDropdown({
                   <button
                     key={color.name}
                     data-tooltip={title}
-                    onClick={(e: any) => handleColorClick(color.name, e)}
+                    onClick={(e) => handleColorClick(color.name, e)}
                     className="w-5 h-5 rounded-full focus:outline-hidden focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface transition-transform hover:scale-110"
                     role="menuitem"
                   >

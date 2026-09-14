@@ -33,6 +33,18 @@ npm test --prefix mcp
 
 This includes a server build and uses a fake native subprocess for transport tests; it is not image-processing acceptance. Run the relevant real-engine suite for native behaviour. For a UI change, inspect the affected interaction and use the [UI benchmark](bench/README.md) when performance is the concern. Record skipped checks and platform limits accurately.
 
+For frontend changes, run:
+
+```sh
+npm run typecheck
+npm run lint
+npm run format:check
+npm test
+npm run build
+```
+
+Linting requires zero warnings. Frontend tests cover state transitions and native-call arguments with local fixtures; they do not run model inference. Type checking is separate from the production build, and both must pass. Run `npm run i18n:check` after changing translated interface text.
+
 ## Open a pull request
 
 Explain the concrete problem, the resulting behaviour and the checks that ran. Identify limitations that matter to reviewers. Include a screenshot or rendered comparison when it demonstrates the change, with permission to share the content.

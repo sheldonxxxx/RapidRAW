@@ -1,3 +1,4 @@
+import type { ComponentType, ReactNode } from 'react';
 import { ExportPreset } from './ExportImportProperties';
 import { Adjustments, CopyPasteSettings } from '../../utils/adjustments';
 import { ToolType } from '../panel/right/Masks';
@@ -186,12 +187,40 @@ export interface WorkspaceState {
 export type GroupPreference = 'jpeg' | 'raw';
 export type GroupingMode = 'off' | GroupPreference;
 
+export interface FolderState {
+  activeAlbumId?: string | null;
+  currentFolderPath?: string | null;
+  expandedFolders?: string[];
+  expandedAlbumGroups?: string[];
+}
+
+export interface MyLens {
+  maker: string;
+  model: string;
+}
+
+export interface DirectoryTree {
+  children: DirectoryTree[];
+  isDir: boolean;
+  name: string;
+  path: string;
+  imageCount?: number;
+  hasSubdirs?: boolean;
+  modified?: number;
+  created?: number;
+}
+
 export interface AppSettings {
   aiConnectorAddress?: string;
   aiProvider?: string;
-  decorations?: any;
+  decorations?: boolean;
   editorPreviewResolution?: number;
   smallThumbnailResolution?: number;
+  thumbnailWorkerThreads?: number;
+  imageCacheSize?: number;
+  rawPreprocessingColorNr?: number;
+  rawPreprocessingSharpening?: number;
+  applyPreprocessingToNonRaws?: boolean;
   mediumThumbnailResolution?: number;
   enableZoomHifi?: boolean;
   useFullDpiRendering?: boolean;
@@ -202,8 +231,8 @@ export interface AppSettings {
   aiTagCount?: number;
   customAiTags?: string[];
   filterCriteria?: FilterCriteria;
-  lastFolderState?: any;
-  pinnedFolders?: any;
+  lastFolderState?: FolderState | null;
+  pinnedFolders?: string[];
   lastRootPath: string | null;
   rootFolders?: string[];
   libraryViewMode?: LibraryViewMode;
@@ -217,7 +246,7 @@ export interface AppSettings {
   processingBackend?: string;
   linuxGpuOptimization?: boolean;
   exportPresets?: ExportPreset[];
-  myLenses?: any;
+  myLenses?: MyLens[];
   enableFolderImageCounts?: boolean;
   displayEditIcon?: boolean;
   linearRawMode?: string;
@@ -279,9 +308,9 @@ export interface FilterCriteria {
 }
 
 export interface Folder {
-  children: any;
-  id?: string | undefined;
-  name?: string | undefined;
+  children: Preset[];
+  id: string;
+  name: string;
   imageCount?: number;
 }
 
@@ -301,12 +330,13 @@ export interface ImageFile {
 export interface Option {
   color?: string;
   disabled?: boolean;
-  icon?: any;
+  icon?: ComponentType<{ size?: number; className?: string }>;
   isDestructive?: boolean;
   label?: string;
   onClick?(): void;
   onRightClick?(): void;
-  submenu?: any;
+  submenu?: Option[];
+  renderContent?: (hideContextMenu: () => void) => ReactNode;
   type?: string;
 }
 
@@ -326,18 +356,27 @@ export interface Preset {
 }
 
 export interface Progress {
+  stage?: string;
   completed?: number;
   current?: number;
   total: number;
 }
 
+export interface ImageMetadata {
+  version: number;
+  rating: number;
+  adjustments: Partial<Adjustments> | null;
+  tags?: string[] | null;
+  exif?: Record<string, string> | null;
+}
+
 export interface SelectedImage {
-  exif: any;
+  exif: Record<string, string> | null;
   group_id?: string | null;
   height: number;
   isRaw: boolean;
   isReady: boolean;
-  metadata?: any;
+  metadata?: ImageMetadata | null;
   original_base64?: string;
   path: string;
   thumbnailUrl: string;
@@ -419,7 +458,7 @@ export interface CullingSuggestions {
   failedPaths: string[];
 }
 
-interface KeybindHandler {
+export interface KeybindHandler {
   shouldFire?: () => boolean;
   execute: (event: KeyboardEvent) => void;
 }

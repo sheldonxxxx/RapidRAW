@@ -7,15 +7,17 @@ import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useProcessStore } from '../store/useProcessStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { Invokes } from '../components/ui/AppProperties';
+import { Invokes, ImageFile } from '../components/ui/AppProperties';
 import { Status } from '../components/ui/ExportImportProperties';
+
+import type { ImportSettings } from './hookTypes';
 
 export function useFileOperations(
   refreshImageList: () => Promise<void>,
   refreshAllFolderTrees: () => Promise<void>,
   handleImageSelect: (path: string) => void,
   handleBackToLibrary: () => void,
-  sortedImageList: any[],
+  sortedImageList: ImageFile[],
 ) {
   const getParentDir = (filePath: string): string => {
     const separator = filePath.includes('/') ? '/' : '\\';
@@ -120,8 +122,8 @@ export function useFileOperations(
       imageList.some((image) => image.path.startsWith(`${pathsToDelete[0]}?vc=`));
 
     let modalTitle = 'Confirm Delete';
-    let modalMessage = '';
-    let confirmText = 'Delete';
+    let modalMessage: string;
+    let confirmText: string;
 
     if (selectionHasVirtualCopies) {
       modalTitle = 'Delete Image and All Virtual Copies?';
@@ -180,7 +182,7 @@ export function useFileOperations(
           const separator = oldPath.includes('/') ? '/' : '\\';
           const newPath = parentDir ? `${parentDir}${separator}${trimmedNewName}` : trimmedNewName;
 
-          const newAppSettings = { ...appSettings } as any;
+          const newAppSettings = { ...appSettings };
           let settingsChanged = false;
 
           if (rootPaths.includes(oldPath)) {
@@ -203,8 +205,8 @@ export function useFileOperations(
             settingsChanged = true;
           }
 
-          if (settingsChanged) {
-            handleSettingsChange(newAppSettings);
+          if (settingsChanged && appSettings) {
+            handleSettingsChange({ ...appSettings, ...newAppSettings });
           }
 
           await refreshAllFolderTrees();
@@ -265,21 +267,24 @@ export function useFileOperations(
     }
   }, []);
 
-  const startImportFiles = useCallback(async (sourcePaths: string[], destinationFolder: string, settings: any) => {
-    if (sourcePaths.length === 0 || !destinationFolder) return;
+  const startImportFiles = useCallback(
+    async (sourcePaths: string[], destinationFolder: string, settings: ImportSettings) => {
+      if (sourcePaths.length === 0 || !destinationFolder) return;
 
-    try {
-      await invoke(Invokes.ImportFiles, { destinationFolder, settings, sourcePaths });
-    } catch (err) {
-      console.error('Failed to start import:', err);
-      useProcessStore
-        .getState()
-        .setImportState({ status: Status.Error, errorMessage: `Failed to start import: ${err}` });
-    }
-  }, []);
+      try {
+        await invoke(Invokes.ImportFiles, { destinationFolder, settings, sourcePaths });
+      } catch (err) {
+        console.error('Failed to start import:', err);
+        useProcessStore
+          .getState()
+          .setImportState({ status: Status.Error, errorMessage: `Failed to start import: ${err}` });
+      }
+    },
+    [],
+  );
 
   const handleStartImport = useCallback(
-    async (settings: any) => {
+    async (settings: ImportSettings) => {
       const { importTargetFolder, importSourcePaths } = useUIStore.getState();
       if (!importTargetFolder) return;
       await startImportFiles(importSourcePaths, importTargetFolder, settings);

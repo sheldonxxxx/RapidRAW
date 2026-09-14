@@ -1,3 +1,4 @@
+import type { ActiveChannel } from '../../../utils/adjustments';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { AlertOctagon } from 'lucide-react';
@@ -7,7 +8,7 @@ import { DisplayMode } from '../../../utils/adjustments';
 
 interface WaveformProps {
   waveformData: WaveformData | null;
-  histogram?: any;
+  histogram?: Record<ActiveChannel, number[]> | null;
   displayMode: string;
   setDisplayMode: (mode: string) => void;
   showClipping?: boolean;
@@ -51,9 +52,9 @@ const modeButtons = [
     bgClass: 'bg-accent',
     textActiveClass: 'text-button-text',
   },
-];
+] as const;
 
-const HistogramView = ({ histogram }: { histogram: any }) => {
+const HistogramView = ({ histogram }: { histogram: Record<ActiveChannel, number[]> | null | undefined }) => {
   if (!histogram || !histogram.red || !histogram.green || !histogram.blue) return null;
 
   const redMax = Math.max(...(histogram.red || [0]));

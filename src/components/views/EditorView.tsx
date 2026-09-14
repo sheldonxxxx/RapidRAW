@@ -1,4 +1,5 @@
-import { type RefObject, type PointerEvent as ReactPointerEvent } from 'react';
+import type { MainLibraryProps } from '../panel/MainLibrary';
+import { type PointerEvent as ReactPointerEvent } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -16,7 +17,7 @@ import { useProcessStore } from '../../store/useProcessStore';
 import { ImageFile, Orientation, Panel, ThumbnailAspectRatio } from '../ui/AppProperties';
 
 interface EditorViewProps {
-  transformWrapperRef: RefObject<any>;
+  transformWrapperRef: React.ComponentProps<typeof Editor>['transformWrapperRef'];
   isResizing: boolean;
   layoutMode: 'compact' | 'wide' | 'full';
   isAndroid: boolean;
@@ -27,18 +28,18 @@ interface EditorViewProps {
   createResizeHandler: (stateKey: string, startSize: number) => (e: ReactPointerEvent<HTMLDivElement>) => void;
   createResizeResetHandler: (stateKey: string) => () => void;
   handleBackToLibrary: () => void;
-  handleEditorContextMenu: (...args: any) => void;
-  handleThumbnailContextMenu: (...args: any) => void;
-  handleMainLibraryContextMenu?: (...args: any) => void;
-  handleImageClick: (...args: any) => void;
+  handleEditorContextMenu: React.ComponentProps<typeof Editor>['onContextMenu'];
+  handleThumbnailContextMenu: MainLibraryProps['onContextMenu'];
+  handleMainLibraryContextMenu?: MainLibraryProps['onEmptyAreaContextMenu'];
+  handleImageClick: MainLibraryProps['onImageClick'];
   handleClearSelection: () => void;
   handleCopyAdjustments: () => void;
   handlePasteAdjustments: () => void;
-  handleRate: (...args: any) => void;
+  handleRate: (rating: number) => void;
   handleZoomChange: (zoom: number) => void;
-  handlePanelSelect: (panelId: any) => void;
-  requestThumbnails: any;
-  renderAppPanel: (panelId: any) => React.ReactNode;
+  handlePanelSelect: (panelId: Panel) => void;
+  requestThumbnails: MainLibraryProps['onRequestThumbnails'];
+  renderAppPanel: (panelId: Panel) => React.ReactNode;
 }
 
 export default function EditorView({

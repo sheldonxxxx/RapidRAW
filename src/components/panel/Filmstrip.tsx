@@ -1,3 +1,4 @@
+import type { CellComponentProps } from 'react-window';
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { Image as ImageIcon, Star, SlidersHorizontal } from 'lucide-react';
 import clsx from 'clsx';
@@ -23,13 +24,13 @@ interface ImageLayer {
 
 interface ItemData {
   imageList: ImageFile[];
-  imageRatings: any;
+  imageRatings: Record<string, number>;
   selectedPath: string | undefined;
   multiSelectedPaths: string[];
   thumbnailAspectRatio: ThumbnailAspectRatio;
   onRequestThumbnails?: (paths: string[]) => void;
-  onContextMenu?: (event: any, path: string) => void;
-  onImageSelect?: (path: string, event: any) => void;
+  onContextMenu?: (event: React.MouseEvent, path: string) => void;
+  onImageSelect?: (path: string, event: React.MouseEvent) => void;
   itemHeight: number;
   setRatio: (index: number, ratio: number) => void;
 }
@@ -48,11 +49,11 @@ const FilmstripThumbnail = memo(
     setRatio,
   }: {
     imageFile: ImageFile;
-    imageRatings: any;
+    imageRatings: Record<string, number>;
     isActive: boolean;
     isSelected: boolean;
-    onContextMenu?: (event: any, path: string) => void;
-    onImageSelect?: (path: string, event: any) => void;
+    onContextMenu?: (event: React.MouseEvent, path: string) => void;
+    onImageSelect?: (path: string, event: React.MouseEvent) => void;
     thumbnailAspectRatio: ThumbnailAspectRatio;
     itemHeight: number;
     index: number;
@@ -183,11 +184,11 @@ const FilmstripThumbnail = memo(
           ringClass,
           isDragging && 'opacity-50 ring-2 ring-accent z-50',
         )}
-        onClick={(e: any) => {
+        onClick={(e) => {
           e.stopPropagation();
           onImageSelect?.(path, e);
         }}
-        onContextMenu={(e: any) => onContextMenu?.(e, path)}
+        onContextMenu={(e) => onContextMenu?.(e, path)}
         style={{
           zIndex: isDragging ? 50 : isActive ? 2 : isSelected ? 1 : 'auto',
         }}
@@ -315,7 +316,7 @@ const FilmstripCell = ({
   onImageSelect,
   itemHeight,
   setRatio,
-}: any) => {
+}: CellComponentProps<ItemData>) => {
   const imageFile = imageList[columnIndex];
   const fullWidth = style.width as number;
   const contentWidth = fullWidth - ITEM_GAP;
@@ -368,9 +369,8 @@ const FilmstripList = ({
   const currentDataRef = useRef(data);
   currentDataRef.current = data;
   const pendingResizeRef = useRef<number | null>(null);
-  const lowestPendingIndexRef = useRef<number>(Infinity);
   const isAnimatingScroll = useRef(false);
-  const scrollAnimationTimeout = useRef<any>(null);
+  const scrollAnimationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingScrollTarget = useRef<number | null>(null);
   const hasCompletedInitialScroll = useRef(false);
   const [isRevealed, setIsRevealed] = useState(false);
@@ -572,29 +572,18 @@ const FilmstripList = ({
     }
   }, [data.selectedPath, data.imageList, isItemVisible, data.clickTriggeredScroll, performSafeScroll, gridHandle]);
 
-  const setRatio = useCallback(
-    (index: number, ratio: number) => {
-      if (Math.abs((ratioMapRef.current[index] || 0) - ratio) > 0.01) {
-        ratioMapRef.current[index] = ratio;
+  const setRatio = useCallback((index: number, ratio: number) => {
+    if (Math.abs((ratioMapRef.current[index] || 0) - ratio) > 0.01) {
+      ratioMapRef.current[index] = ratio;
 
-        if (index < lowestPendingIndexRef.current) {
-          lowestPendingIndexRef.current = index;
-        }
-
-        if (pendingResizeRef.current === null) {
-          pendingResizeRef.current = requestAnimationFrame(() => {
-            if (gridHandle && typeof (gridHandle as any).resetAfterColumnIndex === 'function') {
-              (gridHandle as any).resetAfterColumnIndex(lowestPendingIndexRef.current);
-            }
-            setRatioMapVersion((v) => v + 1);
-            lowestPendingIndexRef.current = Infinity;
-            pendingResizeRef.current = null;
-          });
-        }
+      if (pendingResizeRef.current === null) {
+        pendingResizeRef.current = requestAnimationFrame(() => {
+          setRatioMapVersion((v) => v + 1);
+          pendingResizeRef.current = null;
+        });
       }
-    },
-    [gridHandle],
-  );
+    }
+  }, []);
 
   const cellProps = useMemo(
     () => ({
@@ -639,13 +628,13 @@ const FilmstripList = ({
 
 interface FilmStripProps {
   imageList: Array<ImageFile>;
-  imageRatings: any;
+  imageRatings: Record<string, number>;
   isLoading: boolean;
   multiSelectedPaths: Array<string>;
   onClearSelection?(): void;
-  onContextMenu?(event: any, path: string): void;
-  onEmptyAreaContextMenu?(event: any): void;
-  onImageSelect?(path: string, event: any): void;
+  onContextMenu?(event: React.MouseEvent, path: string): void;
+  onEmptyAreaContextMenu?(event: React.MouseEvent): void;
+  onImageSelect?(path: string, event: React.MouseEvent): void;
   onRequestThumbnails?(paths: string[]): void;
   selectedImage?: SelectedImage;
   thumbnailAspectRatio: ThumbnailAspectRatio;
@@ -697,7 +686,7 @@ export default function Filmstrip({
     return primary?.path ?? path;
   }, [selectedImage?.path, imageList, fullImageList, groupingMode]);
 
-  const handleImageSelect = (path: string, event: any) => {
+  const handleImageSelect = (path: string, event: React.MouseEvent) => {
     if (path !== selectedImage?.path) {
       clickTriggeredScroll.current = true;
     }

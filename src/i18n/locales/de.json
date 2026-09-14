@@ -66,13 +66,13 @@
       "whiteBalance": "Weißabgleich"
     },
     "curves": {
-      "channelTitle": "{{channel}}-Kanal",
       "channels": {
         "blue": "Blau",
         "green": "Grün",
         "luma": "Luma",
         "red": "Rot"
       },
+      "channelTitle": "{{channel}}-Kanal",
       "copyParametric": "Parametrische {{channel}}-Kurve kopieren",
       "copyPoint": "Punktkurve ({{channel}}) kopieren",
       "curveDataUnavailable": "Kurvendaten nicht verfügbar.",
@@ -367,6 +367,27 @@
       "editSettingsTitle": "Bearbeitungseinstellungen",
       "editsTitle": "Bearbeitungen",
       "generatingDepthMap": "KI-Tiefenkarte wird berechnet...",
+      "generation": {
+        "chooseDetail": "KI-Auflösung wählen",
+        "chooseWorkflow": "Arbeitsablauf wählen",
+        "connectorDefault": "Der Standardarbeitsablauf des Connectors wird verwendet.",
+        "detail": "KI-Auflösung",
+        "detailHelp": "Auflösung des generierten Bereichs. Höhere Werte können länger dauern; dein Foto behält seine ursprüngliche Größe.",
+        "lastResult": "Letztes generiertes Ergebnis",
+        "legacy": "Dieser Connector verwendet seinen Standardarbeitsablauf.",
+        "loading": "Arbeitsablaufoptionen werden geladen…",
+        "megapixels": "{{megapixels}} MP",
+        "randomSeed": "Jedes Mal zufällig",
+        "refresh": "Arbeitsabläufe aktualisieren",
+        "resultSeed": "Startwert: {{seed}}",
+        "resultSize": "Letztes Ergebnis: {{width}} × {{height}} px für einen Bereich von {{placedWidth}} × {{placedHeight}} px generiert.",
+        "retry": "Erneut versuchen",
+        "seed": "Startwert (optional)",
+        "seedHelp": "Verwende für wiederholbare Ergebnisse denselben Startwert mit demselben Bild, derselben Auswahl, Eingabe und denselben Einstellungen.",
+        "unavailable": "Arbeitsablaufoptionen sind nicht verfügbar. Versuche es erneut oder verwende den Standard des Connectors.",
+        "useDefault": "Connector-Standard verwenden",
+        "workflow": "Arbeitsablauf"
+      },
       "generativeEditTitle": "Generative Bearbeitung",
       "inpaintingTitle": "Reparieren",
       "liquify": {
@@ -403,7 +424,9 @@
         "quickErase": "Schnelles Löschen {{count}}",
         "quickErase_one": "Schnelles Löschen {{count}}",
         "quickErase_other": "Schnelles Löschen {{count}}",
-        "retouch": "Retusche {{count}}"
+        "retouch": "Retusche {{count}}",
+        "retouch_one": "Retusche {{count}}",
+        "retouch_other": "Retusche {{count}}"
       },
       "resetInpaintingTooltip": "Reparieren zurücksetzen",
       "settings": {
@@ -537,6 +560,10 @@
         "transform": "Perspektiv- und Trapezkorrektur"
       }
     },
+    "enhancement": {
+      "aiTitle": "KI-Bearbeitung",
+      "resultMetrics": "{{dimensions}} px · {{seconds}} s"
+    },
     "externalEdit": {
       "done": "Fertig",
       "exporting": "Exportieren…",
@@ -546,11 +573,14 @@
       "cancel": "Abbrechen",
       "drawingActive": "Zeichnen aktiv",
       "hint": "Zeichnen Sie entlang der Kanten in Ihrem Foto, die vertikal oder horizontal sein sollten.",
+      "horizontalGuide": "Horizontale Hilfslinie Nr. {{number}}",
+      "lineCount": "{{current}} / {{max}}",
       "linesStatus": "Aktive Hilfslinien",
       "toast": {
         "angleRejected": "Linienwinkel ist zu weit von horizontal oder vertikal entfernt",
         "maxLines": "Maximal 2 vertikale und 2 horizontale Linien erlaubt"
-      }
+      },
+      "verticalGuide": "Vertikale Hilfslinie Nr. {{number}}"
     },
     "layout": {
       "split": "Teilen"
@@ -605,9 +635,15 @@
       "maskingTitle": "Maskieren",
       "masksTitle": "Masken",
       "params": {
+        "fadeAfter": "Kantenabstand bei voller Stärke",
+        "fadeBefore": "Kantenabstand bei Stärke null",
+        "falloff": "Verlaufskurve",
         "feather": "Weiche Kante",
         "globalFeather": "Globale weiche Kante",
         "grow": "Erweitern",
+        "linearFalloff": "Linear",
+        "smootherFalloff": "Besonders weich",
+        "smoothFalloff": "Weich",
         "tolerance": "Toleranz"
       },
       "patches": {
@@ -686,8 +722,8 @@
       "organization": {
         "addTagPlaceholder": "Tag hinzufügen...",
         "colorLabel": "Farbmarkierung",
-        "noTags": "Keine Tags",
         "none": "Keine",
+        "noTags": "Keine Tags",
         "rating": "Bewertung",
         "ratingLabels": "Bewertung & Markierungen",
         "tags": "Tags",
@@ -840,12 +876,12 @@
       "estimatedSize": "Geschätzte Dateigröße: ~{{size}}",
       "estimatedTotalSize": "Geschätzte Gesamtgröße: ~{{size}}",
       "estimatingSize": "Größe wird geschätzt...",
+      "exporting": "Wird exportiert…",
+      "exportingProgress": "Wird exportiert… ({{current}}/{{total}})",
       "exportMultiple": "Exportiere {{count}} {{label}}",
       "exportMultiple_one": "Exportiere {{count}} {{label}}",
       "exportMultiple_other": "Exportiere {{count}} {{label}}",
       "exportSingle": "{{label}} exportieren",
-      "exporting": "Wird exportiert…",
-      "exportingProgress": "Wird exportiert… ({{current}}/{{total}})",
       "failed": "Export fehlgeschlagen",
       "noImageSelected": "Kein Bild zum Exportieren ausgewählt.",
       "noImagesSelected": "Keine Bilder ausgewählt.",
@@ -904,8 +940,8 @@
       "iso": "ISO",
       "metadata": "Metadaten",
       "noMetadataAvailable": "Keine Metadaten verfügbar",
-      "noTagsAdded": "Keine Tags hinzugefügt",
       "none": "Keine",
+      "noTagsAdded": "Keine Tags hinzugefügt",
       "rateAndLabel": "Bewerten & Markieren",
       "rating": "Bewertung",
       "selectImagesToCompare": "Wählen Sie Bilder zum Vergleichen aus",
@@ -1099,6 +1135,11 @@
       "communityPresets": "Community-Vorgaben",
       "goHome": "Zur Startseite",
       "importImages": "Bilder importieren"
+    },
+    "viewMode": {
+      "culling": "Auswahlansicht",
+      "grid": "Rasteransicht",
+      "list": "Listenansicht"
     }
   },
   "masks": {
@@ -1227,9 +1268,9 @@
       "applyButton_one": "Auf 1 Bild anwenden",
       "applyButton_other": "Auf {{count}} Bilder anwenden",
       "bestImage": "Bestes Bild",
+      "blurryImagesTab": "Unscharfe Bilder",
       "blurThreshold": "Unschärfe-Schwellenwert",
       "blurThresholdDesc": "Bilder mit einem Schärfewert unter diesem Wert werden markiert. Höher ist strenger.",
-      "blurryImagesTab": "Unscharfe Bilder",
       "cancel": "Abbrechen",
       "close": "Schließen",
       "cullingFailed": "Aussortieren fehlgeschlagen",
@@ -1794,8 +1835,8 @@
     "tagging": {
       "addCustomPlaceholder": "Benutzerdefinierte KI-Tags hinzufügen (kommagetrennt)...",
       "addCustomTooltip": "KI-Tag hinzufügen",
-      "addShortcutTooltip": "Shortcut hinzufügen",
       "addShortcutsPlaceholder": "Shortcuts hinzufügen (kommagetrennt)...",
+      "addShortcutTooltip": "Shortcut hinzufügen",
       "aiTagging": "KI-Tagging",
       "aiTaggingDesc": "Aktiviert automatisches Bild-Tagging mit einem KI-Modell (CLIP). Dies lädt ein zusätzliches Modell herunter und beeinträchtigt die Leistung beim Durchsuchen.",
       "amount": "Betrag",

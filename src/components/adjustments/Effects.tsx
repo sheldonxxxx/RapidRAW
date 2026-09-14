@@ -1,3 +1,4 @@
+import type { AdjustmentSetter } from '../../utils/adjustments';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -18,16 +19,16 @@ import { useProcessStore } from '../../store/useProcessStore';
 interface EffectsPanelProps {
   adjustments: Adjustments;
   isForMask?: boolean;
-  setAdjustments(adjustments: Partial<Adjustments> | ((prev: Adjustments) => Adjustments)): any;
-  handleLutSelect(path: string, isSceneReferred: boolean): void;
+  setAdjustments: AdjustmentSetter;
+  handleLutSelect?(path: string, isSceneReferred: boolean): void;
   onLutHover?: (path: string | null) => void;
   appSettings: AppSettings | null;
   onDragStateChange?: (isDragging: boolean) => void;
 }
 
 interface BokehShapeSwitchProps {
-  selectedShape: string;
-  onShapeChange: (shape: string) => void;
+  selectedShape: Adjustments['lensBlurShape'];
+  onShapeChange: (shape: Adjustments['lensBlurShape']) => void;
 }
 
 const BokehShapeSwitch = ({ selectedShape, onShapeChange }: BokehShapeSwitchProps) => {
@@ -37,12 +38,13 @@ const BokehShapeSwitch = ({ selectedShape, onShapeChange }: BokehShapeSwitchProp
   const isInitialAnimation = useRef(true);
 
   const shapeOptions = useMemo(
-    () => [
-      { id: 'circle', icon: Circle, title: t('adjustments.effects.bokehCircular') },
-      { id: 'hexagon', icon: Hexagon, title: t('adjustments.effects.bokehHexagonal') },
-      { id: 'octagon', icon: Octagon, title: t('adjustments.effects.bokehOctagonal') },
-      { id: 'ring', icon: Aperture, title: t('adjustments.effects.bokehRing') },
-    ],
+    () =>
+      [
+        { id: 'circle', icon: Circle, title: t('adjustments.effects.bokehCircular') },
+        { id: 'hexagon', icon: Hexagon, title: t('adjustments.effects.bokehHexagonal') },
+        { id: 'octagon', icon: Octagon, title: t('adjustments.effects.bokehOctagonal') },
+        { id: 'ring', icon: Aperture, title: t('adjustments.effects.bokehRing') },
+      ] as const,
     [t],
   );
 
@@ -153,29 +155,29 @@ export default function EffectsPanel({
     setIsGeneratingDepth(true);
     try {
       const b64: string = await invoke('generate_full_image_depth_map', { jsAdjustments: adjustments });
-      setAdjustments((prev: Partial<Adjustments>) => ({
+      setAdjustments((prev) => ({
         ...prev,
         lensBlurDepthMap: b64,
       }));
-    } catch (e: any) {
+    } catch (e) {
       toast.error(`Failed to generate depth map: ${e}`);
-      setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lensBlurEnabled: false }));
+      setAdjustments((prev) => ({ ...prev, lensBlurEnabled: false }));
     } finally {
       setIsGeneratingDepth(false);
     }
   };
 
-  const handleAdjustmentChange = (key: string, value: any) => {
-    const numericValue = typeof value === 'boolean' ? value : parseInt(value, 10);
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [key]: numericValue }));
+  const handleAdjustmentChange = (key: keyof Adjustments, value: string | number | boolean) => {
+    const numericValue = typeof value === 'boolean' ? value : parseInt(String(value), 10);
+    setAdjustments((prev) => ({ ...prev, [key]: numericValue }));
   };
 
   const handleLutIntensityChange = (intensity: number) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, lutIntensity: intensity }));
+    setAdjustments((prev) => ({ ...prev, lutIntensity: intensity }));
   };
 
   const handleLutClear = () => {
-    setAdjustments((prev: Partial<Adjustments>) => ({
+    setAdjustments((prev) => ({
       ...prev,
       lutPath: null,
       lutName: null,
@@ -206,7 +208,7 @@ export default function EffectsPanel({
           label={t('adjustments.effects.glow')}
           max={100}
           min={0}
-          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.GlowAmount, e.target.value)}
+          onChange={(e) => handleAdjustmentChange(CreativeAdjustment.GlowAmount, e.target.value)}
           step={1}
           value={adjustments.glowAmount}
           onDragStateChange={onDragStateChange}
@@ -216,7 +218,7 @@ export default function EffectsPanel({
           label={t('adjustments.effects.halation')}
           max={100}
           min={0}
-          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.HalationAmount, e.target.value)}
+          onChange={(e) => handleAdjustmentChange(CreativeAdjustment.HalationAmount, e.target.value)}
           step={1}
           value={adjustments.halationAmount}
           onDragStateChange={onDragStateChange}
@@ -227,7 +229,7 @@ export default function EffectsPanel({
             label={t('adjustments.effects.lightFlares')}
             max={100}
             min={0}
-            onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.FlareAmount, e.target.value)}
+            onChange={(e) => handleAdjustmentChange(CreativeAdjustment.FlareAmount, e.target.value)}
             step={1}
             value={adjustments.flareAmount}
             onDragStateChange={onDragStateChange}
@@ -278,7 +280,7 @@ export default function EffectsPanel({
                         max={100}
                         min={0}
                         defaultValue={40}
-                        onChange={(e: any) => handleAdjustmentChange(Effect.LensBlurAmount, e.target.value)}
+                        onChange={(e) => handleAdjustmentChange(Effect.LensBlurAmount, e.target.value)}
                         step={1}
                         value={adjustments.lensBlurAmount ?? 50}
                         onDragStateChange={onDragStateChange}
@@ -290,7 +292,7 @@ export default function EffectsPanel({
                         max={100}
                         min={0}
                         defaultValue={0}
-                        onChange={(e: any) => handleAdjustmentChange(Effect.lensBlurDiffusion, e.target.value)}
+                        onChange={(e) => handleAdjustmentChange(Effect.lensBlurDiffusion, e.target.value)}
                         step={1}
                         value={adjustments.lensBlurDiffusion ?? 0}
                         onDragStateChange={onDragStateChange}
@@ -299,7 +301,7 @@ export default function EffectsPanel({
                       <BokehShapeSwitch
                         selectedShape={adjustments.lensBlurShape || 'circle'}
                         onShapeChange={(shapeId) =>
-                          setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [Effect.LensBlurShape]: shapeId }))
+                          setAdjustments((prev) => ({ ...prev, [Effect.LensBlurShape]: shapeId }))
                         }
                       />
 
@@ -318,7 +320,7 @@ export default function EffectsPanel({
                           minFade: number;
                           maxFade: number;
                         }) => {
-                          setAdjustments((prev: Partial<Adjustments>) => ({
+                          setAdjustments((prev) => ({
                             ...prev,
                             lensBlurMinDepth: 100 - values.maxDepth,
                             lensBlurMaxDepth: 100 - values.minDepth,
@@ -343,7 +345,7 @@ export default function EffectsPanel({
               lutPath={adjustments.lutPath || null}
               lutName={adjustments.lutName || null}
               lutIntensity={adjustments.lutIntensity || 100}
-              onLutSelect={handleLutSelect}
+              onLutSelect={(path, isSceneReferred) => handleLutSelect?.(path, isSceneReferred)}
               onLutHover={onLutHover}
               onIntensityChange={handleLutIntensityChange}
               onClear={handleLutClear}
@@ -360,7 +362,7 @@ export default function EffectsPanel({
                 label={t('adjustments.effects.amount')}
                 max={100}
                 min={-100}
-                onChange={(e: any) => handleAdjustmentChange(Effect.VignetteAmount, e.target.value)}
+                onChange={(e) => handleAdjustmentChange(Effect.VignetteAmount, e.target.value)}
                 step={1}
                 value={adjustments.vignetteAmount}
                 onDragStateChange={onDragStateChange}
@@ -370,7 +372,7 @@ export default function EffectsPanel({
                 label={t('adjustments.effects.midpoint')}
                 max={100}
                 min={0}
-                onChange={(e: any) => handleAdjustmentChange(Effect.VignetteMidpoint, e.target.value)}
+                onChange={(e) => handleAdjustmentChange(Effect.VignetteMidpoint, e.target.value)}
                 step={1}
                 value={adjustments.vignetteMidpoint}
                 onDragStateChange={onDragStateChange}
@@ -380,7 +382,7 @@ export default function EffectsPanel({
                 label={t('adjustments.effects.roundness')}
                 max={100}
                 min={-100}
-                onChange={(e: any) => handleAdjustmentChange(Effect.VignetteRoundness, e.target.value)}
+                onChange={(e) => handleAdjustmentChange(Effect.VignetteRoundness, e.target.value)}
                 step={1}
                 value={adjustments.vignetteRoundness}
                 onDragStateChange={onDragStateChange}
@@ -390,7 +392,7 @@ export default function EffectsPanel({
                 label={t('adjustments.effects.feather')}
                 max={100}
                 min={0}
-                onChange={(e: any) => handleAdjustmentChange(Effect.VignetteFeather, e.target.value)}
+                onChange={(e) => handleAdjustmentChange(Effect.VignetteFeather, e.target.value)}
                 step={1}
                 value={adjustments.vignetteFeather}
                 onDragStateChange={onDragStateChange}
@@ -408,7 +410,7 @@ export default function EffectsPanel({
                 label={t('adjustments.effects.amount')}
                 max={100}
                 min={0}
-                onChange={(e: any) => handleAdjustmentChange(Effect.GrainAmount, e.target.value)}
+                onChange={(e) => handleAdjustmentChange(Effect.GrainAmount, e.target.value)}
                 step={1}
                 value={adjustments.grainAmount}
                 onDragStateChange={onDragStateChange}
@@ -418,7 +420,7 @@ export default function EffectsPanel({
                 label={t('adjustments.effects.size')}
                 max={100}
                 min={0}
-                onChange={(e: any) => handleAdjustmentChange(Effect.GrainSize, e.target.value)}
+                onChange={(e) => handleAdjustmentChange(Effect.GrainSize, e.target.value)}
                 step={1}
                 value={adjustments.grainSize}
                 onDragStateChange={onDragStateChange}
@@ -429,7 +431,7 @@ export default function EffectsPanel({
                 label={t('adjustments.effects.roughness')}
                 max={100}
                 min={0}
-                onChange={(e: any) => handleAdjustmentChange(Effect.GrainRoughness, e.target.value)}
+                onChange={(e) => handleAdjustmentChange(Effect.GrainRoughness, e.target.value)}
                 step={1}
                 value={adjustments.grainRoughness}
                 onDragStateChange={onDragStateChange}

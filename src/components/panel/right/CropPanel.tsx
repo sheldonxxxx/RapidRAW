@@ -1,3 +1,4 @@
+import type { AppSettings, MyLens } from '../../ui/AppProperties';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Aperture,
@@ -35,7 +36,6 @@ import Text from '../../ui/Text';
 import Slider from '../../ui/Slider';
 import Switch from '../../ui/Switch';
 import Dropdown from '../../ui/Dropdown';
-import Button from '../../ui/Button';
 import { TEXT_COLOR_KEYS, TextColors, TextVariants, TextWeights } from '../../../types/typography';
 import { useEditorStore } from '../../../store/useEditorStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
@@ -63,9 +63,9 @@ interface OverlayOption {
   tooltip: string;
 }
 
-const parseExifNumber = (val: any): number => {
+const parseExifNumber = (val: unknown): number => {
   if (val === undefined || val === null) return 0;
-  const parsed = parseFloat(val);
+  const parsed = parseFloat(String(val));
   return isNaN(parsed) ? 0 : parsed;
 };
 
@@ -87,7 +87,7 @@ export default function CropPanel() {
   const [isEditingCustom, setIsEditingCustom] = useState(false);
   const [makers, setMakers] = useState<string[]>([]);
   const [lenses, setLenses] = useState<string[]>([]);
-  const [myLenses, setMyLenses] = useState<any[]>([]);
+  const [myLenses, setMyLenses] = useState<MyLens[]>([]);
   const [detectionStatus, setDetectionStatus] = useState<'idle' | 'detecting' | 'not_found' | 'success'>('idle');
   const [localRotation, setLocalRotation] = useState<number | null>(null);
   const localRotationRef = useRef<number | null>(null);
@@ -189,19 +189,19 @@ export default function CropPanel() {
   const { aspectRatio, rotation = 0, flipHorizontal = false, flipVertical = false, orientationSteps = 0 } = adjustments;
 
   useEffect(() => {
-    invoke('get_lensfun_makers')
-      .then((m: any) => setMakers(m))
+    invoke<string[]>('get_lensfun_makers')
+      .then((m) => setMakers(m))
       .catch(console.error);
 
-    invoke('load_settings').then((settings: any) => {
+    invoke<AppSettings>('load_settings').then((settings) => {
       if (settings?.myLenses) setMyLenses(settings.myLenses);
     });
   }, []);
 
   useEffect(() => {
     if (adjustments.lensMaker) {
-      invoke('get_lensfun_lenses_for_maker', { maker: adjustments.lensMaker })
-        .then((l: any) => setLenses(l))
+      invoke<string[]>('get_lensfun_lenses_for_maker', { maker: adjustments.lensMaker })
+        .then((l) => setLenses(l))
         .catch(console.error);
     } else {
       setLenses([]);
@@ -468,7 +468,7 @@ export default function CropPanel() {
 
   const displayRotation = localRotation !== null ? localRotation : fineRotation;
 
-  const handleFineRotationChange = (e: any) => {
+  const handleFineRotationChange = (e: { target: { value: string } }) => {
     const newFineRotation = parseFloat(e.target.value);
     if (isRotationActive) {
       updateLocalRotation(newFineRotation);
@@ -479,7 +479,7 @@ export default function CropPanel() {
 
   const resetFineRotation = () => {
     updateLocalRotation(null);
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, rotation: 0 }));
+    setAdjustments((prev) => ({ ...prev, rotation: 0 }));
   };
 
   const handleOverlayCycle = () => {
@@ -526,7 +526,7 @@ export default function CropPanel() {
   const fetchDistortionParams = useCallback(
     async (maker: string, model: string) => {
       try {
-        const distParams: any = await invoke('get_lens_distortion_params', {
+        const distParams = await invoke<Adjustments['lensDistortionParams']>('get_lens_distortion_params', {
           maker,
           model,
           focalLength: parseExifNumber(selectedImage?.exif?.FocalLength),
@@ -615,8 +615,8 @@ export default function CropPanel() {
       const selected = myLenses[index];
       if (!selected) return;
 
-      invoke('get_lensfun_lenses_for_maker', { maker: selected.maker })
-        .then((l: any) => setLenses(l))
+      invoke<string[]>('get_lensfun_lenses_for_maker', { maker: selected.maker })
+        .then((l) => setLenses(l))
         .catch(console.error);
 
       const distParams = await fetchDistortionParams(selected.maker, selected.model);
@@ -1052,11 +1052,14 @@ export default function CropPanel() {
                                         : 'text-text-secondary',
                                     )}
                                   >
-                                    {adjustments.guidedPerspective.lines.length} / 4
+                                    {t('editor.guided.lineCount', {
+                                      current: adjustments.guidedPerspective.lines.length,
+                                      max: 4,
+                                    })}
                                   </span>
                                 </div>
                                 <div className="flex flex-col gap-1 mt-1">
-                                  {adjustments.guidedPerspective.lines.map((line: any, idx: number) => (
+                                  {adjustments.guidedPerspective.lines.map((line, idx: number) => (
                                     <div
                                       key={line.id}
                                       className="flex items-center gap-2 p-2 rounded-md bg-surface transition-colors group"
@@ -1074,14 +1077,19 @@ export default function CropPanel() {
                                           weight={TextWeights.medium}
                                           className="truncate select-none text-xs capitalize"
                                         >
-                                          {line.type} Guide #{idx + 1}
+                                          {t(
+                                            line.type === 'vertical'
+                                              ? 'editor.guided.verticalGuide'
+                                              : 'editor.guided.horizontalGuide',
+                                            { number: idx + 1 },
+                                          )}
                                         </Text>
                                       </div>
                                       <button
                                         className="p-1 hover:text-red-500 text-text-secondary transition-colors"
                                         onClick={() => {
                                           const newLines = adjustments.guidedPerspective!.lines.filter(
-                                            (l: any) => l.id !== line.id,
+                                            (l) => l.id !== line.id,
                                           );
                                           setAdjustments((prev) => ({
                                             ...prev,
