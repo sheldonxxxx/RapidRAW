@@ -10,6 +10,19 @@ Those upstream packages do not include this fork's MCP bridge. Use [this fork's 
 
 For interface tutorials and the original editor's example photographs, visit the [upstream documentation](https://www.getrapidraw.com/docs/) and [showcase](https://github.com/CyberTimon/RapidRAW#showcase--edits).
 
+### macOS Beta 1 signature error
+
+The Apple Silicon `fork-v0.1.0-beta.1` package has an incomplete app-bundle signature. macOS may report the application as damaged even when the download is intact. Direct MCP executable tests do not cover Finder/Gatekeeper installation checks.
+
+Only for a Beta 1 download verified against the release's SHA256 digest, repair the installed bundle signature:
+
+```sh
+codesign --force --deep --sign - "/Applications/RapidRAW MCP.app"
+codesign --verify --deep --strict --verbose=2 "/Applications/RapidRAW MCP.app"
+```
+
+Then open the app. Because the beta is not notarized, macOS may still require **System Settings → Privacy & Security → Open Anyway**. See [Apple's instructions](https://support.apple.com/en-us/102445). Do not disable Gatekeeper globally. Future builds apply a complete ad-hoc signature automatically; a Developer ID signature and notarization are separate distribution requirements.
+
 ## Editing and organization
 
 - **Develop and grade:** exposure, tone mapping, white balance, colour mixer, curves, sharpening, manual noise reduction, lens corrections and geometric transforms.

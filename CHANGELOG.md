@@ -11,6 +11,10 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 - Disable development incremental compilation and debug symbols by default to reduce compiler-cache growth. Both remain available through Cargo profile overrides.
 - Require 20 GiB free on the output volume before MCP native test harness and enhancement benchmark runs, with additional checks between large operations/cases; allow an explicit positive `RAPIDRAW_MIN_FREE_GIB` override.
 
+### Fixed
+
+- macOS packages now receive a complete ad-hoc bundle signature, preventing the invalid-signature “damaged” error caused by an executable-only linker signature. CI checks the complete bundle signature. A scoped library-loading entitlement preserves bundled ONNX Runtime and optional camera-library loading under the hardened runtime. These builds are still not notarized and may require approval in macOS Privacy & Security.
+
 ## 0.1.0-beta.1 — 2026-09-14
 
 Release tag: `fork-v0.1.0-beta.1`. First whole-fork beta; native bridge `1.2.0` and Node MCP server package `0.1.0` retain separate component versions. See the [release notes](docs/releases/0.1.0-beta.1.md).
