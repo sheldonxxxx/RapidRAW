@@ -2,11 +2,13 @@
 
 The public stdio server lives in `mcp/`. The optional native bridge lives in `src-tauri/src/mcp_bridge/` and is compiled only with `--features mcp`. The regular application and its original export CLI retain their entry points. The bridge uses the existing RAW loader, adjustments, mask generation, AI models, geometry, retouch, merge and export code.
 
+For first-time setup, use the [MCP connection guide](mcp/README.md). For issue reports and pull requests, read [CONTRIBUTING.md](CONTRIBUTING.md). Lightweft and Insta360 workflows integrate through optional handoffs described in the [ecosystem overview](README.md#three-independent-projects-one-connected-workflow); the bridge does not depend on either repository.
+
 The bridge operates on copies under a caller-selected workspace. It never writes to an original photo or its existing sidecar. Each session records its source hash, working file, revision, metadata and bounded undo history. Edits are saved atomically; `save_session` additionally creates a native `.rrdata` beside the working copy. Exports stay in `workspace/exports`, and recipes stay in `workspace/recipes`.
 
 ## Build and verify
 
-This checkout requires Rust 1.98 or later. A pinned toolchain can be installed without changing the machine's default:
+This checkout requires Node.js 22.12 or later, Rust 1.98 or later, and the native prerequisites described in the [setup guide](mcp/README.md#build-and-connect). A pinned toolchain can be installed without changing the machine's default:
 
 ```sh
 rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy

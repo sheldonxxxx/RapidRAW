@@ -425,7 +425,36 @@
         "selectionPropertiesTitle": "Selection Properties",
         "useBasicInpaint": "Use basic inpainting"
       },
-      "touchUpTitle": "Touch Up"
+      "touchUpTitle": "Touch Up",
+      "generation": {
+        "workflow": "Workflow",
+        "detail": "AI resolution",
+        "megapixels": "{{megapixels}} MP",
+        "detailHelp": "Resolution of the generated area. Higher values may take longer; your photo keeps its original size.",
+        "seed": "Seed (optional)",
+        "randomSeed": "Random each time",
+        "seedHelp": "For repeatable results, reuse the seed with the same image, selection, prompt and settings.",
+        "loading": "Loading workflow options…",
+        "legacy": "This connector uses its default workflow.",
+        "unavailable": "Workflow options are unavailable. Retry or use the connector default.",
+        "connectorDefault": "Using the connector’s default workflow.",
+        "chooseWorkflow": "Choose workflow",
+        "chooseDetail": "Choose AI resolution",
+        "retry": "Retry",
+        "useDefault": "Use connector default",
+        "lastResult": "Last generated result",
+        "resultSize": "Last result: {{width}} × {{height}} px generated for a {{placedWidth}} × {{placedHeight}} px area.",
+        "resultSeed": "Seed: {{seed}}",
+        "errors": {
+          "loading": "Workflow options are still loading.",
+          "unavailable": "Saved generation settings are not supported by this connector.",
+          "profile": "The saved workflow is unavailable. Choose a workflow to continue.",
+          "detail": "The saved AI resolution is unavailable. Choose a supported resolution.",
+          "seed": "Enter a whole number from 1 to 9007199254740991, or leave blank for a random seed.",
+          "seedUnsupported": "This connector cannot reuse the saved seed. Use the connector default to continue."
+        },
+        "refresh": "Refresh workflows"
+      }
     },
     "crop": {
       "aspectRatioHeading": "Aspect Ratio",

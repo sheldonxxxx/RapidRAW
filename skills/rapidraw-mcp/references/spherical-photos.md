@@ -2,6 +2,8 @@
 
 RapidRAW edits the handed-off pixels. Stitch camera-native fisheyes and choose spherical orientation in a separately verified panorama workflow before opening an isolated derivative here. A 2:1 raster can contain two fisheye circles; dimensions and a camera brand alone do not identify a full-sphere equirectangular image.
 
+For saved Insta360 media, the independent [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit) is an optional preparation tool. [Lightweft](https://github.com/sheldonxxxx/lightweft) can coordinate direction and rendered review around the handoff. Neither project is required for RapidRAW editing; use the actual preparation tool's setup and verified output contract.
+
 ## Qualify a stitched RAW handoff
 
 Prefer a verified stitched DNG when substantial tonal or white-balance work is needed and the capture has a RAW companion. Preserve that camera RAW and its paired INSP separately from the stitched derivative. Studio-exported DNG can be three-channel LinearRaw rather than a camera mosaic; inspect its decoded representation, black/white levels and actual native render before choosing an edit. A DNG extension or 16-bit container alone does not establish usable RAW latitude or correct colour.

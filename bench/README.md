@@ -32,7 +32,7 @@ Deterministic replay for comparing UI smoothness before/after a change.
   compare the numbers to a scripted run — only compare scripted run to scripted run.
 - **Repeated iterations, not a single sample.** One run of the interaction can't tell you
   whether a difference between "before" and "after" is real or just jitter. `replay.js`
-  repeats the full cycle several times (first one discarded as warmup) and
+  repeats the full cycle ten times (first two discarded as warmup) and
   `analyze.mjs` reports median/p95/stdev per metric so you can judge whether a change
   is bigger than the run-to-run noise.
 - **Per-phase frame attribution.** Frame timing is bucketed into the `scroll`, `open`,
@@ -69,3 +69,7 @@ Deterministic replay for comparing UI smoothness before/after a change.
   cross-platform self-measurement approach above for a Linux/Windows-only automation
   path. If you need unattended/CI runs, that trade-off is worth revisiting, but it's out
   of scope for this same-machine before/after tool.
+
+## Local enhancement measurements
+
+The [local enhancement guide](../docs/local-enhancement.md) covers model preparation, profiles and native acceptance. `enhance/benchmark_onnx.py` measures model/provider inference; `enhance/benchmark_native.mjs` measures the native rendering and enhancement path, with output export timed separately. Both use caller-supplied photographs and assets. `enhance/benchmark_process.py` wraps a benchmark to sample process-tree RSS and whole-device GPU memory. Use an isolated Python environment with `psutil` for that wrapper, and retain cold and warm runs separately.

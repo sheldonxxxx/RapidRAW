@@ -1,0 +1,1295 @@
+[
+  {
+    "profile": "klein4-v1",
+    "source_size": [
+      1800,
+      1200
+    ],
+    "soft_bounds": [
+      740,
+      380,
+      1035,
+      640
+    ],
+    "core_bounds": [
+      765,
+      415,
+      1010,
+      610
+    ],
+    "arguments": [
+      "rapidraw-connector/fixture.jpg",
+      "rapidraw-connector/fixture-mask.png",
+      "Remove the object and restore the surrounding surface.",
+      104729,
+      {
+        "source_size": [
+          1800,
+          1200
+        ],
+        "selection_bounds": [
+          740,
+          380,
+          1035,
+          640
+        ],
+        "x": 592,
+        "y": 232,
+        "width": 591,
+        "height": 556,
+        "gen_width": 1056,
+        "gen_height": 992,
+        "requested_megapixels_1024": 1.0,
+        "actual_megapixels_decimal": 1.047552,
+        "restore_scale_x": 0.5596590909090909,
+        "restore_scale_y": 0.5604838709677419,
+        "margin_pixels": 148
+      },
+      {
+        "family": "klein",
+        "model": "flux-2-klein-4b-fp8.safetensors",
+        "text_encoder": "qwen_3_4b.safetensors",
+        "vae": "flux2-vae.safetensors",
+        "steps": 4,
+        "cfg": 1,
+        "megapixels": 1,
+        "mode": "masked",
+        "id": "klein4-v1"
+      }
+    ],
+    "expected": {
+      "workflow": {
+        "30": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "rapidraw-connector/fixture.jpg"
+          }
+        },
+        "47": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "rapidraw-connector/fixture-mask.png"
+          }
+        },
+        "48": {
+          "class_type": "InvertMask",
+          "inputs": {
+            "mask": [
+              "47",
+              1
+            ]
+          }
+        },
+        "50": {
+          "class_type": "ImageCrop",
+          "inputs": {
+            "image": [
+              "30",
+              0
+            ],
+            "x": 592,
+            "y": 232,
+            "width": 591,
+            "height": 556
+          }
+        },
+        "51": {
+          "class_type": "ImageScale",
+          "inputs": {
+            "image": [
+              "50",
+              0
+            ],
+            "upscale_method": "lanczos",
+            "width": 1056,
+            "height": 992,
+            "crop": "disabled"
+          }
+        },
+        "52": {
+          "class_type": "MaskToImage",
+          "inputs": {
+            "mask": [
+              "48",
+              0
+            ]
+          }
+        },
+        "53": {
+          "class_type": "ImageCrop",
+          "inputs": {
+            "image": [
+              "52",
+              0
+            ],
+            "x": 592,
+            "y": 232,
+            "width": 591,
+            "height": 556
+          }
+        },
+        "54": {
+          "class_type": "ImageScale",
+          "inputs": {
+            "image": [
+              "53",
+              0
+            ],
+            "upscale_method": "bilinear",
+            "width": 1056,
+            "height": 992,
+            "crop": "disabled"
+          }
+        },
+        "55": {
+          "class_type": "ImageToMask",
+          "inputs": {
+            "image": [
+              "54",
+              0
+            ],
+            "channel": "red"
+          }
+        },
+        "1": {
+          "class_type": "UNETLoader",
+          "inputs": {
+            "unet_name": "flux-2-klein-4b-fp8.safetensors",
+            "weight_dtype": "default"
+          }
+        },
+        "3": {
+          "class_type": "VAELoader",
+          "inputs": {
+            "vae_name": "flux2-vae.safetensors"
+          }
+        },
+        "2": {
+          "class_type": "CLIPLoader",
+          "inputs": {
+            "clip_name": "qwen_3_4b.safetensors",
+            "type": "flux2",
+            "device": "default"
+          }
+        },
+        "7": {
+          "class_type": "CLIPTextEncode",
+          "inputs": {
+            "clip": [
+              "2",
+              0
+            ],
+            "text": "Remove the object and restore the surrounding surface."
+          }
+        },
+        "8": {
+          "class_type": "ConditioningZeroOut",
+          "inputs": {
+            "conditioning": [
+              "7",
+              0
+            ]
+          }
+        },
+        "56": {
+          "class_type": "VAEEncode",
+          "inputs": {
+            "pixels": [
+              "51",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "57": {
+          "class_type": "SetLatentNoiseMask",
+          "inputs": {
+            "samples": [
+              "56",
+              0
+            ],
+            "mask": [
+              "55",
+              0
+            ]
+          }
+        },
+        "58": {
+          "class_type": "ReferenceLatent",
+          "inputs": {
+            "conditioning": [
+              "7",
+              0
+            ],
+            "latent": [
+              "56",
+              0
+            ]
+          }
+        },
+        "59": {
+          "class_type": "ReferenceLatent",
+          "inputs": {
+            "conditioning": [
+              "8",
+              0
+            ],
+            "latent": [
+              "56",
+              0
+            ]
+          }
+        },
+        "28": {
+          "class_type": "RandomNoise",
+          "inputs": {
+            "noise_seed": 104729
+          }
+        },
+        "60": {
+          "class_type": "CFGGuider",
+          "inputs": {
+            "model": [
+              "1",
+              0
+            ],
+            "positive": [
+              "58",
+              0
+            ],
+            "negative": [
+              "59",
+              0
+            ],
+            "cfg": 1.0
+          }
+        },
+        "61": {
+          "class_type": "KSamplerSelect",
+          "inputs": {
+            "sampler_name": "euler"
+          }
+        },
+        "62": {
+          "class_type": "Flux2Scheduler",
+          "inputs": {
+            "steps": 4,
+            "width": 1056,
+            "height": 992
+          }
+        },
+        "63": {
+          "class_type": "SamplerCustomAdvanced",
+          "inputs": {
+            "noise": [
+              "28",
+              0
+            ],
+            "guider": [
+              "60",
+              0
+            ],
+            "sampler": [
+              "61",
+              0
+            ],
+            "sigmas": [
+              "62",
+              0
+            ],
+            "latent_image": [
+              "57",
+              0
+            ]
+          }
+        },
+        "64": {
+          "class_type": "VAEDecode",
+          "inputs": {
+            "samples": [
+              "63",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "99": {
+          "class_type": "PreviewImage",
+          "inputs": {
+            "images": [
+              "64",
+              0
+            ]
+          }
+        }
+      },
+      "output_node": "99",
+      "output_kind": "generation"
+    }
+  },
+  {
+    "profile": "klein4-tight2mp",
+    "source_size": [
+      1800,
+      1200
+    ],
+    "soft_bounds": [
+      740,
+      380,
+      1035,
+      640
+    ],
+    "core_bounds": [
+      765,
+      415,
+      1010,
+      610
+    ],
+    "arguments": [
+      "rapidraw-connector/fixture.jpg",
+      "rapidraw-connector/fixture-mask.png",
+      "Remove the object and restore the surrounding surface.",
+      104729,
+      {
+        "source_size": [
+          1800,
+          1200
+        ],
+        "selection_bounds": [
+          740,
+          380,
+          1035,
+          640
+        ],
+        "x": 676,
+        "y": 316,
+        "width": 423,
+        "height": 388,
+        "gen_width": 1520,
+        "gen_height": 1392,
+        "requested_megapixels_1024": 2.0,
+        "actual_megapixels_decimal": 2.11584,
+        "restore_scale_x": 0.27828947368421053,
+        "restore_scale_y": 0.27873563218390807,
+        "margin_pixels": 64
+      },
+      {
+        "family": "klein",
+        "model": "flux-2-klein-4b-fp8.safetensors",
+        "text_encoder": "qwen_3_4b.safetensors",
+        "vae": "flux2-vae.safetensors",
+        "steps": 4,
+        "cfg": 1,
+        "megapixels": 2,
+        "mode": "masked",
+        "id": "klein4-tight2mp",
+        "margin_fraction": 0.1
+      }
+    ],
+    "expected": {
+      "workflow": {
+        "30": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "rapidraw-connector/fixture.jpg"
+          }
+        },
+        "47": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "rapidraw-connector/fixture-mask.png"
+          }
+        },
+        "48": {
+          "class_type": "InvertMask",
+          "inputs": {
+            "mask": [
+              "47",
+              1
+            ]
+          }
+        },
+        "50": {
+          "class_type": "ImageCrop",
+          "inputs": {
+            "image": [
+              "30",
+              0
+            ],
+            "x": 676,
+            "y": 316,
+            "width": 423,
+            "height": 388
+          }
+        },
+        "51": {
+          "class_type": "ImageScale",
+          "inputs": {
+            "image": [
+              "50",
+              0
+            ],
+            "upscale_method": "lanczos",
+            "width": 1520,
+            "height": 1392,
+            "crop": "disabled"
+          }
+        },
+        "52": {
+          "class_type": "MaskToImage",
+          "inputs": {
+            "mask": [
+              "48",
+              0
+            ]
+          }
+        },
+        "53": {
+          "class_type": "ImageCrop",
+          "inputs": {
+            "image": [
+              "52",
+              0
+            ],
+            "x": 676,
+            "y": 316,
+            "width": 423,
+            "height": 388
+          }
+        },
+        "54": {
+          "class_type": "ImageScale",
+          "inputs": {
+            "image": [
+              "53",
+              0
+            ],
+            "upscale_method": "bilinear",
+            "width": 1520,
+            "height": 1392,
+            "crop": "disabled"
+          }
+        },
+        "55": {
+          "class_type": "ImageToMask",
+          "inputs": {
+            "image": [
+              "54",
+              0
+            ],
+            "channel": "red"
+          }
+        },
+        "1": {
+          "class_type": "UNETLoader",
+          "inputs": {
+            "unet_name": "flux-2-klein-4b-fp8.safetensors",
+            "weight_dtype": "default"
+          }
+        },
+        "3": {
+          "class_type": "VAELoader",
+          "inputs": {
+            "vae_name": "flux2-vae.safetensors"
+          }
+        },
+        "2": {
+          "class_type": "CLIPLoader",
+          "inputs": {
+            "clip_name": "qwen_3_4b.safetensors",
+            "type": "flux2",
+            "device": "default"
+          }
+        },
+        "7": {
+          "class_type": "CLIPTextEncode",
+          "inputs": {
+            "clip": [
+              "2",
+              0
+            ],
+            "text": "Remove the object and restore the surrounding surface."
+          }
+        },
+        "8": {
+          "class_type": "ConditioningZeroOut",
+          "inputs": {
+            "conditioning": [
+              "7",
+              0
+            ]
+          }
+        },
+        "56": {
+          "class_type": "VAEEncode",
+          "inputs": {
+            "pixels": [
+              "51",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "57": {
+          "class_type": "SetLatentNoiseMask",
+          "inputs": {
+            "samples": [
+              "56",
+              0
+            ],
+            "mask": [
+              "55",
+              0
+            ]
+          }
+        },
+        "58": {
+          "class_type": "ReferenceLatent",
+          "inputs": {
+            "conditioning": [
+              "7",
+              0
+            ],
+            "latent": [
+              "56",
+              0
+            ]
+          }
+        },
+        "59": {
+          "class_type": "ReferenceLatent",
+          "inputs": {
+            "conditioning": [
+              "8",
+              0
+            ],
+            "latent": [
+              "56",
+              0
+            ]
+          }
+        },
+        "28": {
+          "class_type": "RandomNoise",
+          "inputs": {
+            "noise_seed": 104729
+          }
+        },
+        "60": {
+          "class_type": "CFGGuider",
+          "inputs": {
+            "model": [
+              "1",
+              0
+            ],
+            "positive": [
+              "58",
+              0
+            ],
+            "negative": [
+              "59",
+              0
+            ],
+            "cfg": 1.0
+          }
+        },
+        "61": {
+          "class_type": "KSamplerSelect",
+          "inputs": {
+            "sampler_name": "euler"
+          }
+        },
+        "62": {
+          "class_type": "Flux2Scheduler",
+          "inputs": {
+            "steps": 4,
+            "width": 1520,
+            "height": 1392
+          }
+        },
+        "63": {
+          "class_type": "SamplerCustomAdvanced",
+          "inputs": {
+            "noise": [
+              "28",
+              0
+            ],
+            "guider": [
+              "60",
+              0
+            ],
+            "sampler": [
+              "61",
+              0
+            ],
+            "sigmas": [
+              "62",
+              0
+            ],
+            "latent_image": [
+              "57",
+              0
+            ]
+          }
+        },
+        "64": {
+          "class_type": "VAEDecode",
+          "inputs": {
+            "samples": [
+              "63",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "99": {
+          "class_type": "PreviewImage",
+          "inputs": {
+            "images": [
+              "64",
+              0
+            ]
+          }
+        }
+      },
+      "output_node": "99",
+      "output_kind": "generation"
+    }
+  },
+  {
+    "profile": "klein9-kv",
+    "source_size": [
+      1800,
+      1200
+    ],
+    "soft_bounds": [
+      740,
+      380,
+      1035,
+      640
+    ],
+    "core_bounds": [
+      765,
+      415,
+      1010,
+      610
+    ],
+    "arguments": [
+      "rapidraw-connector/fixture.jpg",
+      "rapidraw-connector/fixture-mask.png",
+      "Remove the object and restore the surrounding surface.",
+      104729,
+      {
+        "source_size": [
+          1800,
+          1200
+        ],
+        "selection_bounds": [
+          740,
+          380,
+          1035,
+          640
+        ],
+        "x": 592,
+        "y": 232,
+        "width": 591,
+        "height": 556,
+        "gen_width": 1056,
+        "gen_height": 992,
+        "requested_megapixels_1024": 1.0,
+        "actual_megapixels_decimal": 1.047552,
+        "restore_scale_x": 0.5596590909090909,
+        "restore_scale_y": 0.5604838709677419,
+        "margin_pixels": 148
+      },
+      {
+        "family": "klein",
+        "model": "flux-2-klein-9b-kv-fp8.safetensors",
+        "text_encoder": "qwen_3_8b_fp8mixed.safetensors",
+        "vae": "flux2-vae.safetensors",
+        "steps": 4,
+        "cfg": 1,
+        "megapixels": 1,
+        "mode": "masked",
+        "kv_cache": true,
+        "id": "klein9-kv"
+      }
+    ],
+    "expected": {
+      "workflow": {
+        "30": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "rapidraw-connector/fixture.jpg"
+          }
+        },
+        "47": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "rapidraw-connector/fixture-mask.png"
+          }
+        },
+        "48": {
+          "class_type": "InvertMask",
+          "inputs": {
+            "mask": [
+              "47",
+              1
+            ]
+          }
+        },
+        "50": {
+          "class_type": "ImageCrop",
+          "inputs": {
+            "image": [
+              "30",
+              0
+            ],
+            "x": 592,
+            "y": 232,
+            "width": 591,
+            "height": 556
+          }
+        },
+        "51": {
+          "class_type": "ImageScale",
+          "inputs": {
+            "image": [
+              "50",
+              0
+            ],
+            "upscale_method": "lanczos",
+            "width": 1056,
+            "height": 992,
+            "crop": "disabled"
+          }
+        },
+        "52": {
+          "class_type": "MaskToImage",
+          "inputs": {
+            "mask": [
+              "48",
+              0
+            ]
+          }
+        },
+        "53": {
+          "class_type": "ImageCrop",
+          "inputs": {
+            "image": [
+              "52",
+              0
+            ],
+            "x": 592,
+            "y": 232,
+            "width": 591,
+            "height": 556
+          }
+        },
+        "54": {
+          "class_type": "ImageScale",
+          "inputs": {
+            "image": [
+              "53",
+              0
+            ],
+            "upscale_method": "bilinear",
+            "width": 1056,
+            "height": 992,
+            "crop": "disabled"
+          }
+        },
+        "55": {
+          "class_type": "ImageToMask",
+          "inputs": {
+            "image": [
+              "54",
+              0
+            ],
+            "channel": "red"
+          }
+        },
+        "1": {
+          "class_type": "UNETLoader",
+          "inputs": {
+            "unet_name": "flux-2-klein-9b-kv-fp8.safetensors",
+            "weight_dtype": "default"
+          }
+        },
+        "3": {
+          "class_type": "VAELoader",
+          "inputs": {
+            "vae_name": "flux2-vae.safetensors"
+          }
+        },
+        "2": {
+          "class_type": "CLIPLoader",
+          "inputs": {
+            "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+            "type": "flux2",
+            "device": "default"
+          }
+        },
+        "5": {
+          "class_type": "FluxKVCache",
+          "inputs": {
+            "model": [
+              "1",
+              0
+            ]
+          }
+        },
+        "7": {
+          "class_type": "CLIPTextEncode",
+          "inputs": {
+            "clip": [
+              "2",
+              0
+            ],
+            "text": "Remove the object and restore the surrounding surface."
+          }
+        },
+        "8": {
+          "class_type": "ConditioningZeroOut",
+          "inputs": {
+            "conditioning": [
+              "7",
+              0
+            ]
+          }
+        },
+        "56": {
+          "class_type": "VAEEncode",
+          "inputs": {
+            "pixels": [
+              "51",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "57": {
+          "class_type": "SetLatentNoiseMask",
+          "inputs": {
+            "samples": [
+              "56",
+              0
+            ],
+            "mask": [
+              "55",
+              0
+            ]
+          }
+        },
+        "58": {
+          "class_type": "ReferenceLatent",
+          "inputs": {
+            "conditioning": [
+              "7",
+              0
+            ],
+            "latent": [
+              "56",
+              0
+            ]
+          }
+        },
+        "59": {
+          "class_type": "ReferenceLatent",
+          "inputs": {
+            "conditioning": [
+              "8",
+              0
+            ],
+            "latent": [
+              "56",
+              0
+            ]
+          }
+        },
+        "28": {
+          "class_type": "RandomNoise",
+          "inputs": {
+            "noise_seed": 104729
+          }
+        },
+        "60": {
+          "class_type": "CFGGuider",
+          "inputs": {
+            "model": [
+              "5",
+              0
+            ],
+            "positive": [
+              "58",
+              0
+            ],
+            "negative": [
+              "59",
+              0
+            ],
+            "cfg": 1.0
+          }
+        },
+        "61": {
+          "class_type": "KSamplerSelect",
+          "inputs": {
+            "sampler_name": "euler"
+          }
+        },
+        "62": {
+          "class_type": "Flux2Scheduler",
+          "inputs": {
+            "steps": 4,
+            "width": 1056,
+            "height": 992
+          }
+        },
+        "63": {
+          "class_type": "SamplerCustomAdvanced",
+          "inputs": {
+            "noise": [
+              "28",
+              0
+            ],
+            "guider": [
+              "60",
+              0
+            ],
+            "sampler": [
+              "61",
+              0
+            ],
+            "sigmas": [
+              "62",
+              0
+            ],
+            "latent_image": [
+              "57",
+              0
+            ]
+          }
+        },
+        "64": {
+          "class_type": "VAEDecode",
+          "inputs": {
+            "samples": [
+              "63",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "99": {
+          "class_type": "PreviewImage",
+          "inputs": {
+            "images": [
+              "64",
+              0
+            ]
+          }
+        }
+      },
+      "output_node": "99",
+      "output_kind": "generation"
+    }
+  },
+  {
+    "profile": "boogu-turbo4-context",
+    "source_size": [
+      1800,
+      1200
+    ],
+    "soft_bounds": [
+      740,
+      380,
+      1035,
+      640
+    ],
+    "core_bounds": [
+      765,
+      415,
+      1010,
+      610
+    ],
+    "arguments": [
+      "rapidraw-connector/fixture.jpg",
+      "rapidraw-connector/fixture-mask.png",
+      "Remove the object and restore the surrounding surface.",
+      104729,
+      {
+        "source_size": [
+          1800,
+          1200
+        ],
+        "selection_bounds": [
+          740,
+          380,
+          1035,
+          640
+        ],
+        "x": 592,
+        "y": 232,
+        "width": 591,
+        "height": 556,
+        "gen_width": 1056,
+        "gen_height": 992,
+        "requested_megapixels_1024": 1.0,
+        "actual_megapixels_decimal": 1.047552,
+        "restore_scale_x": 0.5596590909090909,
+        "restore_scale_y": 0.5604838709677419,
+        "margin_pixels": 148
+      },
+      {
+        "family": "boogu",
+        "model": "boogu_image_edit_turbo_hotfix_1k_20260708_int8_convrot.safetensors",
+        "text_encoder": "qwen3vl_8b_fp8_scaled.safetensors",
+        "vae": "boogu.safetensors",
+        "steps": 4,
+        "cfg": 1,
+        "shift": 3.16,
+        "sampler": "lcm",
+        "scheduler": "sgm_uniform",
+        "megapixels": 1,
+        "mode": "context",
+        "id": "boogu-turbo4-context"
+      }
+    ],
+    "expected": {
+      "workflow": {
+        "30": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "rapidraw-connector/fixture.jpg"
+          }
+        },
+        "47": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "rapidraw-connector/fixture-mask.png"
+          }
+        },
+        "48": {
+          "class_type": "InvertMask",
+          "inputs": {
+            "mask": [
+              "47",
+              1
+            ]
+          }
+        },
+        "50": {
+          "class_type": "ImageCrop",
+          "inputs": {
+            "image": [
+              "30",
+              0
+            ],
+            "x": 592,
+            "y": 232,
+            "width": 591,
+            "height": 556
+          }
+        },
+        "51": {
+          "class_type": "ImageScale",
+          "inputs": {
+            "image": [
+              "50",
+              0
+            ],
+            "upscale_method": "lanczos",
+            "width": 1056,
+            "height": 992,
+            "crop": "disabled"
+          }
+        },
+        "52": {
+          "class_type": "MaskToImage",
+          "inputs": {
+            "mask": [
+              "48",
+              0
+            ]
+          }
+        },
+        "53": {
+          "class_type": "ImageCrop",
+          "inputs": {
+            "image": [
+              "52",
+              0
+            ],
+            "x": 592,
+            "y": 232,
+            "width": 591,
+            "height": 556
+          }
+        },
+        "54": {
+          "class_type": "ImageScale",
+          "inputs": {
+            "image": [
+              "53",
+              0
+            ],
+            "upscale_method": "bilinear",
+            "width": 1056,
+            "height": 992,
+            "crop": "disabled"
+          }
+        },
+        "55": {
+          "class_type": "ImageToMask",
+          "inputs": {
+            "image": [
+              "54",
+              0
+            ],
+            "channel": "red"
+          }
+        },
+        "1": {
+          "class_type": "UNETLoader",
+          "inputs": {
+            "unet_name": "boogu_image_edit_turbo_hotfix_1k_20260708_int8_convrot.safetensors",
+            "weight_dtype": "default"
+          }
+        },
+        "3": {
+          "class_type": "VAELoader",
+          "inputs": {
+            "vae_name": "boogu.safetensors"
+          }
+        },
+        "2": {
+          "class_type": "CLIPLoader",
+          "inputs": {
+            "clip_name": "qwen3vl_8b_fp8_scaled.safetensors",
+            "type": "boogu",
+            "device": "default"
+          }
+        },
+        "6": {
+          "class_type": "ModelSamplingAuraFlow",
+          "inputs": {
+            "model": [
+              "1",
+              0
+            ],
+            "shift": 3.16
+          }
+        },
+        "7": {
+          "class_type": "TextEncodeBooguEdit",
+          "inputs": {
+            "clip": [
+              "2",
+              0
+            ],
+            "prompt": "Remove the object and restore the surrounding surface.",
+            "negative_prompt": "",
+            "vae": [
+              "3",
+              0
+            ],
+            "images.image_1": [
+              "51",
+              0
+            ]
+          }
+        },
+        "56": {
+          "class_type": "VAEEncode",
+          "inputs": {
+            "pixels": [
+              "51",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "57": {
+          "class_type": "EmptyLatentImage",
+          "inputs": {
+            "width": 1056,
+            "height": 992,
+            "batch_size": 1
+          }
+        },
+        "63": {
+          "class_type": "KSampler",
+          "inputs": {
+            "model": [
+              "6",
+              0
+            ],
+            "seed": 104729,
+            "steps": 4,
+            "cfg": 1.0,
+            "sampler_name": "lcm",
+            "scheduler": "sgm_uniform",
+            "positive": [
+              "7",
+              0
+            ],
+            "negative": [
+              "7",
+              1
+            ],
+            "latent_image": [
+              "57",
+              0
+            ],
+            "denoise": 1.0
+          }
+        },
+        "64": {
+          "class_type": "VAEDecode",
+          "inputs": {
+            "samples": [
+              "63",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "99": {
+          "class_type": "PreviewImage",
+          "inputs": {
+            "images": [
+              "64",
+              0
+            ]
+          }
+        }
+      },
+      "output_node": "99",
+      "output_kind": "generation"
+    }
+  }
+]

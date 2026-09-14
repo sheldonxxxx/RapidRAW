@@ -106,6 +106,25 @@ fn default_gpu_arena_mb(model: &str) -> usize {
     }
 }
 
+#[cfg(any(all(target_os = "macos", target_arch = "aarch64"), test))]
+fn apple_silicon_lama_cpu_threads(
+    apple_silicon: bool,
+    cpu: bool,
+    model: &str,
+    build_info: &str,
+) -> Option<usize> {
+    // The official 1.30.0 archive reports HEAD rather than its release tag.
+    // Limit this FP16 MatMul workaround to the verified release commit.
+    let affected_runtime = build_info.split(',').any(|field| {
+        matches!(
+            field.trim().strip_prefix("git-commit-id="),
+            Some("f2c39fe" | "f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7")
+        )
+    });
+    (apple_silicon && cpu && model == crate::ai_processing::LAMA_FILENAME && affected_runtime)
+        .then_some(4)
+}
+
 #[cfg(any(target_os = "linux", test))]
 pub(crate) fn validate_inpaint_output(values: impl Iterator<Item = f32>) -> Result<()> {
     if values.into_iter().any(|value| !value.is_finite()) {
@@ -162,6 +181,21 @@ pub(crate) fn load_session(path: impl AsRef<Path>) -> Result<Session> {
     };
     let loaded = load_with_policy(provider, |cuda| {
         let builder = Session::builder()?;
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let builder = if let Some(threads) =
+            apple_silicon_lama_cpu_threads(true, !cuda, &model, ort::info())
+        {
+            // KleidiAI's FP16 broadcast matrix kernels are slow for LaMa's FFT
+            // graph on this runtime. Keep this setting local to the LaMa session.
+            log::info!(
+                "ONNX LaMa: applying ONNX Runtime 1.30.0 CPU compatibility settings (KleidiAI disabled, {threads} threads)"
+            );
+            builder
+                .with_config_entry("mlas.disable_kleidiai", "1")?
+                .with_intra_threads(threads)?
+        } else {
+            builder
+        };
         #[cfg(target_os = "linux")]
         let builder = if cuda {
             use ort::execution_providers::{
@@ -242,6 +276,39 @@ pub(crate) fn status() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lama_cpu_workaround_is_limited_to_the_tested_apple_silicon_runtime() {
+        use crate::ai_processing::{ENCODER_FILENAME, LAMA_FILENAME};
+        let affected = "ORT Build Info: git-branch=HEAD, git-commit-id=f2c39fe, build type=Release";
+        assert_eq!(
+            apple_silicon_lama_cpu_threads(true, true, LAMA_FILENAME, affected),
+            Some(4)
+        );
+        assert_eq!(
+            apple_silicon_lama_cpu_threads(
+                true,
+                true,
+                LAMA_FILENAME,
+                "ORT Build Info: git-branch=HEAD, git-commit-id=f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7, build type=Release"
+            ),
+            Some(4)
+        );
+        for (apple_silicon, cpu, model, build_info) in [
+            (false, true, LAMA_FILENAME, affected),
+            (true, false, LAMA_FILENAME, affected),
+            (true, true, ENCODER_FILENAME, affected),
+            (true, true, LAMA_FILENAME, "git-branch=rel-1.22.0"),
+            (true, true, LAMA_FILENAME, "git-branch=rel-1.31.0"),
+            (true, true, LAMA_FILENAME, "git-commit-id=f2c39fe0"),
+            (true, true, LAMA_FILENAME, ""),
+        ] {
+            assert_eq!(
+                apple_silicon_lama_cpu_threads(apple_silicon, cpu, model, build_info),
+                None
+            );
+        }
+    }
 
     #[test]
     fn default_cpu_ignores_unrelated_cuda_options_on_every_platform() {

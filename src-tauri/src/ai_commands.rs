@@ -428,3 +428,190 @@ pub async fn test_ai_connector_connection(address: String) -> Result<(), String>
         Err(e) => Err(e.to_string()),
     }
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AiGenerationCapabilities {
+    #[serde(default)]
+    seed: bool,
+    #[serde(alias = "default_profile")]
+    default_profile: String,
+    profiles: Vec<AiGenerationProfile>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AiGenerationProfile {
+    id: String,
+    label: String,
+    #[serde(alias = "default_megapixels")]
+    default_megapixels: f64,
+    megapixels: Vec<f64>,
+}
+
+fn parse_generation_capabilities(
+    value: serde_json::Value,
+) -> Result<Option<AiGenerationCapabilities>, String> {
+    if value.get("protocol_version").and_then(|v| v.as_u64()) != Some(2) {
+        return Ok(None);
+    }
+    let mut capabilities: AiGenerationCapabilities =
+        serde_json::from_value(value.get("generation").cloned().unwrap_or_default())
+            .map_err(|_| "The connector returned incomplete workflow options".to_string())?;
+    if capabilities.profiles.is_empty() || capabilities.profiles.len() > 64 {
+        return Err("The connector must advertise between 1 and 64 workflows".to_string());
+    }
+    let mut ids = std::collections::HashSet::new();
+    for profile in &mut capabilities.profiles {
+        profile.label = profile.label.trim().to_string();
+        if !ids.insert(profile.id.clone())
+            || profile.label.is_empty()
+            || profile.label.chars().count() > 120
+            || profile.label.chars().any(char::is_control)
+            || profile.megapixels.is_empty()
+            || profile.megapixels.len() > 32
+        {
+            return Err("The connector returned invalid workflow choices".to_string());
+        }
+        ai_connector::GenerationOptions {
+            profile: Some(profile.id.clone()),
+            megapixels: Some(profile.default_megapixels),
+            ..Default::default()
+        }
+        .validate()
+        .map_err(|e| e.to_string())?;
+        for &mp in &profile.megapixels {
+            ai_connector::GenerationOptions {
+                megapixels: Some(mp),
+                ..Default::default()
+            }
+            .validate()
+            .map_err(|e| e.to_string())?;
+        }
+        if !profile
+            .megapixels
+            .iter()
+            .any(|mp| (*mp - profile.default_megapixels).abs() <= 1e-9)
+        {
+            return Err("The connector's default detail is unavailable".to_string());
+        }
+        profile.megapixels.sort_by(f64::total_cmp);
+        profile.megapixels.dedup_by(|a, b| (*a - *b).abs() <= 1e-9);
+    }
+    if !ids.contains(&capabilities.default_profile) {
+        return Err("The connector's default workflow is unavailable".to_string());
+    }
+    Ok(Some(capabilities))
+}
+
+#[tauri::command]
+pub async fn get_ai_connector_capabilities(
+    address: String,
+    token: Option<String>,
+) -> Result<Option<AiGenerationCapabilities>, String> {
+    let mut request = reqwest::Client::new()
+        .get(format!(
+            "http://{}/capabilities",
+            address.trim().trim_end_matches('/')
+        ))
+        .timeout(std::time::Duration::from_secs(5));
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|_| "Could not reach the connector to load workflow options".to_string())?;
+    if matches!(response.status().as_u16(), 404 | 405) {
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        return Err(format!(
+            "Could not load workflow options (HTTP {})",
+            response.status().as_u16()
+        ));
+    }
+    let value = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|_| "The connector returned unreadable workflow options".to_string())?;
+    parse_generation_capabilities(value)
+}
+
+#[cfg(test)]
+mod generation_capabilities_tests {
+    use super::{get_ai_connector_capabilities, parse_generation_capabilities};
+    use serde_json::json;
+
+    fn valid() -> serde_json::Value {
+        json!({"protocol_version":2,"generation":{"seed":true,"default_profile":"balanced",
+            "profiles":[{"id":"balanced","label":" Balanced editing ","default_megapixels":1,"megapixels":[2,1,1]}]}})
+    }
+
+    #[test]
+    fn generation_ui_capabilities_normalize_and_serialize() {
+        let result = parse_generation_capabilities(valid()).unwrap().unwrap();
+        let output = serde_json::to_value(result).unwrap();
+        assert_eq!(output["defaultProfile"], "balanced");
+        assert_eq!(output["profiles"][0]["label"], "Balanced editing");
+        assert_eq!(output["profiles"][0]["defaultMegapixels"], 1.0);
+        assert_eq!(output["profiles"][0]["megapixels"], json!([1.0, 2.0]));
+        assert!(
+            parse_generation_capabilities(json!({"protocol_version":1}))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn generation_ui_capabilities_reject_invalid_choices() {
+        for (field, value) in [
+            ("id", json!("../model")),
+            ("label", json!("")),
+            ("default_megapixels", json!(4)),
+            ("megapixels", json!([0])),
+        ] {
+            let mut input = valid();
+            input["generation"]["profiles"][0][field] = value;
+            assert!(parse_generation_capabilities(input).is_err(), "{field}");
+        }
+        let mut input = valid();
+        input["generation"]["default_profile"] = json!("missing");
+        assert!(parse_generation_capabilities(input).is_err());
+        let mut input = valid();
+        let duplicate = input["generation"]["profiles"][0].clone();
+        input["generation"]["profiles"]
+            .as_array_mut()
+            .unwrap()
+            .push(duplicate);
+        assert!(parse_generation_capabilities(input).is_err());
+    }
+
+    #[tokio::test]
+    async fn generation_ui_capabilities_legacy_http_and_auth() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("{}/", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut bytes = [0; 4096];
+            let count = stream.read(&mut bytes).unwrap();
+            let request = String::from_utf8_lossy(&bytes[..count]).to_lowercase();
+            assert!(request.starts_with("get /capabilities "));
+            assert!(request.contains("authorization: bearer fixture-token"));
+            stream
+                .write_all(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+        });
+        assert!(
+            get_ai_connector_capabilities(address, Some("fixture-token".into()))
+                .await
+                .unwrap()
+                .is_none()
+        );
+        server.join().unwrap();
+    }
+}

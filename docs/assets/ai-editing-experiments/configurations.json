@@ -1,0 +1,474 @@
+{
+  "schema_version": 1,
+  "title": "RapidRAW AI editing experiment configurations",
+  "study_dates": [
+    "2026-09-13",
+    "2026-09-14"
+  ],
+  "purpose": "Portable model and configuration provenance for the accompanying examples. This is not an importable Comfy workflow or a model quality leaderboard.",
+  "environment": {
+    "evidence_scope": "Captured during the study; not a current hardware probe.",
+    "gpu": "NVIDIA GeForce RTX 5060 Ti",
+    "advertised_vram_gb": 16,
+    "reported_vram_mib": 16311,
+    "nvidia_driver": "595.58.03",
+    "gpu_snapshot_utc": "2026-09-13T13:13:31Z",
+    "torch": "2.12.0+cu130",
+    "torch_build_cuda": "13.0",
+    "torch_snapshot_utc": "2026-09-13T16:04:10.596247Z",
+    "comfyui_version": "0.35.0",
+    "comfyui_revision": "c75d8c966c29cb0392259af791f43373315b72db",
+    "comfyui_revision_url": "https://github.com/Comfy-Org/ComfyUI/tree/c75d8c966c29cb0392259af791f43373315b72db",
+    "cuda_note": "The cu130 label is the PyTorch build runtime. It is not the separate native ONNX runtime or an installed CUDA toolkit measurement."
+  },
+  "method": {
+    "generation_area": "1 MP means a target of 1024 × 1024 pixels in area, aspect-preserving and rounded to multiples of 16; it is not a 1024-pixel edge limit.",
+    "conditioning": "JPEG RGB derived from decoded RAW and visible AI patches. Global tone, LUT and denoise adjustments are not baked into model conditioning.",
+    "native_delivery": "Restore generated RGB to the recorded native context; RapidRAW applies the original selection alpha once. Full photo dimensions do not describe neural generation resolution.",
+    "production_crop": {
+      "margin_fraction": 0.5,
+      "minimum_margin_pixels": 64,
+      "dimension_multiple": 16,
+      "rule": "Expand the nonzero selection bounds by max(64, ceil(0.5 × longest selection edge)), clipped to the source.",
+      "scope": "Default production context only. The bundled closer-context profile uses margin_fraction 0.1 with the same 64-pixel minimum."
+    },
+    "fixed_crop_comparisons": "Mask-size experiments used the same explicit context ROI for both masks. These differ from native production mask-derived crops; compare the recorded dimensions.",
+    "randomness": "Use one explicit seed for a matched comparison; the complex examples used 104729. A seed is not a general quality recommendation. Different code, precision or devices may change pixels.",
+    "super_resolution": "Freeze the generated crop; compare direct Lanczos restoration and scale-matched Lanczos controls against SR; then restore to identical native placement and apply the unchanged mask once.",
+    "super_resolution_result": "The tested SR combinations did not justify a default enhancement stage. Sharper intermediates sometimes worsened native texture or invented structure. These observations apply to these exact checkpoints/settings.",
+    "negative_prompt": "Store the effective request negative prompt separately. The complex API comparisons used empty negatives; native requests may supply one. Klein uses zeroed negative conditioning."
+  },
+  "timing_scopes": {
+    "comfy_graph": "Executed graph through output encoding, excluding source transfer, native patch application and full-image export. First calls and model switches are separate observations, not pure GPU kernel timings.",
+    "native_first_visible": "Native retouch request through the first 1600-pixel preview; includes connector work and native preview rendering, excludes final full-resolution benchmark export.",
+    "postprocess_comfy_execution_wall": "Only the added SR graph; never compare this number directly with complete inpaint latency. Parent generation plus SR is a derived arithmetic sum, not a measured click-to-result time.",
+    "comparison_limits": "Profile samples cover different small case sets. Early cold loads overlapped disk-intensive transfers; later first calls also reflect residency and cache state. No global winner or stable tail-latency claim follows."
+  },
+  "observed_complex_graph_timings": [
+    {
+      "configuration": "boogu-turbo4-context",
+      "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
+      "samples": 7,
+      "median_seconds": 11.838,
+      "range_seconds": [
+        11.637,
+        11.961
+      ],
+      "first_observed_graph_seconds": 131.193,
+      "cached_completions_excluded": 0
+    },
+    {
+      "configuration": "klein4-2mp",
+      "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
+      "samples": 2,
+      "median_seconds": 14.6445,
+      "range_seconds": [
+        14.591,
+        14.698
+      ],
+      "first_observed_graph_seconds": 75.111,
+      "cached_completions_excluded": 0
+    },
+    {
+      "configuration": "klein4-context",
+      "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
+      "samples": 7,
+      "median_seconds": 5.45,
+      "range_seconds": [
+        5.432,
+        5.653
+      ],
+      "first_observed_graph_seconds": 5.453,
+      "cached_completions_excluded": 6
+    },
+    {
+      "configuration": "klein4-v1",
+      "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
+      "samples": 13,
+      "median_seconds": 5.626,
+      "range_seconds": [
+        4.829,
+        6.141
+      ],
+      "first_observed_graph_seconds": 5.651,
+      "cached_completions_excluded": 0
+    },
+    {
+      "configuration": "klein9-kv",
+      "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
+      "samples": 3,
+      "median_seconds": 7.676,
+      "range_seconds": [
+        7.156,
+        7.782
+      ],
+      "first_observed_graph_seconds": 123.238,
+      "cached_completions_excluded": 0
+    },
+    {
+      "configuration": "qwen2511-lightning4-context",
+      "scope": "Comfy graph wall time after the first observed call; cached completions excluded",
+      "samples": 7,
+      "median_seconds": 29.288,
+      "range_seconds": [
+        28.972,
+        29.783
+      ],
+      "first_observed_graph_seconds": 36.746,
+      "cached_completions_excluded": 0
+    }
+  ],
+  "configurations": [
+    {
+      "family": "klein",
+      "model": "flux-2-klein-4b-fp8.safetensors",
+      "text_encoder": "qwen_3_4b.safetensors",
+      "vae": "flux2-vae.safetensors",
+      "steps": 4,
+      "cfg": 1,
+      "megapixels": 1,
+      "mode": "masked",
+      "id": "klein4-v1",
+      "sampler": "euler",
+      "scheduler": "Flux2Scheduler",
+      "availability": "bundled connector profile"
+    },
+    {
+      "family": "klein",
+      "model": "flux-2-klein-4b-fp8.safetensors",
+      "text_encoder": "qwen_3_4b.safetensors",
+      "vae": "flux2-vae.safetensors",
+      "steps": 4,
+      "cfg": 1,
+      "megapixels": 1,
+      "mode": "context",
+      "id": "klein4-context",
+      "sampler": "euler",
+      "scheduler": "Flux2Scheduler",
+      "availability": "research configuration; not a bundled connector profile"
+    },
+    {
+      "family": "klein",
+      "model": "flux-2-klein-4b-fp8.safetensors",
+      "text_encoder": "qwen_3_4b.safetensors",
+      "vae": "flux2-vae.safetensors",
+      "steps": 4,
+      "cfg": 1,
+      "megapixels": 2,
+      "mode": "masked",
+      "id": "klein4-2mp",
+      "sampler": "euler",
+      "scheduler": "Flux2Scheduler",
+      "availability": "Equivalent model/sampling settings to bundled Klein 4B with the 2 MP option; research comparisons also fixed the context crop."
+    },
+    {
+      "family": "klein",
+      "model": "flux-2-klein-9b-kv-fp8.safetensors",
+      "text_encoder": "qwen_3_8b_fp8mixed.safetensors",
+      "vae": "flux2-vae.safetensors",
+      "steps": 4,
+      "cfg": 1,
+      "megapixels": 1,
+      "mode": "masked",
+      "kv_cache": true,
+      "id": "klein9-kv",
+      "sampler": "euler",
+      "scheduler": "Flux2Scheduler",
+      "availability": "bundled connector profile"
+    },
+    {
+      "family": "boogu",
+      "model": "boogu_image_edit_turbo_hotfix_1k_20260708_int8_convrot.safetensors",
+      "text_encoder": "qwen3vl_8b_fp8_scaled.safetensors",
+      "vae": "boogu.safetensors",
+      "steps": 4,
+      "cfg": 1,
+      "shift": 3.16,
+      "sampler": "lcm",
+      "scheduler": "sgm_uniform",
+      "megapixels": 1,
+      "mode": "context",
+      "id": "boogu-turbo4-context",
+      "denoise": 1.0,
+      "availability": "bundled connector profile"
+    },
+    {
+      "id": "qwen2511-lightning4-context",
+      "family": "qwen",
+      "model": "qwen-image-edit-2511-Q4_K_M.gguf",
+      "text_encoder": "Qwen2.5-VL-7B-Instruct-UD-Q4_K_XL.gguf",
+      "vae": "qwen_image_vae.safetensors",
+      "lora": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "steps": 4,
+      "cfg": 1,
+      "shift": 3.1,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "megapixels": 1,
+      "mode": "context",
+      "denoise": 1.0,
+      "lora_strength": 1.0,
+      "cfg_norm_strength": 1.0,
+      "reference_latents_method": "index_timestep_zero",
+      "availability": "research configuration; not a bundled connector profile"
+    }
+  ],
+  "upscale_configurations": [
+    {
+      "id": "upscale-nomos2x",
+      "model": "2xNomosUni_span_multijpg.safetensors",
+      "scale": 2,
+      "availability": "research-only; not enabled by bundled connector profiles",
+      "nodes": [
+        "UpscaleModelLoader",
+        "ImageUpscaleWithModel"
+      ],
+      "initial_tile": 512,
+      "tile_overlap": 32,
+      "execution_dtype": "float32",
+      "oom_tile_fallbacks": [
+        256,
+        128
+      ]
+    },
+    {
+      "id": "upscale-realesrgan2x",
+      "model": "RealESRGAN_x2plus.pth",
+      "scale": 2,
+      "availability": "research-only; not enabled by bundled connector profiles",
+      "nodes": [
+        "UpscaleModelLoader",
+        "ImageUpscaleWithModel"
+      ],
+      "initial_tile": 512,
+      "tile_overlap": 32,
+      "execution_dtype": "float32",
+      "oom_tile_fallbacks": [
+        256,
+        128
+      ]
+    },
+    {
+      "id": "upscale-nomosdat4x",
+      "model": "4xNomosUniDAT_bokeh_jpg.safetensors",
+      "scale": 4,
+      "availability": "research-only; not enabled by bundled connector profiles",
+      "nodes": [
+        "UpscaleModelLoader",
+        "ImageUpscaleWithModel"
+      ],
+      "initial_tile": 512,
+      "tile_overlap": 32,
+      "execution_dtype": "float32",
+      "oom_tile_fallbacks": [
+        256,
+        128
+      ]
+    },
+    {
+      "id": "upscale-seedvr2-aligned2mp",
+      "family": "seedvr2",
+      "model": "seedvr2_3b_int8_convrot.safetensors",
+      "vae": "seedvr2_ema_vae_fp16.safetensors",
+      "target_megapixels": 2,
+      "color_method": "none",
+      "vae_tile": 512,
+      "vae_overlap": 128,
+      "target_alignment": "ceil16_when_native_context_fits_cap",
+      "availability": "research-only; not enabled by bundled connector profiles",
+      "steps": 1,
+      "cfg": 1,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "diffusion_transformer_tiled": false
+    }
+  ],
+  "assets": [
+    {
+      "filename": "flux-2-klein-4b-fp8.safetensors",
+      "bytes": 4070624520,
+      "sha256": "97ed34fe0567e436200f2faee3939b88f2b5d99f8af2a4dc16532c4245c0ccb6",
+      "source_url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/5b4408e59397a4a37ccb46afe426d8ed86379441/flux-2-klein-4b-fp8.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "black-forest-labs/FLUX.2-klein-4b-fp8",
+      "revision": "5b4408e59397a4a37ccb46afe426d8ed86379441",
+      "weight_format": "FP8",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "qwen_3_4b.safetensors",
+      "bytes": 8044982048,
+      "sha256": "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a",
+      "source_url": "https://huggingface.co/Comfy-Org/flux2-klein-4B/resolve/5f526678002e43af5551dadb73ce2e8c91b43afe/split_files/text_encoders/qwen_3_4b.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "Comfy-Org/flux2-klein-4B",
+      "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "flux2-vae.safetensors",
+      "bytes": 336211292,
+      "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+      "source_url": "https://huggingface.co/Comfy-Org/flux2-klein-4B/resolve/5f526678002e43af5551dadb73ce2e8c91b43afe/split_files/vae/flux2-vae.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "Comfy-Org/flux2-klein-4B",
+      "revision": "5f526678002e43af5551dadb73ce2e8c91b43afe",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "flux-2-klein-9b-kv-fp8.safetensors",
+      "bytes": 9818935984,
+      "sha256": "33f7da5625a00798349a719742999d3c7dd20c1a7eda14663922c363640728f1",
+      "source_url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-kv-fp8/resolve/8430c03ee457ea86907ed31a009cd56280df003d/flux-2-klein-9b-kv-fp8.safetensors",
+      "repository_license": "flux-non-commercial-license",
+      "repository": "black-forest-labs/FLUX.2-klein-9b-kv-fp8",
+      "revision": "8430c03ee457ea86907ed31a009cd56280df003d",
+      "weight_format": "FP8",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "qwen_3_8b_fp8mixed.safetensors",
+      "bytes": 8664848742,
+      "sha256": "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
+      "source_url": "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/3f62d9d8ae1fec33c6e91453d5c712855b096b55/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+      "repository_license": "flux-non-commercial-license",
+      "repository": "Comfy-Org/flux2-klein-9B",
+      "revision": "3f62d9d8ae1fec33c6e91453d5c712855b096b55",
+      "weight_format": "FP8 mixed",
+      "checksum_basis": "upstream_sha256_and_size",
+      "license_note": "License label is the distributing repository metadata; consult the upstream terms for the full stack."
+    },
+    {
+      "filename": "boogu_image_edit_turbo_hotfix_1k_20260708_int8_convrot.safetensors",
+      "bytes": 10326755028,
+      "sha256": "b0bdd36eb559d62e8169e16a1e8b4438f8be17fc092ca9d43a2d8460c1d79e6a",
+      "source_url": "https://huggingface.co/Comfy-Org/Boogu-Image/resolve/0e060b5c47ce43918f5943d166e57b73b09d72f8/diffusion_models/boogu_image_edit_turbo_hotfix_1k_20260708_int8_convrot.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "Comfy-Org/Boogu-Image",
+      "revision": "0e060b5c47ce43918f5943d166e57b73b09d72f8",
+      "weight_format": "INT8 convrot",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "qwen3vl_8b_fp8_scaled.safetensors",
+      "bytes": 10588637512,
+      "sha256": "4ba424cf62e51392e4d1a39933e803706f4e823c1065f36aaf149c6453f66bcd",
+      "source_url": "https://huggingface.co/Comfy-Org/Boogu-Image/resolve/0e060b5c47ce43918f5943d166e57b73b09d72f8/text_encoders/qwen3vl_8b_fp8_scaled.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "Comfy-Org/Boogu-Image",
+      "revision": "0e060b5c47ce43918f5943d166e57b73b09d72f8",
+      "weight_format": "FP8 scaled",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "boogu.safetensors",
+      "bytes": 335304388,
+      "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+      "source_url": "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/741f7c3ce8b383c54771c7003378a50191e9efe9/ae.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "black-forest-labs/FLUX.1-schnell",
+      "revision": "741f7c3ce8b383c54771c7003378a50191e9efe9",
+      "checksum_basis": "upstream_sha256_and_size",
+      "filename_note": "The tested alias boogu.safetensors is byte-identical to the linked FLUX.1-schnell ae.safetensors."
+    },
+    {
+      "filename": "qwen-image-edit-2511-Q4_K_M.gguf",
+      "bytes": 13244758624,
+      "sha256": "8677bac90627adbbc11efab87b1870e701c4eb3689ee865a3de8ab81b705a723",
+      "source_url": "https://huggingface.co/unsloth/Qwen-Image-Edit-2511-GGUF/resolve/0d33d9692b4b26212297240d87b0d4719aa4fd06/qwen-image-edit-2511-Q4_K_M.gguf",
+      "repository_license": "apache-2.0",
+      "repository": "unsloth/Qwen-Image-Edit-2511-GGUF",
+      "revision": "0d33d9692b4b26212297240d87b0d4719aa4fd06",
+      "weight_format": "GGUF Q4_K_M",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "bytes": 849608296,
+      "sha256": "22226e8d05d354bb356627d428809f5afd7819399b077238a2b70a82883a904f",
+      "source_url": "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/d74eba145674fd7e31b949324e148e21e7118abd/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "lightx2v/Qwen-Image-Edit-2511-Lightning",
+      "revision": "d74eba145674fd7e31b949324e148e21e7118abd",
+      "weight_format": "BF16 LoRA",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "Qwen2.5-VL-7B-Instruct-UD-Q4_K_XL.gguf",
+      "bytes": 4785159040,
+      "sha256": "8edd10e3ae170ab8b8d114e70763ff63a220f16deec9a56acf9330034efc0bb5",
+      "source_url": "https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF/resolve/68bb8bc4b7df5289c143aaec0ab477a7d4051aab/Qwen2.5-VL-7B-Instruct-UD-Q4_K_XL.gguf",
+      "repository_license": "apache-2.0",
+      "repository": "unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+      "revision": "68bb8bc4b7df5289c143aaec0ab477a7d4051aab",
+      "weight_format": "GGUF UD-Q4_K_XL",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "qwen_image_vae.safetensors",
+      "bytes": 253806246,
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+      "source_url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/7beb7b647f04469fbe64ba8adc2bb0d7e5e9f73f/split_files/vae/qwen_image_vae.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "Comfy-Org/Qwen-Image_ComfyUI",
+      "revision": "7beb7b647f04469fbe64ba8adc2bb0d7e5e9f73f",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "2xNomosUni_span_multijpg.safetensors",
+      "bytes": 4461056,
+      "sha256": "bee2a9c082f2b8f6e7f5db504b36593c24a1a959511f587114c399ca58b9c92c",
+      "source_url": "https://github.com/Phhofm/models/releases/download/2xNomosUni_span_multijpg/2xNomosUni_span_multijpg.safetensors",
+      "repository_license": "CC-BY-4.0",
+      "release_tag": "2xNomosUni_span_multijpg",
+      "checksum_basis": "maintainer_release_local_sha256"
+    },
+    {
+      "filename": "RealESRGAN_x2plus.pth",
+      "bytes": 67061725,
+      "sha256": "49fafd45f8fd7aa8d31ab2a22d14d91b536c34494a5cfe31eb5d89c2fa266abb",
+      "source_url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth",
+      "repository_license": "BSD-3-Clause",
+      "release_tag": "v0.2.1",
+      "checksum_basis": "maintainer_release_local_sha256"
+    },
+    {
+      "filename": "4xNomosUniDAT_bokeh_jpg.safetensors",
+      "bytes": 154152604,
+      "sha256": "026ba9208c959f3d0d94bb5171ac634be9c245a7a359aaf446861a24be975ad2",
+      "source_url": "https://github.com/Phhofm/models/releases/download/4xNomosUniDAT_bokeh_jpg/4xNomosUniDAT_bokeh_jpg.safetensors",
+      "repository_license": "CC-BY-4.0",
+      "release_tag": "4xNomosUniDAT_bokeh_jpg",
+      "checksum_basis": "maintainer_release_local_sha256"
+    },
+    {
+      "filename": "seedvr2_3b_int8_convrot.safetensors",
+      "bytes": 3458259704,
+      "sha256": "c3dec8bcc5916843a8a858572970597462e1f2dc598d6dfd818f6cd40f53a157",
+      "source_url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/673340c8a66db62b84e4099def7d01d337ae12dc/diffusion_models/seedvr2_3b_int8_convrot.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "Comfy-Org/SeedVR2",
+      "revision": "673340c8a66db62b84e4099def7d01d337ae12dc",
+      "weight_format": "INT8 convrot",
+      "checksum_basis": "upstream_sha256_and_size"
+    },
+    {
+      "filename": "seedvr2_ema_vae_fp16.safetensors",
+      "bytes": 501324814,
+      "sha256": "20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1",
+      "source_url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/673340c8a66db62b84e4099def7d01d337ae12dc/vae/seedvr2_ema_vae_fp16.safetensors",
+      "repository_license": "apache-2.0",
+      "repository": "Comfy-Org/SeedVR2",
+      "revision": "673340c8a66db62b84e4099def7d01d337ae12dc",
+      "weight_format": "FP16",
+      "checksum_basis": "upstream_sha256_and_size"
+    }
+  ],
+  "license_scope": "Repository/checkpoint license metadata is recorded per asset. Architecture code and weights can have different terms. Klein 9B KV uses the FLUX Non-Commercial License; SPAN/DAT authors specify CC BY 4.0. Consult each linked source before distribution or use.",
+  "reproduction_limit": "Original photographs, selections and complete per-image receipts are not distributed here. These settings reproduce the tested setup, not the exact example pixels. Follow the connector guide for the four bundled profiles; Qwen and SR configurations remain research-only.",
+  "checksum_methods": {
+    "upstream_sha256_and_size": "Downloaded bytes matched pinned upstream SHA-256 and size.",
+    "maintainer_release_local_sha256": "Maintainer release source and size verified; SHA-256 recorded locally because the release supplied no independent digest."
+  }
+}

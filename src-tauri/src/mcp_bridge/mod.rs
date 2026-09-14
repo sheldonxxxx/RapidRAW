@@ -3,6 +3,7 @@
 mod advanced;
 mod asset_library;
 mod delivery;
+mod enhance;
 mod geometry_review;
 mod jobs;
 mod operations;

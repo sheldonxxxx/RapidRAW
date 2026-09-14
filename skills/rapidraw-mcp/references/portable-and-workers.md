@@ -6,7 +6,7 @@
 
 `export_session_bundle` writes a manifest plus owned source, LUT and other dependencies. Move the entire directory, retain `manifest_sha256`, and use `import_session_bundle(path, expected_manifest_sha256)` in the destination workspace. A bundle is stronger transfer evidence than a bare recipe or session JSON. The import verifies hashes and paths before publishing a new session, including RAW source-domain semantics for derived images.
 
-`diff_versions` compares saved/current state without mutation. `copy_adjustments` requires explicit keys and per-target revisions; inspect every result in a mixed-success batch. Geometry is excluded by default; dimension-sensitive copying requires the explicit compatible-dimensions policy. Copied masks receive new identities. Metadata and source pixels are not copied as adjustments.
+`diff_versions` compares saved/current state without mutation. `copy_adjustments` requires explicit keys, a `geometry` policy and per-target revisions; inspect every result in a mixed-success batch. Set `geometry: "exclude"` to omit geometry-dependent controls, or `geometry: "require_same_dimensions"` for dimension-sensitive copying. Copied masks receive new identities. Metadata and source pixels are not copied as adjustments.
 
 `manage_presets` and `manage_luts` act on workspace-owned assets. Import/export uses returned paths and `workspace:` IDs. Saving a preset excludes masks and geometry unless deliberately requested. Keep asset bundles intact; linked LUT data belongs with a reusable preset.
 

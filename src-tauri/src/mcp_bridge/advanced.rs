@@ -22,6 +22,27 @@ use tauri::Manager;
 
 mod subject_refinement;
 
+fn generation_options(
+    params: &Value,
+    mode: &str,
+) -> Result<Option<crate::ai_connector::GenerationOptions>> {
+    let Some(value) = params.get("generation_options") else {
+        return Ok(None);
+    };
+    if mode != "generative" {
+        return Err(
+            "INVALID_ARGUMENT: generation_options are only supported in generative retouch mode"
+                .into(),
+        );
+    }
+    let options: crate::ai_connector::GenerationOptions = serde_json::from_value(value.clone())
+        .map_err(|error| format!("INVALID_ARGUMENT: generation_options: {error}"))?;
+    options
+        .validate()
+        .map_err(|error| format!("INVALID_ARGUMENT: {error}"))?;
+    Ok(Some(options))
+}
+
 fn model_assets(kind: &str) -> Result<Vec<(&'static str, &'static str)>> {
     Ok(match kind {
         "masks" => vec![
@@ -168,6 +189,22 @@ impl Bridge {
                 assets.push(json!({"name":name,"path":path,"present":path.is_file(),"verified":valid,"expected_sha256":hash,"installed_app_copy_available":existing.is_file()||legacy.is_some_and(|p|p.is_file())}));
             }
             groups.insert(kind.into(), json!({"ready":ready,"assets":assets}));
+        }
+        for model in crate::ai_enhance::MODELS {
+            let installed = crate::ai_enhance::installed(&self.paths.models, model.id);
+            let mut assets = Vec::new();
+            if let Ok((path, hash)) = &installed {
+                assets.push(json!({"name":model.filename,"path":path,"present":true,"verified":true,"expected_sha256":hash,"installed_app_copy_available":false}));
+                let receipt_name = format!("{}.json", model.filename);
+                let receipt = self.paths.models.join(&receipt_name);
+                if receipt.is_file() {
+                    assets.push(json!({"name":receipt_name,"path":receipt,"present":true,"verified":true,"expected_sha256":sha256_file(&receipt)?,"installed_app_copy_available":false}));
+                }
+            }
+            groups.insert(
+                format!("enhance-{}", model.id),
+                json!({"ready":installed.is_ok(),"assets":assets}),
+            );
         }
         Ok(
             json!({"models_directory":self.paths.models,"groups":groups,"onnx_runtime_path":std::env::var_os("ORT_DYLIB_PATH").map(PathBuf::from),"onnx_execution":crate::ai_runtime::status(),"installation":"install_model copies verified installed assets when available, then downloads only missing or corrupt assets into this workspace"}),
@@ -495,6 +532,7 @@ impl Bridge {
         {
             return Err("INVALID_ARGUMENT: unknown retouch mode".into());
         }
+        let generation_options = generation_options(params, mode)?;
         let submasks = params["sub_masks"]
             .as_array()
             .ok_or("INVALID_ARGUMENT: sub_masks must be an array")?;
@@ -511,6 +549,9 @@ impl Bridge {
         let id = uuid::Uuid::new_v4().to_string();
         let name = params["name"].as_str().unwrap_or(mode);
         let mut patch = json!({"id":id,"name":name,"visible":true,"invert":false,"opacity":100,"prompt":params["prompt"].as_str().unwrap_or(""),"subMasks":submasks});
+        if let Some(options) = &generation_options {
+            patch["generationOptions"] = json!(options);
+        }
         let test_mask = json!({"id":id,"name":name,"visible":true,"invert":false,"adjustments":{},"subMasks":submasks});
         validation::validate_adjustments(&json!({"masks":[test_mask]}), session.dimensions)?;
         let source = if ["clone", "heal"].contains(&mode) {
@@ -535,6 +576,13 @@ impl Bridge {
                 Some("cloud") => {}
                 Some("ai-connector") if settings.ai_connector_address.as_deref().is_some_and(|s| !s.trim().is_empty()) => {}
                 _ => return Err("GENERATION_NOT_CONFIGURED: Set aiProvider to cloud or ai-connector in workspace/engine-settings.json and restart the MCP connection; ai-connector also requires aiConnectorAddress".into()),
+            }
+            if generation_options.is_some()
+                && settings.ai_provider.as_deref() != Some("ai-connector")
+            {
+                return Err(
+                    "INVALID_ARGUMENT: generation_options require an AI Connector provider".into(),
+                );
             }
             if settings.ai_provider.as_deref() == Some("cloud")
                 && params["token"].as_str().is_none_or(str::is_empty)
@@ -593,6 +641,7 @@ impl Bridge {
         if mask_statistics(&bitmap)["empty"] == true {
             return Err("EMPTY_MASK: Retouch generated no affected pixels".into());
         }
+        let generation_receipt = data.get("generation").cloned();
         patch["patchData"] = data;
         let mut next = session.current().adjustments.clone();
         if !next["aiPatches"].is_array() {
@@ -609,6 +658,12 @@ impl Bridge {
         result["mask_statistics"] = mask_statistics(&bitmap);
         result["image"] = image_reply(&bitmap)?;
         result["remote_generation"] = json!(mode == "generative");
+        if let Some(generation) = generation_receipt {
+            result["generation"] = generation;
+        }
+        if let Some(options) = generation_options {
+            result["generation_options"] = json!(options);
+        }
         Ok(result)
     }
 
@@ -921,6 +976,38 @@ impl Bridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn generation_options_require_explicit_generative_mode_and_valid_values() {
+        assert!(generation_options(&json!({}), "inpaint").unwrap().is_none());
+        let params =
+            json!({"generation_options":{"seed":104729,"profile":"balanced","megapixels":2}});
+        assert_eq!(
+            generation_options(&params, "generative")
+                .unwrap()
+                .unwrap()
+                .seed,
+            Some(104729)
+        );
+        for mode in ["clone", "heal", "retouch", "liquify", "inpaint"] {
+            assert!(generation_options(&params, mode).is_err());
+        }
+        for invalid in [
+            json!({"seed":0}),
+            json!({"seed":1.5}),
+            json!({"seed":9007199254740992u64}),
+            json!({"profile":"../model"}),
+            json!({"megapixels":32}),
+            json!({"unknown":1}),
+            json!({"seed":null}),
+            json!({"profile":null}),
+            json!({"megapixels":null}),
+            json!(null),
+        ] {
+            assert!(
+                generation_options(&json!({"generation_options":invalid}), "generative").is_err()
+            );
+        }
+    }
     #[test]
     fn subject_regions_are_validated_before_native_inference() {
         assert_eq!(

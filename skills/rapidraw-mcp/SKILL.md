@@ -1,6 +1,6 @@
 ---
 name: rapidraw-mcp
-description: Edit, mask, retouch, and export photos through RapidRAW's native MCP engine, including saved sessions, recipes, and verified delivery. Use for RapidRAW MCP requests or photo work with connected rapidraw_* tools. For explicit desktop UI control, use the separate rapidraw skill.
+description: Edit, mask, retouch, and export photos through RapidRAW's native MCP engine, including saved sessions, recipes, and verified delivery. Use for RapidRAW MCP requests or photo work with connected rapidraw_* tools. Desktop UI automation is outside this skill.
 ---
 
 # RapidRAW MCP
@@ -20,6 +20,8 @@ Use native RAW processing. Follow a supplied edit plan, or choose edits from the
 Keep bulky schemas and tool responses in files and read only relevant branches. A supplied plan can use exact native requests in an `operations.json` array, but a separate plan file is not required for ordinary edits.
 
 For revisions after user review, follow [feedback comparisons](references/review-and-jobs.md#revise-from-user-feedback) to isolate the requested change and retain decisions against the version actually reviewed.
+
+For generative removal, replacement, recoloring or lettering, and upscale requests involving a generated patch, read [generative editing workflows](references/generative-editing.md). Route by fidelity requirements, discover the connector's actual profiles, and compare authorized alternatives from the same saved pre-edit state. Generation resolution describes the context crop; inspect its restored native detail before delivery.
 
 For film emulation, confirm available names and paths with `list_luts`; use photo-style-builder's film selection guidance when available, or explain the image-specific benefit and tradeoff directly. Keep the base and compare a suitable candidate at matched geometry before recommending it. For the built-in Spektrafilm LUTs, explicitly set `lutIsSceneReferred: true` alongside `lutPath` and `lutIntensity` through `set_adjustments` (`mode: "merge"`, current `expected_revision`), or in a temporary `render_compare` patch. Bridge 1.2.0's generic `apply_lut` does not infer this flag. Custom LUTs require their own declared input space; do not inherit the built-in flag blindly. Recheck exposure, skin, saturated colours and important shadow detail. Film strength does not add grain, denoise, or change capture ISO. A suggestion alone does not authorize an edit or establish a saved user preference.
 

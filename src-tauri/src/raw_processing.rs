@@ -42,7 +42,7 @@ fn collapse_constant_linear_black_level(black_level: &mut BlackLevel) {
         return;
     }
     let first = &black_level.levels[..channels];
-    if black_level.levels.len() % channels == 0
+    if black_level.levels.len().is_multiple_of(channels)
         && black_level
             .levels
             .chunks_exact(channels)

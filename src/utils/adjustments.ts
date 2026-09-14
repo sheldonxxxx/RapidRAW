@@ -269,13 +269,36 @@ export interface Adjustments {
   whites: number;
 }
 
+export interface GenerationOptions {
+  seed?: number;
+  profile?: string;
+  megapixels?: number;
+}
+
+export interface AiPatchGeneration {
+  seed: number;
+  profile: string;
+  sourceSize: [number, number];
+  generatedSize: [number, number];
+  context: { x: number; y: number; width: number; height: number };
+  seconds: number;
+  processing?: string;
+  tileSize?: number;
+}
+
+export interface AiPatchData {
+  [key: string]: any;
+  generation?: AiPatchGeneration;
+}
+
 export interface AiPatch {
   id: string;
   isLoading: boolean;
   invert: boolean;
   name: string;
-  patchData: any | null;
+  patchData: AiPatchData | null;
   prompt: string;
+  generationOptions?: GenerationOptions;
   subMasks: Array<SubMask>;
   visible: boolean;
 }

@@ -1,5 +1,7 @@
 # MCP verification record
 
+These dated results apply to the recorded builds and fixtures. They are historical evidence, not a passing test report for every later commit. The [Linux SSH guide](REMOTE-SSH.md) and [ONNX CUDA guide](ONNX-CUDA.md) describe a separately tested Debian/NVIDIA configuration; earlier entries retain their original platform boundaries. Use the [test instructions](testing-matrix.md) to produce evidence for your build.
+
 ## 2026-09-12 guided AI and manual local edits
 
 Mask acceptance depends on the intended edit. A subtle subject lift needs visible tonal benefit without changing protected surroundings; extraction and strong recoloring need closer boundary precision. The strict fresh-mask findings below retain their original criteria and do not establish that automatic selections are unusable starting points for restrained local edits.
@@ -156,13 +158,13 @@ The reported passing aggregate excludes unsuccessful attempts. The [evidence har
 
 Each acceptance call crosses the real SDK→stdio server→native executable boundary. Parameter coverage, state assertions, pixel assertions and photographic review remain separate. The generated inventory has 1,893 schema-derived requirements; invoking every public tool does not establish every nested parameter, enum or adjustment combination. The aggregation command rejects failed/incomplete ledgers and mixed runtime/binary provenance.
 
-Fresh Immich originals were verified against server byte length/SHA-1 and independent SHA-256. Their original hashes and sidecar existence/hashes are checked again after execution. These photographs were inspected during development and are regression fixtures, not blind holdouts. The two mountain frames have near-total overlap and establish only that limited alignment case.
+Photographic originals were verified against server byte length/SHA-1 and independent SHA-256. Their original hashes and sidecar existence/hashes are checked again after execution. These photographs were inspected during development and are regression fixtures, not blind holdouts. The two mountain frames have near-total overlap and establish only that limited alignment case.
 
 Genuine HDR exposure brackets, genuine focus brackets, a negative-film scan, a configured remote generative provider, and fresh-machine Windows/Linux/native acceptance remain unverified. Reproducible runners and explicit fixture/environment gates are implemented; an unavailable fixture or provider is not counted as passed. The local model download test independently verified a fresh 106 MiB model download, repair of a corrupt owned target, SHA-256 and cached repeat on the preceding native build; it is reported separately from the final-build aggregate.
 
 The frontend was not changed by this expansion. Earlier unchanged-base TypeScript/lint diagnostics remain documented below; the current native/protocol checks do not establish a globally clean frontend, release packaging, or successful installation into every MCP host.
 
-## Earlier 2026-09-12 publication checks
+## Earlier 2026-09-12 macOS build and connection checks
 
 Rebuilt the source checkout on macOS after reinstalling both Node dependency sets with `npm ci`. The native debug executable, frontend production build, and native check with the MCP feature disabled passed. The MCP TypeScript build and all 25 protocol/client tests passed; native library tests passed 70 cases with the existing GPU-specific test left ignored.
 

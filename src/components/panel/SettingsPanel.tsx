@@ -2251,7 +2251,7 @@ export default function SettingsPanel({
                                     }
                                     onChange={(e: any) => setAiConnectorAddress(e.target.value)}
                                     onKeyDown={(e: any) => e.stopPropagation()}
-                                    placeholder="127.0.0.1:8188"
+                                    placeholder="127.0.0.1:5000"
                                     type="text"
                                     value={aiConnectorAddress}
                                     bgClassName="bg-bg-primary"

@@ -68,11 +68,113 @@ fn download_and_verify(
     }
 }
 
+fn install_apple_silicon_runtime(manifest_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    const URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.30.0/onnxruntime-osx-arm64-1.30.0.tgz";
+    const ARCHIVE_HASH: &str = "6ebb5062a934537c352937821f9fe9718e7de1a2db1122a93dd363ffd53a7012";
+    // Exact regular entries only; never unpack the archive into application resources.
+    let files = [
+        (
+            "lib/libonnxruntime.dylib",
+            "libonnxruntime.dylib",
+            "bffaa6ef856dba2c26f09c7c0e7018fd1562625f3485292c7ad28b83748c6879",
+        ),
+        (
+            "LICENSE",
+            "licenses/ONNX-Runtime-MIT.txt",
+            "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+        ),
+        (
+            "ThirdPartyNotices.txt",
+            "licenses/ONNX-Runtime-ThirdPartyNotices.txt",
+            "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3",
+        ),
+    ];
+    let resources = manifest_dir.join("resources");
+    if files
+        .iter()
+        .all(|(_, name, hash)| verify_sha256(&resources.join(name), hash).unwrap_or(false))
+    {
+        println!(
+            "cargo:warning=Verified Apple Silicon ONNX Runtime 1.30.0 and notices; using cached files."
+        );
+        return Ok(());
+    }
+    let staging = PathBuf::from(env::var("OUT_DIR")?).join("onnx-runtime-1.30.0");
+    fs::create_dir_all(&staging)?;
+    let archive_path = staging.join("runtime.tgz");
+    if !verify_sha256(&archive_path, ARCHIVE_HASH).unwrap_or(false) {
+        println!("cargo:warning=Downloading official Apple Silicon ONNX Runtime 1.30.0.");
+        let mut response = reqwest::blocking::get(URL)?.error_for_status()?;
+        let mut archive_file = fs::File::create(&archive_path)?;
+        response.copy_to(&mut archive_file)?;
+        archive_file.sync_all()?;
+        if !verify_sha256(&archive_path, ARCHIVE_HASH)? {
+            fs::remove_file(&archive_path)?;
+            return Err("ONNX Runtime archive SHA-256 does not match the pinned release".into());
+        }
+    }
+    let compressed = flate2::read::GzDecoder::new(fs::File::open(&archive_path)?);
+    let mut archive = tar::Archive::new(compressed);
+    let mut found = [false; 3];
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.into_owned();
+        let path = path.strip_prefix(".").unwrap_or(&path);
+        for (index, (source, _, hash)) in files.iter().enumerate() {
+            if path == Path::new("onnxruntime-osx-arm64-1.30.0").join(source) {
+                if found[index] || !entry.header().entry_type().is_file() {
+                    return Err(
+                        "ONNX Runtime archive contains an invalid or repeated required entry"
+                            .into(),
+                    );
+                }
+                let output = staging.join(index.to_string());
+                entry.unpack(&output)?;
+                if !verify_sha256(&output, hash)? {
+                    return Err(format!(
+                        "ONNX Runtime extracted file failed SHA-256 verification: {source}"
+                    )
+                    .into());
+                }
+                found[index] = true;
+            }
+        }
+    }
+    if found.iter().any(|present| !present) {
+        return Err("ONNX Runtime archive is missing a required library or license".into());
+    }
+    // Verify every input before replacing any resource. Rename each verified
+    // sibling into place so failed downloads leave the existing library intact.
+    for (index, (_, name, _)) in files.iter().enumerate().rev() {
+        let destination = resources.join(name);
+        fs::create_dir_all(destination.parent().unwrap())?;
+        let temporary = destination.with_extension(format!("{}.tmp", std::process::id()));
+        fs::copy(staging.join(index.to_string()), &temporary)?;
+        fs::File::open(&temporary)?.sync_all()?;
+        fs::rename(temporary, destination)?;
+    }
+    println!(
+        "cargo:warning=Installed verified Apple Silicon ONNX Runtime 1.30.0 with license notices."
+    );
+    Ok(())
+}
+
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+
+    if target_os == "macos" && target_arch == "aarch64" {
+        install_apple_silicon_runtime(&manifest_dir)
+            .expect("Failed to install the Apple Silicon ONNX Runtime");
+        println!("cargo:rerun-if-changed=build.rs");
+        println!("cargo:rerun-if-changed=resources/libonnxruntime.dylib");
+        println!("cargo:rerun-if-changed=resources/licenses/ONNX-Runtime-MIT.txt");
+        println!("cargo:rerun-if-changed=resources/licenses/ONNX-Runtime-ThirdPartyNotices.txt");
+        tauri_build::build();
+        return;
+    }
 
     let (download_filename, lib_name, expected_hash) =
         match (target_os.as_str(), target_arch.as_str()) {
@@ -100,11 +202,6 @@ fn main() {
                 "libonnxruntime-macos-x86_64.dylib",
                 "libonnxruntime.dylib",
                 "283e595e61cf65df7a6b1d59a1616cbd35c8b6399dd90d799d99b71a3ff83160",
-            ),
-            ("macos", "aarch64") => (
-                "libonnxruntime-macos-aarch64.dylib",
-                "libonnxruntime.dylib",
-                "2b885992d3d6fa4130d39ec84a80d7504ff52750027c547bb22c86165f19406a",
             ),
             ("android", "aarch64") => (
                 "libonnxruntime-android-arm64-v8a.so",

@@ -12,6 +12,9 @@ use std::{fs, path::Path, sync::Arc};
 use tauri::Manager;
 
 pub(super) const METHODS: &[&str] = &[
+    "enhancement_models",
+    "install_enhancement_model",
+    "enhance",
     "manage_presets",
     "manage_luts",
     "fork_session",
@@ -78,6 +81,9 @@ impl Bridge {
         }
         self.refresh_job_results()?;
         match method {
+            "enhancement_models" => return Ok(self.enhancement_models()),
+            "install_enhancement_model" => return self.install_enhancement_model(&params).await,
+            "enhance" => return self.enhance(&params).await,
             "manage_presets" => return self.manage_presets(&params),
             "manage_luts" => return self.manage_luts(&params),
             "import_session_bundle" => return self.import_session_bundle(&params),

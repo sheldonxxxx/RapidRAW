@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'react-toastify';
 import { useEditorStore } from '../store/useEditorStore';
 import { useEditorActions } from './useEditorActions';
-import { Adjustments, AiPatch, MaskContainer, Coord } from '../utils/adjustments';
+import { Adjustments, AiPatch, MaskContainer, Coord, GenerationOptions } from '../utils/adjustments';
 import { SubMask } from '../components/panel/right/Masks';
 import { Invokes } from '../components/ui/AppProperties';
 import { useAuth } from '@clerk/react';
@@ -102,24 +102,27 @@ export function useAiMasking() {
   );
 
   const handleGenerativeReplace = useCallback(
-    async (patchId: string, prompt: string, useFastInpaint: boolean) => {
+    async (patchId: string, prompt: string, useFastInpaint: boolean, generationOptions?: GenerationOptions) => {
       const { selectedImage, adjustments, isGeneratingAi, patchesSentToBackend } = useEditorStore.getState();
       if (!selectedImage?.path || isGeneratingAi) return;
 
       const patch: AiPatch | undefined = adjustments.aiPatches.find((p: AiPatch) => p.id === patchId);
       if (!patch) return;
 
-      const patchDefinition = { ...patch, prompt };
-      const token = await getToken();
+      const options = useFastInpaint ? undefined : generationOptions && { ...generationOptions };
+      const patchDefinition = { ...patch, prompt, generationOptions: options };
 
       setAdjustments((prev: Adjustments) => ({
         ...prev,
-        aiPatches: prev.aiPatches.map((p: AiPatch) => (p.id === patchId ? { ...p, isLoading: true, prompt } : p)),
+        aiPatches: prev.aiPatches.map((p: AiPatch) =>
+          p.id === patchId ? { ...p, isLoading: true, prompt, generationOptions: options } : p,
+        ),
       }));
 
       setEditor({ isGeneratingAi: true });
 
       try {
+        const token = await getToken();
         const newPatchDataJson: any = await invoke(Invokes.InvokeGenerativeReplaseWithMaskDef, {
           currentAdjustments: adjustments,
           patchDefinition: patchDefinition,
@@ -209,7 +212,7 @@ export function useAiMasking() {
         const patchDefinitionForBackend = updatedAdjustmentsForBackend.aiPatches.find((p: AiPatch) => p.id === patchId);
         const newPatchDataJson: any = await invoke(Invokes.InvokeGenerativeReplaseWithMaskDef, {
           currentAdjustments: updatedAdjustmentsForBackend,
-          patchDefinition: { ...patchDefinitionForBackend, prompt: '' },
+          patchDefinition: { ...patchDefinitionForBackend, prompt: '', generationOptions: undefined },
           path: selectedImage.path,
           useFastInpaint: true,
           token: token || null,

@@ -4,13 +4,15 @@ A local, nondestructive interface to RapidRAW's native processing engine. It sup
 
 The MCP server uses the official TypeScript SDK v2 and stdio. One connection owns each workspace at a time through an exclusive native lock; use separate workspaces for simultaneous agents. It owns one persistent native bridge process; image processing and validation remain in Rust. The `mcp/` package and `src-tauri/src/mcp_bridge/` module are isolated so normal upstream development can be merged with a small integration surface. Build the fork with the `mcp` Cargo feature; an unmodified installed RapidRAW app does not provide this bridge.
 
-The [RapidRAW MCP skill](../skills/rapidraw-mcp/SKILL.md) provides agent guidance for editing, mask coordinates, derived sessions, recovery, and verified exports. Install it with `npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp`, or place its complete folder in your agent's skills directory. Pair it with a generic photo-editing planning skill or your own brief. The MCP connection is configured separately below.
+The [RapidRAW MCP skill](../skills/rapidraw-mcp/SKILL.md) provides agent guidance for editing, mask coordinates, derived sessions, recovery, and verified exports. Install it with `npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp`, or place its complete folder in your agent's skills directory. Pair it with your own brief or [Lightweft](https://github.com/sheldonxxxx/lightweft) for photographic direction, shared review and personal style exploration. RapidRAW runs independently; Lightweft and the [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit) are optional companions with separate setup. The MCP connection is configured below.
+
+Choose [macOS setup](#macos-quick-start), [Linux over SSH](REMOTE-SSH.md), or the [tool reference](#capabilities). For a first edit, follow the [example editing loop](#example-editing-loop). All `/absolute/...` paths in this guide are placeholders.
 
 ## macOS quick start
 
 This quick start covers macOS with Metal and a debug build of this fork. The [Linux GPU server guide](REMOTE-SSH.md) covers the tested Debian 13/NVIDIA/Xvfb workflow over SSH. **Windows and packaged MCP releases have not been tested for the MCP workflow.**
 
-Use macOS 13+, Node.js 22.12+, [Rust via rustup](https://www.rust-lang.org/tools/install), and [Apple Command Line Tools](https://v2.tauri.app/start/prerequisites/#macos). If the Apple tools are missing, run `xcode-select --install` and finish installation first.
+Use macOS 14+ on Apple Silicon or macOS 13+ on Intel, Node.js 22.12+, [Rust via rustup](https://www.rust-lang.org/tools/install), and [Apple Command Line Tools](https://v2.tauri.app/start/prerequisites/#macos). If the Apple tools are missing, run `xcode-select --install` and finish installation first.
 
 ```sh
 git clone https://github.com/sheldonxxxx/RapidRAW.git
@@ -28,7 +30,9 @@ This produces `src-tauri/target/debug/RapidRAW` and `mcp/dist/index.js`. Use tho
 
 ## Build and connect
 
-Requirements: Node.js 22+, Rust 1.98 or later, this RapidRAW checkout's native system dependencies, and a GPU adapter supported by the renderer. The pinned Rust toolchain below leaves the machine's default unchanged. From the repository root:
+Requirements: Node.js 22.12+, Rust 1.98 or later, this RapidRAW checkout's native system dependencies, and a GPU adapter supported by the renderer. The pinned Rust toolchain below leaves the machine's default unchanged. From the repository root:
+
+Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0. Intel Mac builds retain 1.22.0. See the [runtime and hardware guide](../docs/local-enhancement.md#apple-silicon-runtime).
 
 ```sh
 rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
@@ -58,7 +62,7 @@ Configure your MCP host with absolute paths (replace the examples with your chec
 
 Use the actual Cargo output path if `CARGO_TARGET_DIR` is configured. `RAPIDRAW_BINARY` and `RAPIDRAW_WORKSPACE` are equivalent environment variables. `--timeout-ms`/`RAPIDRAW_TIMEOUT_MS` sets the default native-operation timeout (300000 ms). Model installation, merge and batch export have a 30-minute maximum; configure the host's tool timeout accordingly. Diagnostics go to stderr; stdout contains only MCP protocol traffic.
 
-ONNX inference defaults to CPU on every platform. Linux deployments can opt into [CUDA for foreground/sky masks, depth and AI denoise](ONNX-CUDA.md) with a separate compatible runtime. Subject selection and local inpainting retain their CPU compatibility paths; the macOS runtime and default inference behavior are unchanged.
+Existing masking, denoise and inpainting tools default to CPU on every platform. Linux deployments can opt into [CUDA for foreground/sky masks, depth and AI denoise](ONNX-CUDA.md) with a separate compatible runtime. Subject selection and local inpainting retain their CPU compatibility paths. The newer enhancement operations have their own [Auto provider policy](../docs/local-enhancement.md#choose-speed-and-detail).
 
 ## Process-local engine settings
 
@@ -75,6 +79,26 @@ For an explicitly selected generative retouch provider, for example:
 
 Use the address of the connector you actually run, in `host:port` form. Alternatively set `aiProvider` to `cloud` and pass a request-scoped `token` to `rapidraw_retouch` with `mode: "generative"`. Generative requests fail with `GENERATION_NOT_CONFIGURED` if no provider is configured; local editing, masking and inpainting do not require this remote setup. Image content is sent only when generative mode is explicitly selected. Do not put provider tokens in the settings file.
 
+With an AI Connector that advertises protocol version 2 at `GET /capabilities`, a generative `retouch` request can also include:
+
+```json
+{
+  "generation_options": {
+    "seed": 104729,
+    "profile": "balanced",
+    "megapixels": 1
+  }
+}
+```
+
+`balanced` is an illustrative profile ID; choose an ID and resolution listed by your connector. Seeds must be integers from 1 through 9007199254740991. Profile IDs contain up to 64 ASCII letters, digits, periods, underscores or hyphens and start with a letter or digit. Megapixels must be finite, between 0.0625 and 16, and supported by the selected profile. Without an explicit profile, resolution validation uses the connector's advertised `generation.default_profile`. Generation resolution describes the generated context crop; a full-resolution export can contain an enlarged generated patch.
+
+Explicit options are checked before sending image data and fail when the connector cannot honor them. They require AI Connector generative mode; local inpainting and the cloud provider do not accept these options. Omitting `generation_options` retains connector defaults and compatibility with older connectors. Requested options persist in the patch's `generationOptions` field and are returned by MCP; they are configuration records, not a guarantee of identical pixels across hardware or model versions.
+
+When the connector supplies a valid generation receipt, `retouch` also returns `generation`: the actual seed, profile, source and generated dimensions, placement context and processing duration. The same bounded record is saved in `patchData.generation`, including through undo/redo and session persistence. Provider paths, prompts, tokens and arbitrary receipt fields are not copied into that record. Older connectors may omit it. Generated dimensions describe neural output before placement and do not establish native RAW detail.
+
+For choosing a treatment and comparing candidates, see [AI editing workflows](../docs/ai-editing-workflows.md) and the skill's [generative editing reference](../skills/rapidraw-mcp/references/generative-editing.md). MCP retouch adds a new patch; use a saved pre-edit version or independent forks for alternatives from the same source state.
+
 ## Capabilities
 
 Every tool starts with `rapidraw_`; the table shows the suffixes. The engine's live `capabilities` response is authoritative for availability and schemas.
@@ -87,6 +111,7 @@ The [application/MCP/test matrix](CAPABILITY-MATRIX.md) maps the complete applic
 | Editing and review | `set_adjustments`, `render`, `render_compare`, `inspect_adjustments`, `analyze`, `auto_adjust`, `map_coordinates`, `preflight`, `sample_region` |
 | Selective edits | `mask_create`, `mask_update`, `mask_remove`, `mask_generate`, `generate_depth` |
 | Background processing | `start_denoise`, `get_job`, `list_jobs`, `cancel_job`, `resume_job`, `start_operation`, `get_operation_job`, `list_operation_jobs`, `cancel_operation_job`, `resume_operation_job` |
+| Local masks and enhancement | `enhancement_models`, `install_enhancement_model`, `enhance`; [models, profiles and examples](../docs/local-enhancement.md) |
 | Detail and corrections | `retouch`, `denoise`, `lens_profile`, `negative_convert` |
 | History and persistence | `history`, `undo`, `redo`, `save_version`, `list_versions`, `restore_version`, `save_session`, `load_recipe`, `save_recipe` |
 | Presets and assets | `list_presets`, `apply_preset`, `list_luts`, `apply_lut`, `manage_presets`, `manage_luts`, `models`, `install_model` |
@@ -153,7 +178,7 @@ See the skill's [review and job reference](../skills/rapidraw-mcp/references/rev
 
 ## Workflow expansion
 
-Bridge 1.2 exposes 57 native methods. The stdio server adds 5 isolated-worker tools, for **62 MCP tools**. The native method list and host worker list remain separately identifiable.
+Bridge 1.2 exposes 60 native methods. The stdio server adds 5 isolated-worker tools, for **65 MCP tools**. The native method list and host worker list remain separately identifiable.
 
 Use `map_coordinates` when translating displayed points or regions into edit coordinates. `sample_region` returns rendered sRGB, linear luminance, clipping and robust color measurements from a native region of at most 4 megapixels; its optional white-balance suggestion assumes the selected region should be neutral and does not change the session. `preflight` checks current geometry, requested model-group availability, export format/bit depth and native render resource limits. It does not predict every AI/merge allocation or validate a complete export request. [Geometry and review](GEOMETRY-REVIEW.md) defines coordinate spaces, overlays, submask operations and exact preview caching.
 

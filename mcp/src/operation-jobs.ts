@@ -4,12 +4,25 @@ import { mkdir, readFile, open, rename, readdir, lstat, realpath, copyFile, rm }
 import { join, basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import { NativeBridge, BridgeError, type BridgeOptions, type JsonObject } from './bridge.js';
 
-const methods = new Set(['merge', 'export', 'negative_convert', 'mask_generate', 'generate_depth', 'retouch']);
+const methods = new Set(['merge', 'export', 'negative_convert', 'mask_generate', 'generate_depth', 'retouch', 'enhance']);
 const jobMethods = ['start_operation', 'get_operation_job', 'list_operation_jobs', 'cancel_operation_job', 'resume_operation_job'];
 type Status = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
-type ModelKind = 'masks' | 'inpaint';
+type ModelKind = 'masks' | 'inpaint' | `enhance-${'matting' | 'face' | 'landscape' | 'deblur' | 'upscale'}`;
 interface CapturedModels { kind: ModelKind; assets: { name: string; path: string; sha256: string }[]; }
-const modelKind = (operation: string, args: JsonObject): ModelKind | undefined => operation === 'mask_generate' || operation === 'generate_depth' ? 'masks' : operation === 'retouch' && args.mode === 'inpaint' ? 'inpaint' : undefined;
+const modelKind = (operation: string, args: JsonObject): ModelKind | undefined => {
+  if (operation === 'enhance') {
+    const request = args.request as JsonObject | undefined;
+    if (!request || typeof request !== 'object') return fail('INVALID_ARGUMENT', 'Enhancement request is required');
+    switch (request.operation) {
+      case 'refine_mask': return 'enhance-matting';
+      case 'semantic_mask': return request.domain === 'face' ? 'enhance-face' : 'enhance-landscape';
+      case 'deblur': return 'enhance-deblur';
+      case 'upscale': return 'enhance-upscale';
+      default: return fail('INVALID_ARGUMENT', 'Unknown enhancement operation');
+    }
+  }
+  return operation === 'mask_generate' || operation === 'generate_depth' ? 'masks' : operation === 'retouch' && args.mode === 'inpaint' ? 'inpaint' : undefined;
+};
 const modelName = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(value);
 interface OperationJob {
   job_id: string; operation: string; arguments: JsonObject; status: Status;
@@ -62,6 +75,7 @@ export class OperationJobs {
   private workspace: string;
   private active: { id: string; worker: NativeBridge; completion: Promise<void> } | undefined;
   private serial: Promise<unknown> = Promise.resolve();
+  private transitions: Promise<unknown> = Promise.resolve();
   private initialized?: Promise<void>;
   private closing = false;
   constructor(private readonly bridge: NativeBridge, private readonly options: BridgeOptions) {
@@ -141,6 +155,11 @@ export class OperationJobs {
       await rename(temp, path);
     } finally { await file?.close(); await rm(temp, { force: true }); }
   }
+  private transition<T>(action: () => Promise<T>): Promise<T> {
+    const next = this.transitions.then(action);
+    this.transitions = next.catch(() => undefined);
+    return next;
+  }
   private info(job: OperationJob): JsonObject {
     const { arguments: _arguments, bundle: _bundle, sources: _sources, models, ...info } = job;
     return { ...info, ...(models ? { captured_models: { kind: models.kind, count: models.assets.length } } : {}), progress: { kind: 'stage', stage: job.stage }, recoverable: ['interrupted', 'failed', 'cancelled'].includes(job.status), recovery: 'Explicit resume recomputes captured work in a new worker workspace. Cancellation terminates only the operation worker.' };
@@ -161,14 +180,20 @@ export class OperationJobs {
           return { jobs, count: jobs.length, invalid_jobs };
         }
         case 'cancel_operation_job': {
-          const job = await this.read(jobId(params.job_id));
-          if (job.status === 'running' && this.active?.id === job.job_id) {
-            // Persist cancellation before terminating; a late response cannot publish.
+          const id = jobId(params.job_id);
+          const active = await this.transition(async () => {
+            const job = await this.read(id);
+            if (job.status !== 'running' || this.active?.id !== id) return undefined;
             job.status = 'cancelled'; job.stage = 'Cancelled by caller'; await this.save(job);
-            await this.active.worker.close();
-            await this.active?.completion;
+            return this.active;
+          });
+          // Worker completion may need the same transition queue for its catch
+          // path. Release the state guard before waiting for process teardown.
+          if (active) {
+            await active.worker.close();
+            await active.completion;
           }
-          return this.info(await this.read(job.job_id));
+          return this.info(await this.read(id));
         }
         case 'resume_operation_job': {
           await this.waitForFinishedWorker();
@@ -200,6 +225,7 @@ export class OperationJobs {
     if (!methods.has(operation)) fail('INVALID_ARGUMENT', 'Unsupported background operation');
     if (!params.arguments || typeof params.arguments !== 'object' || Array.isArray(params.arguments)) fail('INVALID_ARGUMENT', 'arguments must be an object');
     const args = structuredClone(params.arguments) as JsonObject;
+    if (operation === 'enhance' && (!Number.isSafeInteger(args.expected_revision) || (args.expected_revision as number) < 0)) fail('INVALID_ARGUMENT', 'Enhancement requires expected_revision before capturing its parent snapshot');
     if (operation === 'mask_generate' && args.refine !== undefined && (!Number.isSafeInteger(args.expected_revision) || (args.expected_revision as number) < 0)) fail('INVALID_ARGUMENT', 'Refinement requires expected_revision before capturing its parent snapshot');
     if (operation === 'retouch' && args.mode === 'generative') fail('INVALID_ARGUMENT', 'Remote generation must use the explicit synchronous retouch call; credentials are never persisted in jobs');
     if ('token' in args) fail('INVALID_ARGUMENT', 'Tokens cannot be stored in background jobs');
@@ -253,6 +279,7 @@ export class OperationJobs {
     const status = await this.bridge.request('models', {});
     const groups = status.groups as Record<string, unknown> | undefined;
     const group = groups?.[kind] as { ready?: unknown; assets?: unknown } | undefined;
+    if (kind.startsWith('enhance-') && group?.ready === false) return fail('MODEL_NOT_INSTALLED', `Install enhancement model '${kind.slice(8)}' before starting this operation.`);
     if (status.models_directory !== join(this.workspace, 'models') || !group || !Array.isArray(group.assets) || !group.assets.length || group.assets.length > 32) fail('INVALID_MODEL_STATUS', 'Native models response lacks the required workspace model group');
     const modelRoot = await confined(this.workspace, status.models_directory, 'directory');
     const names = new Set<string>();
@@ -297,9 +324,11 @@ export class OperationJobs {
     this.active = { id: job.job_id, worker, completion };
   }
   private async stage(job: OperationJob, stage: string): Promise<void> {
-    const current = await this.read(job.job_id);
-    if (current.status !== 'running' || this.closing) fail('JOB_CANCELLED', 'Worker result cannot publish after cancellation or shutdown');
-    job.stage = stage; await this.save(job);
+    await this.transition(async () => {
+      const current = await this.read(job.job_id);
+      if (current.status !== 'running' || current.attempt !== job.attempt || this.closing) fail('JOB_CANCELLED', 'Worker result cannot publish after cancellation or shutdown');
+      current.stage = stage; await this.save(current);
+    });
   }
   private async run(job: OperationJob, worker: NativeBridge): Promise<void> {
     try {
@@ -329,7 +358,7 @@ export class OperationJobs {
       if (job.bundle) {
         const imported = await worker.request('import_session_bundle', { path: job.bundle, ...(job.bundle_sha256 ? { expected_manifest_sha256: job.bundle_sha256 } : {}) });
         args.session_id = imported.session_id;
-        if (job.operation === 'mask_generate' && args.refine !== undefined) {
+        if (job.operation === 'enhance' || (job.operation === 'mask_generate' && args.refine !== undefined)) {
           // The parent revision guarded bundle capture. Refinement now guards
           // this independent imported snapshot, whose revision can differ.
           if (!Number.isSafeInteger(imported.revision) || (imported.revision as number) < 0) fail('INVALID_BUNDLE', 'Imported refinement snapshot lacks its revision');
@@ -339,20 +368,32 @@ export class OperationJobs {
       await this.stage(job, `Running ${job.operation}`);
       const result = await worker.request(job.operation, args, 1_800_000);
       await this.stage(job, 'Persisting result');
+      let publication: { path: string; expected_manifest_sha256: string } | undefined;
       if (job.operation !== 'export' && typeof result.session_id === 'string') {
         const bundle = await worker.request('export_session_bundle', { session_id: result.session_id });
         // Result import is serialized with edits by the parent NativeBridge.
         const bundlePath = await confined(join(this.root, job.job_id, `attempt-${job.attempt}`, 'bundles'), bundle.path ?? bundle.bundle_path, 'directory');
-        if (typeof bundle.manifest_sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(bundle.manifest_sha256)) fail('INVALID_BUNDLE', 'Worker result bundle lacks a valid manifest SHA-256');
-        const imported = await this.bridge.request('import_session_bundle', { path: bundlePath, expected_manifest_sha256: bundle.manifest_sha256 });
-        const workerSessionId = result.session_id;
-        Object.assign(result, imported, { worker_session_id: workerSessionId });
+        if (typeof bundle.manifest_sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(bundle.manifest_sha256)) return fail('INVALID_BUNDLE', 'Worker result bundle lacks a valid manifest SHA-256');
+        publication = { path: bundlePath, expected_manifest_sha256: bundle.manifest_sha256 };
       }
-      await this.stage(job, 'Complete');
-      job.result = result; job.status = 'succeeded'; await this.save(job);
+      // Parent import and successful publication are one state transition. A
+      // cancellation that wins first prevents import; once import starts,
+      // completion wins so a late cancel cannot orphan the imported session.
+      await this.transition(async () => {
+        const current = await this.read(job.job_id);
+        if (current.status !== 'running' || current.attempt !== job.attempt || this.closing) fail('JOB_CANCELLED', 'Worker result cannot publish after cancellation or shutdown');
+        if (publication) {
+          const imported = await this.bridge.request('import_session_bundle', publication);
+          const workerSessionId = result.session_id;
+          Object.assign(result, imported, { worker_session_id: workerSessionId });
+        }
+        current.stage = 'Complete'; current.result = result; current.status = 'succeeded'; await this.save(current);
+      });
     } catch (error) {
-      const current = await this.read(job.job_id).catch(() => undefined);
-      if (current?.status === 'running') { job.status = this.closing ? 'interrupted' : 'failed'; job.stage = 'Stopped'; job.error = error instanceof Error ? error.message : String(error); await this.save(job); }
+      await this.transition(async () => {
+        const current = await this.read(job.job_id).catch(() => undefined);
+        if (current?.status === 'running' && current.attempt === job.attempt) { current.status = this.closing ? 'interrupted' : 'failed'; current.stage = 'Stopped'; current.error = error instanceof Error ? error.message : String(error); await this.save(current); }
+      });
     } finally { await worker.close(); }
   }
   async close(): Promise<void> {

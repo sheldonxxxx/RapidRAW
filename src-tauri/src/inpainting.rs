@@ -377,6 +377,15 @@ pub async fn invoke_generative_replace_with_mask_def(
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
+    if let Some(options) = &patch_definition.generation_options {
+        options.validate().map_err(|error| error.to_string())?;
+        if use_fast_inpaint || settings.ai_provider.as_deref() != Some("ai-connector") {
+            return Err(
+                "Generation options require generative mode with an AI Connector provider"
+                    .to_string(),
+            );
+        }
+    }
 
     let (source_image, is_raw) =
         prepare_source_image(&patch_definition.id, &current_adjustments, &state)?;
@@ -425,6 +434,7 @@ pub async fn invoke_generative_replace_with_mask_def(
 
     let (min_x, max_x, min_y, max_y) = calculate_mask_bounds(&mask_bitmap)?;
 
+    let mut generation = None;
     let patch_rgba = if use_fast_inpaint {
         let lama_model = ai_processing::get_or_init_lama_model(
             &app_handle,
@@ -564,16 +574,19 @@ pub async fn invoke_generative_replace_with_mask_def(
 
         let (real_path_buf, _) = crate::file_management::parse_virtual_path(&path);
 
-        ai_connector::process_inpainting(
+        let output = ai_connector::process_inpainting(
             &base_url,
             &real_path_buf.to_string_lossy(),
             &source_image,
             &mask_image_dynamic,
             patch_definition.prompt,
             None,
+            patch_definition.generation_options.as_ref(),
         )
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+        generation = output.generation;
+        output.image
     } else {
         return Err(
             "No generative backend configured or connection invalid. Please check your AI settings."
@@ -621,7 +634,7 @@ pub async fn invoke_generative_replace_with_mask_def(
     let output_mask =
         image::imageops::crop_imm(&mask_bitmap, min_x_u32, min_y_u32, crop_w, crop_h).to_image();
 
-    encode_patch_result(
+    let encoded = encode_patch_result(
         &color_image,
         &output_mask,
         min_x_u32,
@@ -631,7 +644,15 @@ pub async fn invoke_generative_replace_with_mask_def(
         is_raw,
         95,
         true,
-    )
+    )?;
+    if let Some(generation) = generation {
+        let mut patch: Value = serde_json::from_str(&encoded).map_err(|error| error.to_string())?;
+        patch["generation"] =
+            serde_json::to_value(generation).map_err(|error| error.to_string())?;
+        serde_json::to_string(&patch).map_err(|error| error.to_string())
+    } else {
+        Ok(encoded)
+    }
 }
 
 fn point_to_segment_dist_sq(px: f32, py: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> (f32, f32) {

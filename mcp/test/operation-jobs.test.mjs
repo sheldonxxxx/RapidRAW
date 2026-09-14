@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, readFile, readdir, writeFile, realpath, symlink, rm } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { OperationJobs } from '../dist/operation-jobs.js';
 
 const binary = fileURLToPath(new URL('./fixtures/operation-worker.mjs', import.meta.url));
@@ -32,6 +33,127 @@ async function wait(manager, id, predicate = (job) => job.status !== 'running') 
   for (let i = 0; i < 200; i++) { const job = await manager.dispatch('get_operation_job', { job_id: id }); if (predicate(job)) return job; await new Promise((resolve) => setTimeout(resolve, 10)); }
   assert.fail('Worker did not reach expected state');
 }
+function gate() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+function transitionFixture(manager, operation = 'export') {
+  const job = { job_id: '11111111-1111-4111-8111-111111111111', operation, arguments: {}, status: 'running', stage: 'Captured input', attempt: 1, created_at: '', updated_at: '' };
+  let durable = structuredClone(job);
+  // In-memory persistence makes read/write interleavings deterministic. Native
+  // process lifecycle and filesystem persistence have separate tests below.
+  manager.init = async () => {};
+  manager.read = async () => structuredClone(durable);
+  manager.save = async (current) => { durable = structuredClone(current); };
+  return job;
+}
+test('cancellation cannot be overwritten by a progress write already in flight', async (t) => {
+  const { manager } = await setup(t);
+  const job = transitionFixture(manager);
+  const entered = gate(), release = gate();
+  const save = manager.save.bind(manager);
+  manager.save = async (current) => {
+    if (current.stage === 'Delayed progress') { entered.resolve(); await release.promise; }
+    await save(current);
+  };
+  manager.active = { id: job.job_id, worker: { async close() {} }, completion: Promise.resolve() };
+  const progress = manager.stage(job, 'Delayed progress');
+  await entered.promise;
+  const cancelling = manager.dispatch('cancel_operation_job', { job_id: job.job_id });
+  // All runnable in-memory transitions drain before releasing the blocked
+  // write; the old unguarded cancellation could finish its save in this turn.
+  await nextTurn(); release.resolve();
+  await progress;
+  const cancelled = await cancelling;
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(cancelled.result, undefined);
+  await assert.rejects(manager.stage(job, 'Late result'), { code: 'JOB_CANCELLED' });
+  assert.equal((await manager.read(job.job_id)).status, 'cancelled');
+});
+test('result import and success win together over cancellation after publication starts', async (t) => {
+  const { manager, workspace, bridge, calls } = await setup(t);
+  const job = transitionFixture(manager, 'negative_convert');
+  const bundle = join(workspace, 'operation-jobs', job.job_id, 'attempt-1', 'bundles', 'result');
+  await mkdir(bundle, { recursive: true });
+  const entered = gate(), release = gate();
+  const request = bridge.request.bind(bridge);
+  bridge.request = async (method, params) => {
+    if (method === 'import_session_bundle') { entered.resolve(); await release.promise; }
+    return request(method, params);
+  };
+  const worker = {
+    async request(method) { return method === 'export_session_bundle' ? { path: bundle, manifest_sha256: '0'.repeat(64) } : { session_id: 'worker-result' }; },
+    async close() {},
+  };
+  const completion = manager.run(job, worker);
+  manager.active = { id: job.job_id, worker, completion };
+  await entered.promise;
+  const cancelling = manager.dispatch('cancel_operation_job', { job_id: job.job_id });
+  await nextTurn(); release.resolve();
+  await completion;
+  const completed = await cancelling;
+  assert.equal(completed.status, 'succeeded');
+  assert.equal(completed.result.session_id, 'parent-result');
+  assert.equal(calls.filter((call) => call.method === 'import_session_bundle').length, 1);
+});
+test('cancellation before publication prevents parent import and survives the worker catch path', async (t) => {
+  const { manager, workspace, calls } = await setup(t);
+  const job = transitionFixture(manager, 'negative_convert');
+  const bundle = join(workspace, 'operation-jobs', job.job_id, 'attempt-1', 'bundles', 'result');
+  await mkdir(bundle, { recursive: true });
+  const exporting = gate(), release = gate(), cancellationSaved = gate();
+  const save = manager.save.bind(manager);
+  manager.save = async (current) => { await save(current); if (current.status === 'cancelled') cancellationSaved.resolve(); };
+  const worker = {
+    async request(method) {
+      if (method === 'export_session_bundle') { exporting.resolve(); await release.promise; return { path: bundle, manifest_sha256: '0'.repeat(64) }; }
+      return { session_id: 'worker-result' };
+    },
+    async close() {},
+  };
+  const completion = manager.run(job, worker);
+  manager.active = { id: job.job_id, worker, completion };
+  await exporting.promise;
+  const cancelling = manager.dispatch('cancel_operation_job', { job_id: job.job_id });
+  await cancellationSaved.promise; release.resolve();
+  const cancelled = await cancelling;
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(cancelled.error, undefined);
+  assert.equal(cancelled.result, undefined);
+  assert.equal(calls.filter((call) => call.method === 'import_session_bundle').length, 0);
+});
+test('repeated immediate cancellation remains cancelled after native worker teardown', async (t) => {
+  const { manager, calls } = await setup(t, { FAKE_OPERATION_STALL: '1' });
+  for (let i = 0; i < 12; i++) {
+    const started = await manager.dispatch('start_operation', { operation: 'export', arguments: { session_id: 'source', path: `cancel-${i}.png` } });
+    const cancelled = await manager.dispatch('cancel_operation_job', { job_id: started.job_id });
+    assert.equal(cancelled.status, 'cancelled');
+    assert.equal(cancelled.error, undefined);
+    assert.equal(cancelled.result, undefined);
+    assert.equal((await manager.dispatch('get_operation_job', { job_id: started.job_id })).status, 'cancelled');
+  }
+  assert.equal(calls.filter((call) => call.method === 'import_session_bundle').length, 0);
+});
+test('enhancement captures graph and receipt, rebinds revision, and preserves options', async (t) => {
+  const context=await setup(t);
+  await modelGroup(context,'enhance-upscale',{'swinir_lightweight_x2.onnx':'graph','swinir_lightweight_x2.onnx.json':'receipt'});
+  const request={operation:'upscale',profile:'fast',provider:'cpu',region:[10,20,100,80]};
+  const start=await context.manager.dispatch('start_operation',{operation:'enhance',arguments:{session_id:'source',expected_revision:7,request}});
+  const done=await wait(context.manager,start.job_id);
+  assert.equal(done.status,'succeeded',done.error);
+  assert.deepEqual(done.result.params.request,request);
+  assert.equal(done.result.params.expected_revision,11,'Worker must use the imported snapshot revision');
+  assert.deepEqual(done.result.models,{'swinir_lightweight_x2.onnx':'graph','swinir_lightweight_x2.onnx.json':'receipt'});
+  assert.equal(context.calls.find((call)=>call.method==='export_session_bundle').params.expected_revision,7);
+});
+test('enhancement refuses missing revision or uninstalled models before creating a durable job', async (t) => {
+  const context=await setup(t);
+  await assert.rejects(context.manager.dispatch('start_operation',{operation:'enhance',arguments:{session_id:'source',request:{operation:'deblur'}}}),/requires expected_revision/);
+  context.models.groups['enhance-deblur']={ready:false,assets:[]};
+  await assert.rejects(context.manager.dispatch('start_operation',{operation:'enhance',arguments:{session_id:'source',expected_revision:0,request:{operation:'deblur'}}}),{code:'MODEL_NOT_INSTALLED'});
+  assert.equal((await context.manager.dispatch('list_operation_jobs',{})).jobs.length,0);
+});
 test('capture and invalid-input failures leave job listing and reconnect usable', async (t) => {
   const { manager, workspace, bridge, options } = await setup(t);
   await assert.rejects(manager.dispatch('start_operation', { operation: 'export', arguments: { session_id: 'capture-failure', path: 'delivery.png' } }), /capture failed/);

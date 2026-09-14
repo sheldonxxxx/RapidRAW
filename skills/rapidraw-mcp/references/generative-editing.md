@@ -1,0 +1,63 @@
+# Generative editing workflows
+
+Use this reference for authorized generative retouch. Existing authorization in the conversation counts; a configured provider alone does not authorize image upload. Tool names omit the host's `rapidraw_` prefix.
+
+## Discover the available workflow
+
+Read the live retouch schema and `get_engine_settings`. Native `capabilities` describes the bridge; `models` describes local mask, inpaint and denoise assets. Neither lists remote generation profiles. For AI Connector, use the configured `aiConnectorAddress` (`host:port`) to read its HTTP `GET /capabilities`. Keep discovery on the configured provider; the desktop discovery command is not an MCP tool.
+
+Current fork builds accept `generation_options` with `profile`, `megapixels` and `seed`. Use advertised profile IDs and resolutions. The included Comfy Connector advertises:
+
+| Profile | Use | Supported generation MP |
+| --- | --- | --- |
+| `klein4-v1` | Starting point for general removal and creative replacement | 1, 2; default 1 |
+| `klein4-tight2mp` | Compare closer context for a small target when surrounding structure still fits | 1, 2; default 2 |
+| `klein9-kv` | A bounded alternative when 4B misses the requested change | 1 |
+| `boogu-turbo4-context` | A different reconstruction alternative | 1 |
+
+Deployments can change this catalog. The package supports Klein and Boogu workflow families; arbitrary profile names do not add another architecture. Qwen/Z-Image text editing and neural super-resolution are not bundled profiles. `install_model` cannot install connector workflows.
+
+Explicit options require a capable AI Connector and fail before image upload if unsupported. Cloud and local inpaint do not accept them. Legacy operation is possible with options omitted only when using provider defaults matches the user's intent; do not silently drop requested settings. Report a missing profile or discovery failure before dependent generation.
+
+## Route by the requested result
+
+| Use case | First treatment | Inspect before accepting |
+| --- | --- | --- |
+| Dust, tiny blemish, controllable texture repair | Native clone/heal, or local inpaint when suitable | Repeated texture, sampling edge and lighting |
+| Remove an object from a simple surface | Klein 4B at 1 MP, mask the object and unwanted shadow/reflection | Complete removal, replacement texture, visible boundary |
+| Remove an object crossing rails, branches or architecture | Klein 4B at 1 MP with enough context to continue the structure | Line continuity, occluded landmarks, counts and perspective |
+| Change color while retaining exact shape and texture | Native selective color adjustment; see [recolor guidance](advanced-editing.md#recolor-neutral-clothing) | Selection spill, folds, texture and unchanged geometry |
+| Creative recoloring, adding or replacing content | Klein 4B at 1 MP when reconstruction is intended | Shape, scale, contact shadows, material and protected surroundings |
+| Exact wording, lettering or logo | Establish the required spelling, font and layout; treat generation as a candidate, not typographic verification | Every character, spacing, font, perspective and surface integration |
+
+Prompt the desired visible result and name important retained features. For example: “Remove the bag and its shadow; continue the paving and keep the railing and planter unchanged.” Preservation language helps express intent but does not guarantee fidelity. Klein's bundled graph ignores negative conditioning; put important requirements in the positive prompt. MCP retouch has no `negative_prompt` parameter.
+
+For exact lettering, check whether a separately implemented text workflow is actually available. If it is absent, explain the limitation and distinguish an exploratory Klein candidate from a precise typesetting/compositing workflow. Correct spelling alone does not satisfy a font requirement.
+
+## Select enough room for the requested change
+
+For replacement, cover the original object and allow room for the new silhouette, support and contact shadow. A tight original-object mask can clip a correctly understood replacement. Compare a larger selection when the new geometry needs space, while explicitly subtracting faces, skin, accessories or nearby objects whose appearance must remain. Prompted preservation inside an editable region is a semantic request, not a pixel guarantee.
+
+For clothing, inspect collar, sleeve and hem transitions plus pose, skin and retained embroidery. For backgrounds, review subject and hair boundaries before generation; whole-frame selection permits identity and foreground reconstruction. For weather, distinguish sky-only changes from scene-wide changes to illumination, shadows, wet surfaces and reflections. A full-frame selection has no outside-mask preservation test; inspect structural and semantic fidelity instead.
+
+Separate instruction success from integration quality. Correct object category does not establish orientation, count, scale or pose. Inspect retained content inside an expanded mask, not only unselected pixels. When comparing mask sizes, fix source, prompt, seed, profile and MP, and record actual context geometry: production context is mask-derived, so the crop and effective target resolution can also change. MCP has no explicit context-box option. Do not describe a fixed-crop research comparison as identical to production retouch.
+
+## Generate and compare without compounding edits
+
+1. Save the intended pre-edit state with `save_version`. For a new refinement, such as changing only a sign's font, start from the accepted edit. For alternatives to an earlier removal, start from the version before that removal. Retain the accepted result separately. Read [portable sessions](portable-and-workers.md) for independent alternatives.
+2. Prepare native `sub_masks` using the live schema and [coordinate guidance](advanced-editing.md#coordinates-and-masks). A rectangle or existing mask ID alone is not a retouch selection. If selection is uncertain, inspect an ordinary adjustment mask with matching geometry before generating. The returned AI `patch_id` is not an adjustment `mask_id`; mask tools and `render_compare(disabled_masks)` do not toggle AI patches.
+3. Generate one candidate using current session/revision and the selected options. Inspect its returned mask preview, overview and matching native-detail regions. Check protected features as well as the repaired area.
+4. If needed, compare a small set of explicit seeds with source, mask, prompt, profile and resolution fixed. MCP `retouch` appends a patch and conditions on earlier visible patches. Fork each alternative from the same pre-edit `version_id`, or deliberately restore that version before another call. Desktop regeneration of the same patch differs; MCP exposes no equivalent replacement operation.
+5. Change context or generation resolution only to address a visible defect. Compare 2 MP against the accepted 1 MP reference; closer context can improve target scale while losing scene clues. Try another available profile when its different reconstruction may help. Retain the strongest candidate rather than escalating model size automatically.
+
+Seeds are integers from 1 through 9007199254740991. Omission requests a new random seed. Record actual `generation` receipts, including seed, profile, generated dimensions, source dimensions and context; `generationOptions` contains requested settings only. A seed selected for one photo is not a universal preset, and reproducibility also depends on inputs, model and runtime.
+
+## High-resolution placement and recovery
+
+Generation MP describes context area: 1 MP targets approximately 1024 × 1024 pixels, with dimensions adjusted for aspect ratio and model alignment. It is not a fixed 1024-pixel edge limit. The connector restores that crop to native placement dimensions; RapidRAW applies the original mask alpha once. Full-size export preserves canvas dimensions but does not recover captured RAW detail inside generated pixels.
+
+Conditioning uses the decoded source plus visible prior AI patches, with RAW converted to sRGB for transmission. Ordinary exposure, LUT and noise-reduction adjustments are not baked into that input. Do not prescribe a grading change as a way to change model conditioning or hand-edit stored patches. Judge the result through the final native grade.
+
+Keep neural upscaling off by default. If the user requests enlargement or a detail experiment, verify a separate supported workflow and compare it against ordinary restoration at identical final dimensions. Inspect invented texture, halos, lettering, grain and seams; extra sharpness is not recovered source detail. The included connector has no neural-upscale switch. For original-size export, omit both `long_edge` and `resize`.
+
+Generative retouch is synchronous and is not supported by `start_operation`/`resume_job`. An ambiguous timeout can leave Comfy processing active. Inspect session state and available connector receipt/history before another attempt; do not replay the mutation blindly or cancel unrelated queue work. Preserve the selected session, saved version, actual settings and review provenance using [feedback comparisons](review-and-jobs.md#revise-from-user-feedback).

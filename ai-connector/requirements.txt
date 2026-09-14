@@ -1,0 +1,6 @@
+aiohttp==3.14.3
+fastapi==0.141.1
+Pillow==12.3.0
+pydantic==2.13.5
+python-multipart==0.0.32
+uvicorn==0.52.4

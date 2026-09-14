@@ -82,7 +82,7 @@ Use local manifests with `RAPIDRAW_PHOTO_MANIFEST=/absolute/manifest.json node m
     "kind": "hdr",
     "partition": "fresh-holdout",
     "capture_group": "new-capture-sequence-001",
-    "provenance": "Immich original download; record asset IDs in local notes",
+    "provenance": "Original camera captures; retain acquisition and prior-use records",
     "derived_from_same_image": false,
     "sources": [
       {"path": "/absolute/photos/dark.CR3", "sha256": "REPLACE_WITH_HASH", "exposure_ev": -2},
@@ -95,7 +95,7 @@ Use local manifests with `RAPIDRAW_PHOTO_MANIFEST=/absolute/manifest.json node m
 
 The validator rejects duplicate hashes, same-image derivations, missing provenance and missing capture differences. HDR groups need distinct recorded exposure EVs; focus groups need distinct `focus_plane`; panoramas need `frame_position` and `overlap_description`. Other kinds are `ai-mask`, `denoise`, `negative`, with kind-specific parameters allowed. A genuine negative fixture and photographic brackets are necessary for quality claims. Distinct file hashes alone do not prove a genuine bracket; acquisition notes must be truthful.
 
-First attempts are written exclusively into `first-attempts/<id>`; reruns cannot overwrite them. Each result gets `review-required.json` with explicit criteria and `not_reviewed` status. Review full images and native-detail crops, including mask edges, stars, feathers/hair, deghosting, focus transitions and panorama seams. Preserve reviewer identity, date, artifacts and criteria judgments in a separate local record. Existing regression images cannot become fresh holdouts by renaming them; use new capture groups from Immich when authorized.
+First attempts are written exclusively into `first-attempts/<id>`; reruns cannot overwrite them. Each result gets `review-required.json` with explicit criteria and `not_reviewed` status. Review full images and native-detail crops, including mask edges, stars, feathers/hair, deghosting, focus transitions and panorama seams. Preserve reviewer identity, date, artifacts and criteria judgments in a separate local record. Existing regression images cannot become fresh holdouts by renaming them; use distinct captures with permission and recorded provenance.
 
 Every source gets an original overview and native 1:1 detail before processing. The result includes overview and native detail; AI masks additionally save all three matched overlay/photograph/grayscale blocks at both scales. PNG overviews explicitly start at a 1024px long edge. An actionable `RESPONSE_TOO_LARGE` can trigger a smaller overview, with each attempted request retained in the ledger. Native review rectangles are covered by 512px tiles without resizing, so a requested 1024×1024 region retains all its pixels in four matched crops. Artifact hashes, operation output, original/result session IDs and exact tile coordinates are included in `review-required.json`. Set `review_region` to an explicit integer rendered-pixel rectangle; otherwise each image uses its central native crop. Completed mutations with oversized responses recover their returned session/mask/job identifiers and are never replayed. A transport disconnect marks all remaining fixtures `not_attempted` instead of issuing meaningless calls on a dead client. Denoise processes the full original resolution. Set a denoise group's `background` to `true` to exercise `start_denoise` and monotonic progress polling; the default preserves the synchronous compatibility case.
 
@@ -241,7 +241,7 @@ A matching name and nonzero correction establish neither optical calibration acc
 
 ## Fresh installation and platforms
 
-`node mcp/scripts/fresh-setup.mjs --build --native` reinstalls locked Node dependencies, builds frontend/native MCP, checks the feature-disabled build, runs protocol tests and the generated-fixture native suites. Use `npm run test:setup -- --build --native` on Windows so the Node/npm CLI path is explicit. Build dependencies still come from the platform setup in [MCP.md](../MCP.md) and upstream build documentation. Set `RAPIDRAW_SETUP_OUTPUT` for the setup summary location.
+`node mcp/scripts/fresh-setup.mjs --build --native` reinstalls locked Node dependencies, builds frontend/native MCP, checks the feature-disabled build, runs protocol tests and the generated-fixture native suites. Use `npm run test:setup --prefix mcp -- --build --native` from the repository root on Windows so the Node/npm CLI path is explicit. Build dependencies still come from the platform setup in [MCP.md](../MCP.md) and upstream build documentation. Set `RAPIDRAW_SETUP_OUTPUT` for the setup summary location.
 
 `RAPIDRAW_FRESH_MACHINE=1` is an explicit runner declaration, appropriate only for an actually fresh host/VM with empty dependency/model caches. A run on an existing Mac does not establish Windows/Linux, installer, or fresh-machine support. The separate CI workflow runs only portable evidence/fixture contracts on all three OSes and labels those tests accordingly. Native GPU, model and photographic suites need suitable runners and recorded output before a platform can be marked verified.
 

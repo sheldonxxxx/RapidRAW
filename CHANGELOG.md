@@ -6,15 +6,25 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ### Added
 
-- Opt-in Linux ONNX CUDA inference for foreground/sky masks, depth and AI denoise, with per-model memory limits, initialization-only automatic fallback and MCP provider diagnostics. Subject selection, local inpainting and unvalidated models retain CPU compatibility paths; CPU remains the default on all platforms. A separate GPU runtime leaves bundled runtimes and macOS setup unchanged. See the [CUDA setup and native regression guide](mcp/ONNX-CUDA.md).
+- [Local mask and detail enhancement](docs/local-enhancement.md) in the desktop AI panel and MCP: learned mask refinement, scene and face-part segmentation, experimental motion deblur and conservative 2× enlargement. Optional verified models, CPU/CUDA profiles, cancellation and independent restoration outputs preserve the editing source.
+
+- Optional AI Connector generation settings on MCP `retouch`: an explicit seed, an advertised workflow profile and supported generation megapixels. Settings are saved with the reversible patch, and unsupported requests fail before image upload.
+- Desktop AI workflow, resolution and seed controls, with saved patch settings, workflow refresh and explicit fallback for older connectors. Valid connector receipts show and retain the actual generation size and seed in both desktop and MCP edits.
+- A configurable [Comfy Connector](ai-connector/README.md) with Klein 4B, closer-context Klein, Klein 9B KV and Boogu Edit Turbo profiles, immutable source caching and private generation receipts. Model weights are installed separately; CPU contract tests cover request handling without a GPU.
+- [AI editing workflows](docs/ai-editing-workflows.md) for removal, recoloring, replacement, lettering and high-resolution delivery, with matching MCP skill guidance for profile discovery, reproducible alternatives and native-detail review.
+- An [AI editing test report](docs/ai-editing-experiments.md) covering tested models, comparisons, timings and the resulting workflow choices.
+- Clear standalone desktop and MCP entry points, an independent-project overview linking optional Lightweft and Insta360 workflows, and focused desktop/contribution guides. Setup, platform and skill guidance distinguish the public MCP contract from native implementation details.
+
+- Opt-in Linux ONNX CUDA inference for foreground/sky masks, depth and AI denoise, with per-model memory limits, initialization-only automatic fallback and MCP provider diagnostics. Subject selection, local inpainting and unvalidated models retain CPU compatibility paths; these existing mask and denoise operations keep CPU as the default on all platforms. CUDA installation uses a separate GPU runtime. See the [CUDA setup and native regression guide](mcp/ONNX-CUDA.md).
 - Linux GPU server setup over SSH using Xvfb and offscreen Vulkan, with a tested Debian 13/NVIDIA configuration. The persistent inspection client accepts a stdio connection file and saves remote previews locally.
 - Explicit `adjustment_keys` when saving workspace presets, so reusable looks can retain their LUT and rendered curves while leaving each photo's exposure, white balance and detail corrections intact. Selection validates native keys and required LUT/curve dependencies.
 - Film-comparison skill guidance covering installed LUT discovery, explicit scene-referred processing for built-in films, and image-specific visual checks before recommending a look.
 
-The MCP interface grows from 47 to 62 public tools: 57 native methods and five host worker methods. Tool names below omit the `rapidraw_` prefix.
+The MCP interface grows from 47 to 65 public tools: 60 native methods and five host worker methods. Tool names below omit the `rapidraw_` prefix.
 
 | Addition | New tools |
 | --- | --- |
+| Local learned masks and photographic reconstruction | `enhancement_models`, `install_enhancement_model`, `enhance` |
 | Independent editing copies, portable bundles, version differences and selective synchronization | `fork_session`, `export_session_bundle`, `import_session_bundle`, `diff_versions`, `copy_adjustments` |
 | Coordinate conversion, resource checks and regional color/white-balance diagnostics | `map_coordinates`, `preflight`, `sample_region` |
 | Owned workspace preset and LUT libraries | `manage_presets`, `manage_luts` |
@@ -34,8 +44,17 @@ The MCP interface grows from 47 to 62 public tools: 57 native methods and five h
 - A photographic guided-mask regression runner covering preserved AI baselines, brush corrections, an independent manual mask, selected/protected-region effects, history and exact saved-state/rendering checks.
 - Spherical-photo skill guidance for preserving full-sphere geometry, reviewing longitude seams and poles, editing an independently selected flat view, and checking final projection metadata and colour assumptions.
 
+### Changed
+
+- Generation result details consistently show generated and placement dimensions. New receipts omit experimental tile metadata; previously saved receipts remain compatible.
+- Apple Silicon builds bundle the official ONNX Runtime 1.30.0 library, verified archive and file hashes, and license notices. These builds require macOS 14 or later. Intel Mac builds retain 1.22.0; existing CoreML model restrictions remain in place.
+- Apple Silicon LaMa sessions use targeted CPU settings to reduce a 1.30.0 inpainting slowdown. Large repairs remain slower in the tested comparison, and newly generated SAM selections can differ, including additional landscape spill. See the [runtime compatibility notes](docs/local-enhancement.md#apple-silicon-runtime); saved masks are preserved.
+
 ### Fixed
 
+- Consecutive AI Connector edits now refresh the cached source when earlier retouching changes its pixels, while identical source images can reuse the cache.
+- AI Connector crop responses outside the photo canvas are rejected before compositing. Stored generation receipts retain only validated dimensions, settings and duration.
+- AI Connector status now verifies backend connectivity and rejects HTTP errors, invalid responses and stalled requests.
 - Linux local inpainting rejects nonfinite ONNX output before converting it to pixels. The bundled FP16 LaMa model remains on CPU after CUDA compatibility checks found invalid output at the supported maximum input size.
 - Desktop preset strength now blends from the captured pre-preset edit and restores that edit at zero strength. Partial presets preserve omitted exposure, white balance and detail controls; both desktop and MCP preset application fade a newly added LUT from zero effective strength.
 - Linear DNG files with constant repeated black-level grids could render almost entirely white. Equivalent spatial repeats now normalize to per-channel black levels before RAW development.

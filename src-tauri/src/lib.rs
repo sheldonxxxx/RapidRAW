@@ -8,6 +8,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 mod adjustment_utils;
 mod ai_commands;
 mod ai_connector;
+mod ai_enhance;
 mod ai_processing;
 mod ai_runtime;
 mod android_integration;
@@ -15,6 +16,7 @@ mod app_settings;
 mod app_state;
 mod cache_utils;
 mod camera_tethering;
+mod color_profiles;
 mod culling;
 mod denoising;
 mod exif_processing;
@@ -41,6 +43,8 @@ mod panorama_stitching;
 mod panorama_utils;
 mod preset_converter;
 mod raw_processing;
+#[cfg(test)]
+mod runtime_regression_tests;
 mod tagging;
 mod tagging_utils;
 mod window_customizer;
@@ -2100,12 +2104,17 @@ pub fn run() {
             ai_commands::generate_ai_depth_mask,
             ai_commands::check_ai_connector_status,
             ai_commands::test_ai_connector_connection,
+            ai_commands::get_ai_connector_capabilities,
             ai_commands::generate_full_image_depth_map,
             inpainting::invoke_generative_replace_with_mask_def,
             inpainting::generate_manual_cleanup_patch,
             inpainting::generate_liquify_patch,
             inpainting::generate_retouch_patch,
             denoising::apply_denoising,
+            ai_enhance::desktop::enhancement_models,
+            ai_enhance::desktop::install_enhancement_model,
+            ai_enhance::desktop::run_enhancement,
+            ai_enhance::desktop::cancel_enhancement,
             denoising::batch_denoise_images,
             denoising::save_denoised_image,
             focus_stacking::stitch_focus_stack,

@@ -1,0 +1,14 @@
+{
+  "family": "boogu",
+  "model": "boogu_image_edit_turbo_hotfix_1k_20260708_int8_convrot.safetensors",
+  "text_encoder": "qwen3vl_8b_fp8_scaled.safetensors",
+  "vae": "boogu.safetensors",
+  "steps": 4,
+  "cfg": 1,
+  "shift": 3.16,
+  "sampler": "lcm",
+  "scheduler": "sgm_uniform",
+  "megapixels": 1,
+  "mode": "context",
+  "id": "boogu-turbo4-context"
+}

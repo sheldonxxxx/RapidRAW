@@ -68,6 +68,10 @@ import { useProcessStore } from '../../../store/useProcessStore';
 import { useUIStore } from '../../../store/useUIStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
 import { useAiMasking } from '../../../hooks/useAiMasking';
+import { useGenerationCapabilities } from '../../../hooks/useGenerationCapabilities';
+import { generationDraft, resolveGenerationOptions, type GenerationDraft } from '../../../utils/generationOptions';
+import GenerationControls, { GenerationResultInfo } from './GenerationControls';
+import EnhancementPanel from './EnhancementPanel';
 
 export const STANDALONE_MASK_TYPES: Mask[] = [Mask.Clone, Mask.Heal, Mask.Liquify, Mask.Retouch];
 
@@ -350,6 +354,11 @@ export default function AIPanel() {
     useAiMasking();
   const appSettings = useSettingsStore((s) => s.appSettings);
   const aiProvider = appSettings?.aiProvider || 'cpu';
+  const generationCapabilities = useGenerationCapabilities(
+    aiProvider,
+    appSettings?.aiConnectorAddress || '',
+    isAIConnectorConnected,
+  );
 
   const { user, isSignedIn } = useUser();
   const { getToken } = useAuth();
@@ -1089,7 +1098,7 @@ export default function AIPanel() {
     >
       <div className="flex flex-col h-full select-none overflow-hidden" onContextMenu={handlePanelContextMenu}>
         <div className="p-3 flex justify-between items-center shrink-0 border-b border-surface">
-          <Text variant={TextVariants.title}>{t('editor.ai.inpaintingTitle')}</Text>
+          <Text variant={TextVariants.title}>{t('editor.enhancement.aiTitle', { defaultValue: 'AI editing' })}</Text>
           <button
             className="p-2 rounded-full hover:bg-surface transition-colors"
             onClick={handleResetAllAiEdits}
@@ -1113,6 +1122,7 @@ export default function AIPanel() {
             </div>
           ) : (
             <>
+              <EnhancementPanel />
               <AnimatePresence mode="wait">
                 {(adjustments.aiPatches || []).length === 0 ? (
                   <motion.div
@@ -1279,6 +1289,8 @@ export default function AIPanel() {
                       collapsibleState={collapsibleState}
                       setCollapsibleState={setCollapsibleState}
                       isGenerativeAvailable={isGenerativeAvailable}
+                      capabilityState={generationCapabilities.state}
+                      retryCapabilities={generationCapabilities.retry}
                       onManualCleanup={handleDirectPatch}
                     />
                   </motion.div>
@@ -1929,6 +1941,8 @@ function SettingsPanel({
   collapsibleState,
   setCollapsibleState,
   isGenerativeAvailable,
+  capabilityState,
+  retryCapabilities,
   onManualCleanup,
 }: any) {
   const { t } = useTranslation();
@@ -1938,6 +1952,25 @@ function SettingsPanel({
   const [prompt, setPrompt] = useState(displayContainer.prompt || '');
   const [useFastInpaint, setUseFastInpaint] = useState(!isGenerativeAvailable);
   const prevContainerId = useRef<string | null>(null);
+  const draftKey = JSON.stringify([container?.id, capabilityState.scope]);
+  const previousScope = useRef(capabilityState.scope);
+  const [draftState, setDraftState] = useState<{ key: string; value: GenerationDraft }>(() => ({
+    key: draftKey,
+    value: generationDraft(container?.generationOptions),
+  }));
+  const draftReady = draftState.key === draftKey;
+  const draft = draftReady ? draftState.value : generationDraft();
+  const generationSelection = resolveGenerationOptions(capabilityState, draft);
+  const updateGenerationDraft = (value: GenerationDraft) => setDraftState({ key: draftKey, value });
+
+  useEffect(() => {
+    const endpointChanged = previousScope.current !== capabilityState.scope;
+    setDraftState({
+      key: draftKey,
+      value: generationDraft(endpointChanged ? undefined : container?.generationOptions),
+    });
+    previousScope.current = capabilityState.scope;
+  }, [draftKey]);
 
   useEffect(() => {
     if (container) setPrompt(container.prompt || '');
@@ -1968,9 +2001,14 @@ function SettingsPanel({
       activeSubMask.type === Mask.AiSky);
 
   const handleGenerateClick = () => {
-    if (!container) return;
-    updateContainer(container.id, { prompt });
-    onGenerativeReplace(container.id, prompt, useFastInpaint);
+    if (
+      !container ||
+      isGeneratingAi ||
+      displayContainer.isLoading ||
+      (!useFastInpaint && (!draftReady || generationSelection.error))
+    )
+      return;
+    onGenerativeReplace(container.id, prompt, useFastInpaint, useFastInpaint ? undefined : generationSelection.options);
   };
 
   const handleToggleSection = (section: string) =>
@@ -2052,6 +2090,15 @@ function SettingsPanel({
                         value={prompt}
                       />
                     </div>
+                    <div className="mt-3">
+                      <GenerationControls
+                        state={capabilityState}
+                        draft={draft}
+                        onChange={updateGenerationDraft}
+                        onRetry={retryCapabilities}
+                        disabled={isGeneratingAi || displayContainer.isLoading || !draftReady}
+                      />
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -2059,7 +2106,12 @@ function SettingsPanel({
 
             <Button
               className="w-full"
-              disabled={isGeneratingAi || displayContainer.isLoading || displayContainer.subMasks.length === 0}
+              disabled={
+                isGeneratingAi ||
+                displayContainer.isLoading ||
+                displayContainer.subMasks.length === 0 ||
+                (!useFastInpaint && (!draftReady || !!generationSelection.error))
+              }
               onClick={handleGenerateClick}
             >
               {isGeneratingAi || displayContainer.isLoading ? (
@@ -2075,6 +2127,7 @@ function SettingsPanel({
                     : t('editor.ai.settings.generateWithAiButton')}
               </span>
             </Button>
+            <GenerationResultInfo generation={displayContainer.patchData?.generation} />
           </div>
         </CollapsibleSection>
       )}

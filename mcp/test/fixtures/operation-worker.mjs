@@ -14,7 +14,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     const path = join(workspace, 'bundles', 'result'); await mkdir(path, { recursive: true });
     result = { path, manifest_sha256: '0'.repeat(64) };
   }
-  if (['merge', 'export', 'negative_convert', 'mask_generate', 'generate_depth', 'retouch'].includes(method)) {
+  if (['merge', 'export', 'negative_convert', 'mask_generate', 'generate_depth', 'retouch', 'enhance'].includes(method)) {
     if (process.env.FAKE_OPERATION_STALL === '1') { await new Promise(() => {}); }
     await new Promise((resolve) => setTimeout(resolve, 20));
     const settings = await readFile(join(workspace, 'engine-settings.json'), 'utf8').then(JSON.parse).catch(() => null);

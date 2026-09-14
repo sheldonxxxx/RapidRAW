@@ -1,0 +1,131 @@
+# Use RapidRAW as a standalone editor
+
+RapidRAW is a GPU-accelerated photo editor created by [Timon Käch](https://github.com/CyberTimon/RapidRAW). Its desktop interface and original export CLI work independently of MCP, Lightweft and Insta360 tools. This guide covers those entry points; use the [MCP guide](../mcp/README.md) to connect an AI agent.
+
+## Get the application
+
+Use the [upstream releases page](https://github.com/CyberTimon/RapidRAW/releases) for the original application's available installers and bundles. Linux packaging also includes [Flathub](https://flathub.org/apps/io.github.CyberTimon.RapidRAW) and the community [AUR package](https://aur.archlinux.org/packages/rapidraw-bin). Follow the selected package's platform and dependency requirements.
+
+Those upstream packages do not include this fork's MCP bridge. Build this fork for fork-specific fixes or MCP. Its tested MCP configurations are listed separately in the [repository overview](../README.md#tested-configurations-and-current-limits).
+
+For interface tutorials and the original editor's example photographs, visit the [upstream documentation](https://www.getrapidraw.com/docs/) and [showcase](https://github.com/CyberTimon/RapidRAW#showcase--edits).
+
+## Editing and organization
+
+- **Develop and grade:** exposure, tone mapping, white balance, colour mixer, curves, sharpening, manual noise reduction, lens corrections and geometric transforms.
+- **Make local edits:** brush and gradient masks, colour/luminance ranges, AI selections, depth and local retouching.
+- **Explore looks:** presets, LUTs, grain and creative effects, with adjustable strength.
+- **Organize a library:** folders, albums, virtual copies, ratings, labels, metadata, library filtering and a culling view.
+- **Deliver:** batch processing and export to JPEG, PNG, WebP, AVIF, TIFF, JPEG XL or CUBE LUTs, with the options supported by the selected entry point.
+
+Ordinary adjustments are saved in `.rrdata` sidecars. The desktop application also has explicit file-management operations such as move, rename and delete; its library behaviour is separate from MCP's isolated working-copy contract.
+
+AI tools need model assets. The GUI can manage local models; remote generative editing uses a separately configured provider. Review the provider and image-transfer behaviour before using it. Local model inference and GPU image rendering are different processing paths.
+
+### Generative editing controls
+
+With an AI Connector that advertises generation workflows, the AI panel lets you choose a workflow, its supported **AI resolution**, and an optional **Seed**. These controls require a current build of this fork; the included [Comfy Connector setup](../ai-connector/README.md) explains the matching server and model profiles. Leave the seed empty for a new variation. Keep the same image, selection, prompt and generation settings when comparing repeat runs; changing the model, runtime or hardware can also change the result.
+
+AI resolution applies to the generated area. The photograph retains its original canvas size, and a generated patch may be enlarged to fit its placement. When the connector returns a valid generation receipt, the panel shows the actual generated dimensions, placement dimensions and seed. Inspect repaired texture and seams at native magnification before accepting an edit.
+
+Settings stay with each reversible AI patch. If the connector changes or a saved workflow is unavailable, choose a supported workflow or explicitly use connector defaults. **Refresh workflows** discovers changes without reopening the editor. Older connectors continue to work with their defaults; workflow and seed controls require a compatible connector.
+
+Follow the [AI editing workflows](ai-editing-workflows.md) for removal, recolouring, object replacement and lettering, including when to use photographic adjustments and when to compare another generated result.
+
+### Formats, lenses and languages
+
+RAW decoding uses [rawler](https://github.com/dnglab/dnglab/tree/main/rawler). The file extension alone does not establish camera support; consult the [supported-camera list](https://github.com/dnglab/dnglab/blob/main/SUPPORTED_CAMERAS.md) and test a file from the actual camera. Standard raster formats are also supported, including JPEG, PNG, TIFF and WebP.
+
+Lens correction uses the bundled [Lensfun database](../src-tauri/lensfun_db) for distortion, transverse chromatic aberration and vignetting. Matching a profile does not establish perfect optical correction; inspect geometry, colour fringes and corner illumination.
+
+Translations are maintained in the [application locale files](../src/i18n/locales). Translation completeness can vary by language and version.
+
+## Build this fork
+
+Install Node.js 22.12 or later, Rust 1.98 or later, and the [Tauri prerequisites for your platform](https://v2.tauri.app/start/prerequisites/). A working graphics backend and sufficient memory for your photos are required. The commands below use a POSIX shell on macOS or Linux. The pinned Rust example leaves the machine's default toolchain unchanged.
+
+Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0. Intel Mac builds retain the existing 1.22.0 runtime; see the [runtime guide](local-enhancement.md#apple-silicon-runtime).
+
+```sh
+git clone https://github.com/sheldonxxxx/RapidRAW.git
+cd RapidRAW
+rustup toolchain install 1.98.1 --profile minimal
+npm ci
+RUSTUP_TOOLCHAIN=1.98.1 npm start
+```
+
+To create an application build:
+
+```sh
+RUSTUP_TOOLCHAIN=1.98.1 npm run tauri -- build
+```
+
+Use the output location reported by the build. `CARGO_TARGET_DIR` changes the native target directory. For the separate MCP-enabled build, use the [native build and connection instructions](../mcp/README.md#build-and-connect).
+
+## Camera tethering
+
+The optional `tethering` Cargo feature uses [libgphoto2](http://gphoto.org/) on macOS and Linux. It provides capture, live view, camera settings, autofocus and library ingestion where the connected camera supports those operations. Camera support and individual remote-control features vary; consult the [libgphoto2 camera list](http://gphoto.org/proj/libgphoto2/support.php).
+
+Set the camera's USB mode to the appropriate remote, tethering or PTP setting. RapidRAW does not expose tethering through its MCP tools. Windows and Android tethering are unsupported by this integration.
+
+Install the system library before building or running a binary linked to it:
+
+```sh
+# macOS with Homebrew
+brew install libgphoto2 pkg-config
+```
+
+```sh
+# Debian or Ubuntu
+sudo apt-get install libgphoto2-dev pkg-config
+```
+
+Then run or build the optional feature:
+
+```sh
+RUSTUP_TOOLCHAIN=1.98.1 npm run start:tethering
+RUSTUP_TOOLCHAIN=1.98.1 npm run tauri -- build --features tethering
+```
+
+Tethering binaries depend on the installed system libraries. A standard build omits that dependency. Upstream releases may provide a separately labelled tethering variant; use its installation instructions.
+
+## Command-line export
+
+The original CLI exports a source image or directory using adjacent `.rrdata` adjustments, or a supplied adjustment JSON file. It does not require an MCP connection and does not expose the full MCP editing/session interface. Native graphics and platform dependencies still apply.
+
+Replace these clearly labelled placeholder paths with your executable, photographs and output locations:
+
+```sh
+RAPIDRAW_APP=/absolute/RapidRAW/src-tauri/target/release/RapidRAW
+
+# Export a directory using each source's existing sidecar.
+"$RAPIDRAW_APP" export /absolute/photos \
+  --output /absolute/exports --format jpeg --quality 90
+
+# Export one photograph to a specific file.
+"$RAPIDRAW_APP" export /absolute/photos/example.cr3 \
+  --output /absolute/exports/example.png --format png
+
+# Override sidecar adjustments with a native adjustment object.
+"$RAPIDRAW_APP" export /absolute/photos \
+  --output /absolute/exports --adjustments /absolute/presets/adjustments.json
+```
+
+| Option | Meaning | Default |
+| --- | --- | --- |
+| `<source>` | An image file or directory | Required |
+| `--output <path>` | Output file or directory | Required |
+| `--format <fmt>` | `jpeg`, `png`, `webp`, `avif`, `tiff`, `jxl`, or `cube` | `jpeg` |
+| `--quality <1-100>` | Requested export quality | `90` |
+| `--keep-metadata` | Retain capture metadata | Off |
+| `--adjustments <path>` | Native adjustment JSON overriding sidecars | Use adjacent sidecars |
+
+Use a separate output location and inspect exported dimensions, metadata and pixels. MCP-only parameters such as `expected_revision`, `long_edge`, `resize` and `color_profile` are not flags of this CLI. For agent-managed originals protection, portable state and structured per-item results, use the [MCP workflow](../mcp/README.md#example-editing-loop).
+
+## Troubleshooting
+
+If opening a photograph fails or the editor crashes, check the actual GPU/backend in **Settings → Processing**. Select a supported backend and restart. High-resolution inputs, masks and undo history can require substantial memory; reduce competing workloads and retain the original file when diagnosing a failure.
+
+On Linux, WebKit/Wayland and GPU driver combinations may need different launch settings. The upstream [Wayland issue](https://github.com/CyberTimon/RapidRAW/issues/306) documents reported failures. For a tested server configuration, use the fork's [SSH/Xvfb guide](../mcp/REMOTE-SSH.md).
+
+Report issues with the exact build, OS, GPU, affected entry point and a minimal reproduction using the [contribution guide](../CONTRIBUTING.md). A desktop release, an MCP debug build and a headless export can have different dependency and test boundaries.

@@ -381,9 +381,21 @@ fn mask_schema(patch: bool) -> Value {
     let mut required = vec!["id", "name", "visible", "invert", "subMasks"];
     if patch {
         props.insert("prompt".into(), string());
+        props.insert("generationOptions".into(), object(json!({
+            "seed":integer(1,crate::ai_connector::MAX_GENERATION_SEED),
+            "profile":{"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+            "megapixels":number(0.0625,16.0)
+        }), &[]));
         props.insert("isLoading".into(), json!({"const":false}));
         props.insert("patchData".into(),object(json!({
-            "color":image_asset(),"mask":image_asset(),"offsetX":integer(0,100000),"offsetY":integer(0,100000),"width":integer(1,100000),"height":integer(1,100000),"isSrgbEncoded":boolean()
+            "color":image_asset(),"mask":image_asset(),"offsetX":integer(0,100000),"offsetY":integer(0,100000),"width":integer(1,100000),"height":integer(1,100000),"isSrgbEncoded":boolean(),
+            "generation":object(json!({
+                "seed":integer(1,crate::ai_connector::MAX_GENERATION_SEED),
+                "profile":{"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+                "sourceSize":array(integer(1,100000),2,2),"generatedSize":array(integer(1,100000),2,2),
+                "context":object(json!({"x":integer(0,100000),"y":integer(0,100000),"width":integer(1,100000),"height":integer(1,100000)}), &["x","y","width","height"]),
+                "seconds":number(0.0,86400.0),"processing":enumeration(&["native_tiles"]),"tileSize":integer(64,4096)
+            }), &["seed","profile","sourceSize","generatedSize","context","seconds"])
         }), &["color","mask","offsetX","offsetY","width","height","isSrgbEncoded"]));
         required.extend(["prompt", "patchData"]);
     } else {
@@ -835,7 +847,23 @@ pub fn validate_adjustments(value: &Value, dimensions: (u32, u32)) -> Result<(),
                     validate_submask(submask, &format!("{path}.subMasks[{subindex}]"), &mut ids)?;
                 }
                 if collection == "aiPatches" {
+                    if let Some(value) = container.get("generationOptions") {
+                        let options: crate::ai_connector::GenerationOptions =
+                            serde_json::from_value(value.clone())
+                                .map_err(|error| format!("{path}.generationOptions: {error}"))?;
+                        options
+                            .validate()
+                            .map_err(|error| format!("{path}.generationOptions: {error}"))?;
+                    }
                     let patch = &container["patchData"];
+                    if let Some(value) = patch.get("generation") {
+                        let receipt: crate::ai_connector::GenerationMetadata =
+                            serde_json::from_value(value.clone())
+                                .map_err(|error| format!("{path}.patchData.generation: {error}"))?;
+                        receipt
+                            .validate([dimensions.0, dimensions.1])
+                            .map_err(|error| format!("{path}.patchData.generation: {error}"))?;
+                    }
                     let color = decode_asset(&patch["color"], &format!("{path}.patchData.color"))?;
                     let mask = decode_asset(&patch["mask"], &format!("{path}.patchData.mask"))?;
                     let expected = (
@@ -1145,6 +1173,77 @@ mod tests {
                 .unwrap_err()
                 .contains("must match")
         );
+    }
+
+    #[test]
+    fn saved_generation_tile_receipts_remain_valid_and_round_trip() {
+        let mut patch = mask();
+        patch.as_object_mut().unwrap().remove("adjustments");
+        patch["prompt"] = json!("remove target");
+        let receipt = json!({
+            "seed":104729,"profile":"lama-native-tiles",
+            "sourceSize":[100,100],"generatedSize":[20,15],
+            "context":{"x":1,"y":2,"width":20,"height":15},
+            "seconds":1.5,"processing":"native_tiles","tileSize":1024
+        });
+        patch["patchData"] = json!({
+            "color":bitmap(4,4),"mask":bitmap(4,4),
+            "offsetX":2,"offsetY":3,"width":4,"height":4,"isSrgbEncoded":true,
+            "generation":receipt
+        });
+        let recipe = json!({"aiPatches":[patch.clone()]});
+        validate_adjustments(&recipe, (100, 100)).unwrap();
+        let mut restored = default_adjustments();
+        merge_patch(&mut restored, &recipe).unwrap();
+        assert_eq!(restored["aiPatches"][0]["patchData"]["generation"], receipt);
+        validate_adjustments(&restored, (100, 100)).unwrap();
+
+        for (key, value) in [
+            ("processing", json!("unknown")),
+            ("tileSize", json!(0)),
+            ("tileSize", json!(8192)),
+            ("generatedSize", json!([19, 15])),
+        ] {
+            let mut invalid = patch.clone();
+            invalid["patchData"]["generation"][key] = value;
+            assert!(validate_adjustments(&json!({"aiPatches":[invalid]}), (100, 100)).is_err());
+        }
+        patch["patchData"]["generation"]
+            .as_object_mut()
+            .unwrap()
+            .remove("tileSize");
+        assert!(validate_adjustments(&json!({"aiPatches":[patch]}), (100, 100)).is_err());
+    }
+
+    #[test]
+    fn generation_options_survive_recipe_validation_with_strict_bounds() {
+        let mut patch = mask();
+        patch.as_object_mut().unwrap().remove("adjustments");
+        patch["prompt"] = json!("cleanup");
+        patch["patchData"] = json!({"color":bitmap(4,4),"mask":bitmap(4,4),"offsetX":2,"offsetY":3,"width":4,"height":4,"isSrgbEncoded":true});
+        patch["generationOptions"] =
+            json!({"seed":9007199254740991u64,"profile":"balanced","megapixels":2});
+        let recipe = json!({"aiPatches":[patch.clone()]});
+        validate_adjustments(&recipe, (100, 100)).unwrap();
+        let mut restored = default_adjustments();
+        merge_patch(&mut restored, &recipe).unwrap();
+        assert_eq!(
+            restored["aiPatches"][0]["generationOptions"],
+            patch["generationOptions"]
+        );
+        for options in [
+            json!({"seed":0}),
+            json!({"seed":9007199254740992u64}),
+            json!({"profile":"bad/path"}),
+            json!({"megapixels":32}),
+            json!({"unknown":true}),
+            json!({"seed":null}),
+        ] {
+            patch["generationOptions"] = options;
+            assert!(
+                validate_adjustments(&json!({"aiPatches":[patch.clone()]}), (100, 100)).is_err()
+            );
+        }
     }
 
     #[test]

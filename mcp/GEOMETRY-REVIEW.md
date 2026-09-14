@@ -60,7 +60,7 @@ Repeated exact previews use a process-local LRU bounded to 16 entries and 64 MiB
 
 ## Atomic submask editing
 
-`mask_update` accepts `patch`, `submask_operations`, or both (patch first). A submask batch contains 1–128 operations. All changes validate and commit once; failure leaves saved state unchanged. Operations use `operation` as their discriminator:
+`mask_update` accepts `patch`, `submask_operations`, or both (patch first). The public MCP schema accepts 1–100 operations per submask batch. All changes validate and commit once; failure leaves saved state unchanged. Operations use `operation` as their discriminator:
 
 ```json
 {
@@ -84,6 +84,8 @@ Repeated exact previews use a process-local LRU bounded to 16 entries and 64 MiB
 Added/duplicated/edited/removed IDs appear in `submask_ids`. Whole-mask and submask IDs otherwise remain stable.
 
 ## Verification
+
+Run the commands below from `mcp/` after building the server and native engine using the [setup guide](README.md#build-and-connect).
 
 Native unit tests compare coordinate ramps to real CPU geometry pixels across orientation, flips, crop, manual perspective, radial/lens distortion, fine rotation and guided correction. They also verify submask atomicity, clipping, linear-luminance sampling, bounds and overlay locality.
 
