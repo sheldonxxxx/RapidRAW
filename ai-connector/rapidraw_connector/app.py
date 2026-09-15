@@ -181,6 +181,26 @@ def create_app(settings=None):
     app.state.settings = settings
     app.state.execute = execute
     lock = asyncio.Lock()
+    switch = None
+    depth_error = None
+    if settings.depth_config is not None:
+        from .depth import create_depth_app
+        from .workflow_switch import WorkflowSwitch
+        try:
+            depth_config = json.loads(settings.depth_config.read_text())
+            depth_config['comfy_url'] = settings.comfy_url
+            depth_config['comfy_root'] = str(settings.comfy_root)
+            switch = WorkflowSwitch([settings.comfy_url])
+            create_depth_app(depth_config, app=app, lock=lock, switch=switch)
+        except Exception as exc:
+            # Optional setup errors cannot disable existing generation routes.
+            depth_error = str(exc)[:1000]
+            switch = None
+
+            @app.get('/depth/capabilities')
+            async def unavailable_depth():
+                raise HTTPException(503, 'Marigold setup is unavailable: '+depth_error)
+
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, exc):
@@ -267,6 +287,8 @@ def create_app(settings=None):
         try:
             queued = time.monotonic()
             async with lock:
+                if switch is not None:
+                    await switch.activate(settings.comfy_url, 'generation')
                 receipt['queue_wait_seconds'] = time.monotonic()-queued
                 inference_started = time.monotonic()
                 data, prompt_id, history = await app.state.execute(settings, graph['workflow'], graph['output_node'], on_event)

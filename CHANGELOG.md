@@ -4,6 +4,14 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Optional Marigold depth
+
+- Add explicitly selected Marigold V2 depth masks in the desktop editor and MCP, disabled by default. Existing depth and lens-blur paths retain their behavior.
+- Reuse the configured AI connector and ComfyUI instance with serialized workflow switching and a sampler-scoped memory budget for CPU offloading.
+- Preserve 16-bit depth artifacts in masks, saved sessions and portable bundles; apply range changes without another inference. Guard desktop results against changed photos, geometry and discarded requests.
+- Add a read-only depth-map viewer for saved built-in and Marigold masks, with a far-to-near legend and zoom controls. Previewing a map requires no new inference.
+- Extend the MCP skill with explicit Marigold selection, saved-map review and shared-GPU recovery guidance. Add a [ComfyUI guide](docs/comfyui.md) with tested revisions and downloads for the five chosen connector workflows.
+
 ### MCP context efficiency
 
 - Replace opaque image/model assets in tool and session-resource responses with read-only descriptors while preserving complete native state and preview bytes. Reject descriptors in edit requests to prevent incomplete recipe replacement.

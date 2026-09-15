@@ -51,6 +51,7 @@ class Settings:
     state_dir: Path
     comfy_url: str = 'http://127.0.0.1:8188'
     generation_timeout: float = 1800
+    depth_config: Path | None = None
 
     def __post_init__(self):
         for name in ('comfy_root', 'profile_dir', 'state_dir'):
@@ -76,7 +77,8 @@ class Settings:
                 raise ValueError(f'{name} is required')
             values[name.lower()] = Path(value)
         return cls(**values, comfy_url=os.environ.get('COMFY_URL', 'http://127.0.0.1:8188'),
-                   generation_timeout=float(os.environ.get('GENERATION_TIMEOUT', '1800')))
+                   generation_timeout=float(os.environ.get('GENERATION_TIMEOUT', '1800')),
+                   depth_config=Path(os.environ['MARIGOLD_DEPTH_CONFIG']) if os.environ.get('MARIGOLD_DEPTH_CONFIG') else None)
 
     @property
     def input_dir(self):

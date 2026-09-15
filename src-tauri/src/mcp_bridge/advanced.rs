@@ -296,6 +296,19 @@ impl Bridge {
         if !["subject", "foreground", "sky", "depth"].contains(&kind) {
             return Err("INVALID_ARGUMENT: unknown AI mask kind".into());
         }
+        let provider = params
+            .get("depth_provider")
+            .map(|v| {
+                v.as_str()
+                    .ok_or("INVALID_ARGUMENT: depth_provider must be a string")
+            })
+            .transpose()?
+            .unwrap_or("builtin");
+        if !["builtin", "marigold"].contains(&provider)
+            || (params.get("depth_provider").is_some() && kind != "depth")
+        {
+            return Err("INVALID_ARGUMENT: depth_provider applies only to depth masks and must be builtin or marigold".into());
+        }
         let controls = params
             .get("parameters")
             .cloned()
@@ -325,7 +338,9 @@ impl Bridge {
         let subject_request = subject_refinement::prepare(params, &session)?;
         number(&controls, "grow", 0.0, -100.0, 100.0)?;
         number(&controls, "feather", 0.0, 0.0, 100.0)?;
-        self.ensure_models("masks", false).await?;
+        if provider == "builtin" {
+            self.ensure_models("masks", false).await?;
+        }
         self.activate(&session.id).await?;
         let state = self.handle.state::<AppState>();
         let adjustments = &session.current().adjustments;
@@ -379,6 +394,25 @@ impl Bridge {
                     )
                     .await?,
                 ),
+                "depth" if provider == "marigold" => {
+                    let mut generated = crate::marigold_depth::generate_marigold_depth_mask(
+                        adjustments.clone(),
+                        session.working_path.clone(),
+                        state.clone(),
+                        self.handle.clone(),
+                    )
+                    .await?;
+                    for (key, fallback) in [
+                        ("minDepth", 0.0),
+                        ("maxDepth", 100.0),
+                        ("minFade", 15.0),
+                        ("maxFade", 15.0),
+                        ("feather", 15.0),
+                    ] {
+                        generated[key] = json!(number(&controls, key, fallback, 0.0, 100.0)?);
+                    }
+                    Ok(generated)
+                }
                 "depth" => serde_json::to_value(
                     crate::ai_commands::generate_ai_depth_mask(
                         adjustments.clone(),

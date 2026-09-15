@@ -1,6 +1,7 @@
 import { Crop } from 'react-image-crop';
 import { v4 as uuidv4 } from 'uuid';
 import { SubMask, SubMaskMode } from '../components/panel/right/Masks';
+import { syncMarigoldOrientation } from './marigoldGeometry';
 
 export enum ActiveChannel {
   Blue = 'blue',
@@ -789,7 +790,13 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Partial<Adjustment
       ? deepCloneParametric(loadedAdjustments.parametricCurve)
       : getDefaultParametricCurve(),
     curveMode: loadedAdjustments.curveMode || INITIAL_ADJUSTMENTS.curveMode,
-    masks: normalizedMasks,
+    masks: syncMarigoldOrientation({
+      masks: normalizedMasks,
+      rotation: loadedAdjustments.rotation ?? 0,
+      orientationSteps: loadedAdjustments.orientationSteps ?? 0,
+      flipHorizontal: loadedAdjustments.flipHorizontal ?? false,
+      flipVertical: loadedAdjustments.flipVertical ?? false,
+    }).masks,
     aiPatches: normalizedAiPatches,
     sectionVisibility: {
       ...INITIAL_ADJUSTMENTS.sectionVisibility,

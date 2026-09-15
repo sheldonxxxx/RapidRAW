@@ -16,7 +16,11 @@ _Desktop screenshot from upstream RapidRAW. The MCP interface is an addition mai
 
 **[AI editing test report](docs/ai-editing-experiments.md):** what we tested on a 16 GB GPU and how we chose the current workflows.
 
+**[ComfyUI integration guide](docs/comfyui.md):** one connector for generative editing and optional depth, tested ComfyUI revisions, GPU memory guidance and [downloadable chosen workflows](ai-connector/workflows/README.md).
+
 For repeated MCP editing and test runs, see [storage and model-cache guidance](mcp/README.md#storage-for-repeated-editing-and-tests).
+
+**Optional Marigold depth masks:** [set up depth selections](ai-connector/MARIGOLD.md) using the same AI connector and ComfyUI as generative editing. This source-build feature is disabled by default and keeps built-in depth and lens blur available.
 
 ## Choose your starting point
 

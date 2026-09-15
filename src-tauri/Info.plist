@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>RapidRAW connects to your AI connector to run the optional AI features you choose.</string>
     <key>LSMinimumSystemVersionByArchitecture</key>
     <dict>
         <key>arm64</key>

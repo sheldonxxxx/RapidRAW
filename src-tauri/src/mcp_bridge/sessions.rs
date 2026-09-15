@@ -170,7 +170,7 @@ impl Bridge {
     pub fn commit(
         &mut self,
         id: &str,
-        adjustments: Value,
+        mut adjustments: Value,
         metadata: Value,
         label: &str,
     ) -> Result<Value> {
@@ -179,6 +179,7 @@ impl Bridge {
             .get(id)
             .cloned()
             .ok_or("SESSION_NOT_FOUND: Unknown session")?;
+        crate::marigold_depth::sync_orientation(&mut adjustments);
         validation::validate_adjustments(&adjustments, session.dimensions)
             .map_err(|e| format!("INVALID_ADJUSTMENTS: {e}"))?;
         validate_metadata(&metadata)?;

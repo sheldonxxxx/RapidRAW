@@ -34,6 +34,7 @@ mod launch_request;
 mod lens_blur;
 mod lens_correction;
 mod lut_processing;
+mod marigold_depth;
 mod mask_generation;
 #[cfg(feature = "mcp")]
 mod mcp_bridge;
@@ -2143,6 +2144,8 @@ pub fn run() {
             ai_commands::generate_ai_foreground_mask,
             ai_commands::generate_ai_sky_mask,
             ai_commands::generate_ai_depth_mask,
+            marigold_depth::generate_marigold_depth_mask,
+            marigold_depth::test_marigold_depth_connection,
             ai_commands::check_ai_connector_status,
             ai_commands::test_ai_connector_connection,
             ai_commands::get_ai_connector_capabilities,

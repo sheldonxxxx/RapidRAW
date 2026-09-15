@@ -74,6 +74,17 @@ export interface MaskLine {
 }
 
 export interface MaskParameters {
+  depthProvider?: 'builtin' | 'marigold';
+  depthArtifact?: {
+    version: number;
+    sourceWidth: number;
+    sourceHeight: number;
+    sourceHash: string;
+    geometryHash: string;
+    workflowHash: string;
+    mapHash: string;
+    profile: string;
+  };
   centerX?: number;
   centerY?: number;
   radiusX?: number;

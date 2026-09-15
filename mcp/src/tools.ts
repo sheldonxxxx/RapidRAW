@@ -566,10 +566,11 @@ export const toolDefinitions: ToolDefinition[] = [
   }),
   tool(
     'mask_generate',
-    'Generate a local AI mask. Subject include/exclude points use the full mask canvas before crop. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
+    'Generate an AI mask. Depth defaults to the built-in model; depth_provider=marigold explicitly sends analysis pixels to the separately enabled depth service and saves a reusable 16-bit map. Subject include/exclude points use the full mask canvas before crop. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
     {
       ...mutation,
       kind: z.enum(['subject', 'foreground', 'sky', 'depth']),
+      depth_provider: z.enum(['builtin', 'marigold']).optional(),
       name: z.string().max(200).optional(),
       region: region.optional(),
       include_points: z
@@ -592,6 +593,8 @@ export const toolDefinitions: ToolDefinition[] = [
       parameters: record.optional(),
       adjustments: adjustments.optional(),
     },
+    false,
+    { network: true },
   ),
   tool('generate_depth', 'Generate an image depth map; optionally enable depth blur. Requires local mask models.', {
     ...mutation,

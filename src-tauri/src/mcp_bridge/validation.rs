@@ -296,6 +296,34 @@ fn submask_parameter_schema(kind: &str) -> Value {
             required.extend(["startX", "startY", "endX", "endY"]);
         }
         "ai-depth" => {
+            props.insert(
+                "depthProvider".into(),
+                json!({"enum":["builtin","marigold"]}),
+            );
+            props.insert(
+                "depthArtifact".into(),
+                object(
+                    json!({
+                        "version":{"type":"integer","const":1},
+                        "profile":{"type":"string","const":"marigold-v2-q4-v1"},
+                        "sourceWidth":integer(1,100000), "sourceHeight":integer(1,100000),
+                        "sourceHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64},
+                        "geometryHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64},
+                        "workflowHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64},
+                        "mapHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64}
+                    }),
+                    &[
+                        "version",
+                        "profile",
+                        "sourceWidth",
+                        "sourceHeight",
+                        "sourceHash",
+                        "geometryHash",
+                        "workflowHash",
+                        "mapHash",
+                    ],
+                ),
+            );
             props.extend(fields(
                 "minDepth maxDepth minFade maxFade",
                 number(0.0, 100.0),
@@ -701,6 +729,20 @@ fn validate_submask(value: &Value, path: &str, ids: &mut HashSet<String>) -> Res
             &params["maskDataBase64"],
             &format!("{path}.parameters.maskDataBase64"),
         )?;
+    }
+    if kind == "ai-depth" {
+        if params["depthProvider"] == "marigold" {
+            let artifact = serde_json::from_value(params["depthArtifact"].clone())
+                .map_err(|_| format!("{path}: Marigold requires a depth artifact"))?;
+            crate::marigold_depth::validate_artifact(
+                params["maskDataBase64"].as_str().unwrap(),
+                &artifact,
+            )?;
+        } else if params.get("depthArtifact").is_some() {
+            return Err(format!(
+                "{path}: depth artifact requires the Marigold provider"
+            ));
+        }
     }
     if let Some(state) = params.get("samRefinement") {
         for key in ["sourceSha256", "geometrySha256", "maskSha256"] {

@@ -34,6 +34,31 @@ const ready = {
   },
 };
 
+const { syncMarigoldOrientation } = await bundled('src/utils/marigoldGeometry.ts', 'marigold-geometry');
+test('rotating a saved Marigold map follows the photo while preserving built-in masks and history', () => {
+  const builtin = { type: 'ai-depth', parameters: { rotation: 0, orientationSteps: 0 } };
+  const marigold = {
+    type: 'ai-depth',
+    parameters: { depthProvider: 'marigold', orientationSteps: 0, maskDataBase64: 'saved-map' },
+  };
+  const old = {
+    rotation: 0,
+    orientationSteps: 1,
+    flipHorizontal: true,
+    flipVertical: false,
+    masks: [{ subMasks: [builtin, marigold] }],
+  };
+  const updated = syncMarigoldOrientation(old);
+  assert.equal(updated.masks[0].subMasks[0], builtin);
+  assert.equal(updated.masks[0].subMasks[1].parameters.orientationSteps, 1);
+  assert.equal(updated.masks[0].subMasks[1].parameters.flipHorizontal, true);
+  assert.equal(updated.masks[0].subMasks[1].parameters.maskDataBase64, 'saved-map');
+  assert.equal(marigold.parameters.orientationSteps, 0);
+  assert.equal(syncMarigoldOrientation(updated), updated);
+  const legacy = { ...old, masks: [{ subMasks: [builtin] }] };
+  assert.equal(syncMarigoldOrientation(legacy), legacy);
+});
+
 test('advertised defaults and saved options remain explicit and immutable', () => {
   assert.deepEqual(resolveGenerationOptions(ready, generationDraft()), {
     options: { profile: 'balanced', megapixels: 1 },
@@ -76,7 +101,8 @@ test('new server/provider scope hides old capabilities before effects run', () =
 const stubs = {
   react: 'export const useCallback=(fn)=>fn; export const useEffect=()=>{};',
   '@tauri-apps/api/core': 'export const invoke=(...args)=>globalThis.__generationTest.invoke(...args);',
-  'react-toastify': 'export const toast={error:(message)=>globalThis.__generationTest.errors.push(message)};',
+  'react-toastify':
+    'export const toast={error:(message)=>globalThis.__generationTest.errors.push(message),info:()=>{}};',
   '@clerk/react': 'export const useAuth=()=>({getToken:()=>globalThis.__generationTest.token()});',
   '../store/useEditorStore':
     'export const useEditorStore=(selector)=>selector(globalThis.__generationTest.state); useEditorStore.getState=()=>globalThis.__generationTest.state;',
@@ -159,5 +185,45 @@ test('basic inpaint and legacy requests omit saved explicit options', async () =
     await hook.useAiMasking().handleGenerativeReplace('patch', '', fast);
     assert.equal(env.calls[0].payload.patchDefinition.generationOptions, undefined);
     assert.equal(env.state.adjustments.aiPatches[0].generationOptions, undefined);
+  }
+});
+
+test('Marigold is explicit, merges current range controls, and never invokes the built-in command', async () => {
+  const env = environment();
+  env.state.adjustments.masks = [{ id: 'depth', subMasks: [{ id: 'd1', parameters: { minDepth: 10, maxDepth: 90 } }] }];
+  let finish;
+  env.invoke = (name) => {
+    env.calls.push(name);
+    return new Promise((resolve) => {
+      finish = resolve;
+    });
+  };
+  const pending = hook.useAiMasking().handleGenerateAiDepthMask('d1', { depthProvider: 'marigold' });
+  env.state.adjustments.masks[0].subMasks[0].parameters.minDepth = 25;
+  finish({ depthProvider: 'marigold', maskDataBase64: 'map16', depthArtifact: { version: 1 } });
+  await pending;
+  assert.deepEqual(env.calls, ['generate_marigold_depth_mask']);
+  assert.equal(env.state.adjustments.masks[0].subMasks[0].parameters.minDepth, 25);
+  assert.equal(env.state.adjustments.masks[0].subMasks[0].parameters.maskDataBase64, 'map16');
+});
+test('late Marigold results cannot overwrite switched photos, changed geometry, or cancelled masks', async () => {
+  for (const change of ['photo', 'geometry', 'cancel']) {
+    const env = environment();
+    env.state.adjustments.masks = [
+      { id: 'depth', subMasks: [{ id: 'd1', parameters: { maskDataBase64: 'original' } }] },
+    ];
+    let finish;
+    env.invoke = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    const pending = hook.useAiMasking().handleGenerateAiDepthMask('d1', { depthProvider: 'marigold' });
+    if (change === 'photo') env.state.selectedImage = { path: '/fixture/other.raw' };
+    if (change === 'geometry') env.state.adjustments.rotation = 5;
+    if (change === 'cancel') hook.discardMarigoldResult('d1');
+    finish({ depthProvider: 'marigold', maskDataBase64: 'late' });
+    await pending;
+    assert.equal(env.state.adjustments.masks[0].subMasks[0].parameters.maskDataBase64, 'original');
+    assert.equal(env.state.isGeneratingAiMask, false);
   }
 });

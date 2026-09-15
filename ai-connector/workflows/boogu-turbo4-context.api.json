@@ -1,0 +1,154 @@
+{
+  "30": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "source.png"
+    }
+  },
+  "47": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "selection.png"
+    }
+  },
+  "48": {
+    "class_type": "InvertMask",
+    "inputs": {
+      "mask": ["47", 1]
+    }
+  },
+  "50": {
+    "class_type": "ImageCrop",
+    "inputs": {
+      "image": ["30", 0],
+      "x": 0,
+      "y": 0,
+      "width": 1024,
+      "height": 1024
+    }
+  },
+  "51": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["50", 0],
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 1024,
+      "crop": "disabled"
+    }
+  },
+  "52": {
+    "class_type": "MaskToImage",
+    "inputs": {
+      "mask": ["48", 0]
+    }
+  },
+  "53": {
+    "class_type": "ImageCrop",
+    "inputs": {
+      "image": ["52", 0],
+      "x": 0,
+      "y": 0,
+      "width": 1024,
+      "height": 1024
+    }
+  },
+  "54": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["53", 0],
+      "upscale_method": "bilinear",
+      "width": 1024,
+      "height": 1024,
+      "crop": "disabled"
+    }
+  },
+  "55": {
+    "class_type": "ImageToMask",
+    "inputs": {
+      "image": ["54", 0],
+      "channel": "red"
+    }
+  },
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "boogu_image_edit_turbo_hotfix_1k_20260708_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "boogu.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_fp8_scaled.safetensors",
+      "type": "boogu",
+      "device": "default"
+    }
+  },
+  "6": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {
+      "model": ["1", 0],
+      "shift": 3.16
+    }
+  },
+  "7": {
+    "class_type": "TextEncodeBooguEdit",
+    "inputs": {
+      "clip": ["2", 0],
+      "prompt": "Describe the intended edit here.",
+      "negative_prompt": "",
+      "vae": ["3", 0],
+      "images.image_1": ["51", 0]
+    }
+  },
+  "56": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": ["51", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "57": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    }
+  },
+  "63": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["6", 0],
+      "seed": 104729,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "lcm",
+      "scheduler": "sgm_uniform",
+      "positive": ["7", 0],
+      "negative": ["7", 1],
+      "latent_image": ["57", 0],
+      "denoise": 1.0
+    }
+  },
+  "64": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["63", 0],
+      "vae": ["3", 0]
+    }
+  },
+  "99": {
+    "class_type": "PreviewImage",
+    "inputs": {
+      "images": ["64", 0]
+    }
+  }
+}

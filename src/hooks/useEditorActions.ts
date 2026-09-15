@@ -19,6 +19,7 @@ import {
 import { calculateCenteredCrop } from '../utils/cropUtils';
 import { Invokes, ImageMetadata } from '../components/ui/AppProperties';
 import { globalImageCache } from '../utils/ImageLRUCache';
+import { syncMarigoldOrientation } from '../utils/marigoldGeometry';
 
 export const debouncedSetHistory = debounce((newAdj: Adjustments) => {
   useEditorStore.getState().pushHistory(newAdj);
@@ -38,7 +39,9 @@ export function useEditorActions() {
     (value: Partial<Adjustments> | ((prev: Adjustments) => Adjustments)) => {
       setEditor((state) => {
         const prev = state.adjustments;
-        const newAdjustments = typeof value === 'function' ? value(prev) : { ...prev, ...value };
+        const newAdjustments = syncMarigoldOrientation(
+          typeof value === 'function' ? value(prev) : { ...prev, ...value },
+        );
         debouncedSetHistory(newAdjustments);
         return {
           adjustments: newAdjustments,

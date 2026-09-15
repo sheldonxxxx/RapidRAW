@@ -955,6 +955,30 @@ fn generate_ai_depth_bitmap(
         crop_offset,
     };
 
+    if params_value["depthProvider"] == "marigold" {
+        let artifact = serde_json::from_value(params_value["depthArtifact"].clone()).ok()?;
+        let full = crate::marigold_depth::selection(
+            &data_url,
+            &artifact,
+            params.min_depth,
+            params.max_depth,
+            params.min_fade,
+            params.max_fade,
+        )?;
+        let mut mask = generate_ai_bitmap_from_full_mask(&full, &tf);
+        if params.feather > 0.0 {
+            mask = image::imageops::blur(&mask, params.feather * 0.1);
+        }
+        apply_grow_and_feather(
+            &mut mask,
+            grow_feather.grow,
+            grow_feather.feather,
+            width,
+            height,
+        );
+        return Some(mask);
+    }
+
     let depth_map = generate_ai_bitmap_from_base64(&data_url, &tf)?;
 
     let (w, h) = depth_map.dimensions();

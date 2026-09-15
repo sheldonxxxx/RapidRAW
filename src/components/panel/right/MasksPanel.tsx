@@ -1,3 +1,5 @@
+import MarigoldDepthControls from './MarigoldDepthControls';
+import DepthMapPreview from './DepthMapPreview';
 import { applyLinearFalloffSelection, applyMaskAdjustmentUpdate, insertCreatedSubMask } from './maskInteractions';
 import { buildPresetMenu } from './presetMenu';
 interface SettingsPanelProps {
@@ -588,8 +590,12 @@ export default function MasksPanel() {
     return subMask;
   };
 
-  const handleAddMaskContainer = (type: Mask) => {
+  const handleAddMaskContainer = (type: Mask, depthProvider?: 'marigold') => {
     const subMask = createMaskLogic(type);
+    if (depthProvider) {
+      subMask.parameters.depthProvider = depthProvider;
+      subMask.name = t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' });
+    }
     const count = (adjustments.masks?.length || 0) + 1;
     const newContainer = {
       ...INITIAL_MASK_CONTAINER,
@@ -612,8 +618,13 @@ export default function MasksPanel() {
     type: Mask,
     mode: SubMaskMode = SubMaskMode.Additive,
     insertIndex: number = -1,
+    depthProvider?: 'marigold',
   ) => {
     const subMask = createMaskLogic(type, mode);
+    if (depthProvider) {
+      subMask.parameters.depthProvider = depthProvider;
+      subMask.name = t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' });
+    }
     setAdjustments((prev: Adjustments) => ({
       ...prev,
       masks: prev.masks?.map((c: MaskContainer) => {
@@ -651,6 +662,21 @@ export default function MasksPanel() {
     handleGridClick(type, true);
   };
 
+  const buildMarigoldMenu = (targetContainerId?: string | null, mode = SubMaskMode.Additive): Option[] =>
+    appSettings?.marigoldDepthEnabled
+      ? [
+          {
+            label: t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' }),
+            icon: MASK_ICON_MAP[Mask.AiDepth],
+            disabled: isGeneratingAiMask,
+            onClick: () => {
+              if (targetContainerId) handleAddSubMask(targetContainerId, Mask.AiDepth, mode, -1, 'marigold');
+              else handleAddMaskContainer(Mask.AiDepth, 'marigold');
+            },
+          },
+        ]
+      : [];
+
   const handleAddMaskContextMenu = (event: React.MouseEvent, targetContainerId?: string | null) => {
     event.preventDefault();
     event.stopPropagation();
@@ -676,6 +702,7 @@ export default function MasksPanel() {
     // Flattened menu chunks
     const buildFlatMenu = (mode: SubMaskMode) => [
       ...buildMenu(MASK_AI_TYPES, mode),
+      ...buildMarigoldMenu(targetContainerId, mode),
       { type: OPTION_SEPARATOR },
       ...buildMenu(MASK_BASIC_TYPES, mode),
       { type: OPTION_SEPARATOR },
@@ -1034,6 +1061,7 @@ export default function MasksPanel() {
 
     const newMaskSubMenu = [
       ...buildMenu(MASK_AI_TYPES),
+      ...buildMarigoldMenu(),
       { type: OPTION_SEPARATOR },
       ...buildMenu(MASK_BASIC_TYPES),
       { type: OPTION_SEPARATOR },
@@ -1148,6 +1176,15 @@ export default function MasksPanel() {
                           activeMaskContainerId={activeMaskContainerId}
                         />
                       ))}
+                      {appSettings?.marigoldDepthEnabled && (
+                        <button
+                          className="rounded-md bg-surface p-2 text-sm hover:bg-card-active disabled:opacity-50"
+                          disabled={isGeneratingAiMask}
+                          onClick={() => handleAddMaskContainer(Mask.AiDepth, 'marigold')}
+                        >
+                          {t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' })}
+                        </button>
+                      )}
                     </div>
                     <Text variant={TextVariants.heading} className="mb-2">
                       {t('editor.masks.basicTitle', 'Basic Tools')}
@@ -1991,7 +2028,7 @@ function SettingsPanel({
   isSettingsSectionOpen,
   setSettingsSectionOpen,
   presets,
-  handleGenerateAiDepthMask: _handleGenerateAiDepthMask,
+  handleGenerateAiDepthMask,
 }: SettingsPanelProps) {
   const { t } = useTranslation();
   const { showContextMenu } = useContextMenu();
@@ -2243,6 +2280,18 @@ function SettingsPanel({
                 </Text>
               )}
 
+              {activeSubMask.type === Mask.AiDepth &&
+                (appSettings?.marigoldDepthEnabled || activeSubMask.parameters.depthProvider === 'marigold') && (
+                  <MarigoldDepthControls
+                    key={activeSubMask.id}
+                    subMask={activeSubMask}
+                    enabled={appSettings?.marigoldDepthEnabled ?? false}
+                    generate={handleGenerateAiDepthMask}
+                  />
+                )}
+              {activeSubMask.type === Mask.AiDepth && (
+                <DepthMapPreview key={`depth-preview-${activeSubMask.id}`} subMask={activeSubMask} />
+              )}
               {activeSubMask.type === Mask.AiDepth && (
                 <DepthRangePicker
                   minDepth={100 - (activeSubMask.parameters?.maxDepth ?? 100)}

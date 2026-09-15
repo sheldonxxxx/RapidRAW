@@ -4,6 +4,8 @@ Run RapidRAW generative edits on your own ComfyUI machine, with selectable model
 
 The workflow, resolution and seed controls require a current build of this RapidRAW fork. Follow [Build this fork](../docs/desktop-guide.md#build-this-fork); upstream application downloads do not include these additions.
 
+See the [ComfyUI integration guide](../docs/comfyui.md) for tested revisions, shared-GPU behavior and the [chosen workflow downloads](workflows/README.md).
+
 ## Requirements
 
 - Python 3.11 or newer, and a working [ComfyUI installation](https://github.com/Comfy-Org/ComfyUI).
@@ -50,6 +52,8 @@ ssh -N -L 5002:127.0.0.1:5002 user@comfy-host
 The service has no authentication or TLS; keep the default loopback binding and use a private tunnel. Its API can access private photo pixels and submit work to ComfyUI.
 
 ## Select profiles and resolution
+
+For an opt-in depth-mask workflow on the same connector and ComfyUI instance, see [Marigold depth setup](MARIGOLD.md). It has separate enablement and does not change the default generative profile.
 
 [profiles/profiles.json](profiles/profiles.json) advertises four examples: Klein 4B, Klein 4B with closer context, Klein 9B KV and Boogu Edit Turbo. Remove entries whose models are unavailable and keep `default_profile` set to an enabled entry. Restart the connector after changing the catalog or a configuration file.
 

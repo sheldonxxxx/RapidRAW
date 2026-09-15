@@ -8,6 +8,13 @@ import { SubMask, MaskParameters } from '../components/panel/right/Masks';
 import { Invokes } from '../components/ui/AppProperties';
 import { useAuth } from '@clerk/react';
 
+const pendingMarigold = new Map<string, { cancelled: boolean }>();
+export const isMarigoldPending = (id: string) => pendingMarigold.has(id);
+export const discardMarigoldResult = (id: string) => {
+  const request = pendingMarigold.get(id);
+  if (request) request.cancelled = true;
+};
+
 const getTransformAdjustments = (adj: Adjustments) => ({
   transformDistortion: adj.transformDistortion,
   transformVertical: adj.transformVertical,
@@ -319,7 +326,57 @@ export function useAiMasking() {
     }
   };
 
-  const handleGenerateAiDepthMask = async (subMaskId: string, parameters: MaskParameters) => {
+  const handleGenerateAiDepthMask = async (
+    subMaskId: string,
+    parameters: MaskParameters,
+    shouldApply: () => boolean = () => true,
+  ) => {
+    if (parameters.depthProvider === 'marigold') {
+      const before = useEditorStore.getState();
+      if (!before.selectedImage?.path || before.isGeneratingAiMask) return;
+      const snapshot = (a: Adjustments) =>
+        JSON.stringify({
+          ...getTransformAdjustments(a),
+          rotation: a.rotation,
+          flipHorizontal: a.flipHorizontal,
+          flipVertical: a.flipVertical,
+          orientationSteps: a.orientationSteps,
+        });
+      const imageIdentity = before.selectedImage;
+      const geometry = snapshot(before.adjustments);
+      const request = { cancelled: false };
+      pendingMarigold.set(subMaskId, request);
+      setEditor({ isGeneratingAiMask: true });
+      try {
+        const generated = await invoke<MaskParameters>('generate_marigold_depth_mask', {
+          jsAdjustments: JSON.parse(geometry),
+          path: before.selectedImage.path,
+        });
+        const current = useEditorStore.getState();
+        if (
+          request.cancelled ||
+          !shouldApply() ||
+          current.selectedImage !== imageIdentity ||
+          snapshot(current.adjustments) !== geometry
+        ) {
+          toast.info('Depth result discarded because the photo changed or the request was cancelled.');
+          return;
+        }
+        const subMask = [...current.adjustments.masks, ...(current.adjustments.aiPatches || [])]
+          .flatMap((m) => m.subMasks)
+          .find((sm) => sm.id === subMaskId);
+        if (!subMask) return;
+        current.patchesSentToBackend.delete(subMaskId);
+        updateSubMask(subMaskId, { parameters: { ...subMask.parameters, ...generated } });
+      } catch (error) {
+        toast.error(`Marigold depth failed: ${error}`);
+      } finally {
+        pendingMarigold.delete(subMaskId);
+        setEditor({ isGeneratingAiMask: false });
+      }
+      return;
+    }
+
     const { selectedImage, adjustments, patchesSentToBackend } = useEditorStore.getState();
     if (!selectedImage?.path) return;
     setEditor({ isGeneratingAiMask: true });
