@@ -18,4 +18,4 @@ Prefer `start_operation(operation, arguments)` for long merge, export, negative 
 
 Read `get_operation_job` for stages and result. A successful edit returns a new main-workspace session; an export returns its actual worker-workspace path. Cancellation terminates the worker only. After a crash or reconnect, inspect `list_operation_jobs` and explicitly resume only intended work; each attempt starts again from captured inputs, with no partial computation checkpoint.
 
-Denoise keeps its specialized `start_denoise`/`get_job` API, including cooperative cancellation and numeric native progress. Generative retouch requires a separately authorized direct call and cannot use captured operation jobs.
+Denoise keeps its specialized `start_denoise`/`get_job` API, including cooperative cancellation and numeric native progress. Generative retouch uses a synchronous direct call and cannot use captured operation jobs.

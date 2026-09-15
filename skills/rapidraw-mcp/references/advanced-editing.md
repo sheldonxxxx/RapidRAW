@@ -140,13 +140,13 @@ These values are an illustrative coral treatment, not a default clothing preset.
 
 For remote generative edits, profile choice, fair seed comparisons and high-resolution placement, follow [generative editing workflows](generative-editing.md).
 
-Use content-removing retouch when requested or implied by the user's edit. Choose clone/heal for controllable source sampling, local inpaint for suitable reconstruction, and generative mode when the user has authorized the remote workflow. Inspect fine detail and repeat patterns after retouching.
+Assess distractions and remove those that weaken the photograph as part of the edit; the user does not need to request cleanup or name each object. Prefer the established generative connector whenever suitable and available. Use local inpainting as a carefully inspected fallback, following [local inpaint review](generative-editing.md#local-inpaint-fallback). Clone/heal remains useful for tiny defects with a verified matching donor. Inspect repaired texture and retained subject boundaries at native resolution before accepting any method.
 
 `rapidraw_retouch` requires native `sub_masks`, each with `id`, `type`, `visible`, `mode` (`additive`, `subtractive`, `intersect`), and `parameters`. Read the native submask schema; do not pass a plain rectangle or a mask ID as a replacement for this structure. Brush lines have a `tool`, `brushSize`, and point coordinates. Clone/heal can use `source_point`. Generated bitmap/patch fields belong to the engine.
 
 `rapidraw_models` reports installation status. `rapidraw_install_model` accepts `kind: "masks"`, `"inpaint"`, or `"denoise"`. Install missing assets when authorized and necessary. If a suitable geometric or non-AI operation meets the request, it may avoid the download; explain any reduced capability accurately.
 
-Read `rapidraw_get_engine_settings` to identify the processing provider. A configured provider alone does not authorize uploading an image. Generative mode uses the selected connector or a request-scoped cloud token. Keep tokens out of recipes, durable notes, and settings files. Connection setup is described in [connection.md](connection.md).
+Read `rapidraw_get_engine_settings` to identify the established processing provider. Generative mode uses that connector or a request-scoped cloud token; do not silently route photographs to an unrelated provider. Keep tokens out of recipes, durable notes, and settings files. Connection setup is described in [connection.md](connection.md).
 
 ## Dedicated denoising
 

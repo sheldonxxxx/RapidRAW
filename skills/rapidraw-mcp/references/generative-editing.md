@@ -1,6 +1,12 @@
 # Generative editing workflows
 
-Use this reference for authorized generative retouch. Existing authorization in the conversation counts; a configured provider alone does not authorize image upload. Tool names omit the host's `rapidraw_` prefix.
+Use this reference for targeted generative retouch and its local fallback. Tool names omit the host's `rapidraw_` prefix.
+
+## Editorial decisions and tool scope
+
+Distraction removal is a core editing decision. During an editing task, inspect the photograph and decide what to remove, subdue, crop out, or retain to make the strongest image. The user does not need to identify distractions or approve cleanup separately. Use generative inpainting through the established editor connector when suitable; do not ask for object-by-object permission or repeat permission questions for refinements. Keep any permission rule for ChatGPT ImageGen whole-image creation or separate generated assets specific to those operations. Do not silently switch photographs to an unrelated provider.
+
+Choose removals for their effect on attention, composition, and story. Consider whether an element contributes meaningful habitat, behaviour, interaction, or atmosphere before removing it; cleaner is not automatically stronger. Preserve the real subject, useful setting, and explicit keep instructions. Whole-image recreation, added subjects, and separate generated assets are different creative operations. Preserve originals and source resolution, and record reconstructed areas; full-size placement is not recovered captured detail.
 
 ## Discover the available workflow
 
@@ -21,9 +27,11 @@ Explicit options require a capable AI Connector and fail before image upload if 
 
 ## Route by the requested result
 
+For distraction and object removal, prefer the established generative connector whenever suitable and available. Use local inpainting as a fallback when the connector is unavailable, unsuitable for the source or intended use, or its inspected result is worse. A tiny defect with a clean matching donor can be handled directly with clone/heal. Choose on rendered quality and subject fidelity, not merely speed or a successful tool response.
+
 | Use case                                                  | First treatment                                                                                                 | Inspect before accepting                                            |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Dust, tiny blemish, controllable texture repair           | Native clone/heal, or local inpaint when suitable                                                               | Repeated texture, sampling edge and lighting                        |
+| Dust, tiny blemish, controllable texture repair           | Native clone/heal with a verified matching source                                                               | Repeated texture, sampling edge and lighting                        |
 | Remove an object from a simple surface                    | Klein 4B at 1 MP, mask the object and unwanted shadow/reflection                                                | Complete removal, replacement texture, visible boundary             |
 | Remove an object crossing rails, branches or architecture | Klein 4B at 1 MP with enough context to continue the structure                                                  | Line continuity, occluded landmarks, counts and perspective         |
 | Change color while retaining exact shape and texture      | Native selective color adjustment; see [recolor guidance](advanced-editing.md#recolor-neutral-clothing)         | Selection spill, folds, texture and unchanged geometry              |
@@ -51,6 +59,16 @@ Separate instruction success from integration quality. Correct object category d
 5. Change context or generation resolution only to address a visible defect. Compare 2 MP against the accepted 1 MP reference; closer context can improve target scale while losing scene clues. Try another available profile when its different reconstruction may help. Retain the strongest candidate rather than escalating model size automatically.
 
 Seeds are integers from 1 through 9007199254740991. Omission requests a new random seed. Record actual `generation` receipts, including seed, profile, generated dimensions, source dimensions and context; `generationOptions` contains requested settings only. A seed selected for one photo is not a universal preset, and reproducibility also depends on inputs, model and runtime.
+
+## Local inpaint fallback
+
+Local reconstruction needs particular care near an overlapping subject, feathers, fur, thin perches, and other continuous edges. A plausible overview can hide a damaged boundary.
+
+1. Start from the saved state before the failed removal rather than layering repairs over a damaged result. Cover the complete distraction, including its blur, shadow, or reflection where removal calls for it. Inspect the actual mask and protect retained subject detail and foreground structure; an AI selection can mistakenly include a background branch or miss a wing edge.
+2. Inspect the result at intended viewing size and in matched native-resolution crops covering the repaired area and every subject or structural boundary it touches. Check for residual silhouettes, smeared or repeated texture, flat patches, inconsistent blur/noise, tonal seams, halos, and lost or reshaped feathers, fur, beaks, feet, or perches. Compare against the source, not only the preceding failed repair.
+3. If the fallback fails those checks, restore the better reference and refine the mask or use a verified clone/heal donor. Do not hide damage with stronger grading, sharpening, or a smaller preview. If no clean repair is achievable, retain the sound version and identify the unresolved removal; do not present the weak repair as finished.
+
+Record the actual method and inspected regions with the saved candidate. Neither local processing nor generative processing establishes visual quality or user acceptance by itself.
 
 ## High-resolution placement and recovery
 

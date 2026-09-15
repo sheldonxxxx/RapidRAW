@@ -1,5 +1,7 @@
 # RapidRAW + MCP
 
+An independent companion to **[Lightweft](https://github.com/sheldonxxxx/lightweft)**, the main project for AI photo-editing direction, personal style and visual review.
+
 **Give your AI agent a native, reversible photo editor.**
 
 This independent fork of [RapidRAW](https://github.com/CyberTimon/RapidRAW) adds an optional Model Context Protocol (MCP) interface to its GPU-accelerated RAW editor. An agent can inspect a photograph, adjust light and colour, refine masks, compare rendered alternatives, and export a finished image while preserving the original and its existing sidecar.

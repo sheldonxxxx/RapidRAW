@@ -4,6 +4,12 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Editing guidance
+
+- Clarify distraction removal through the established connector, local inpainting fallback, and native-detail repair checks while preserving original photographs and retained scene content.
+- Add guidance for checking masks against retouched scenes and narrow background openings, and reconsidering treatments when refinements damage edges.
+- Link Lightweft as the companion workspace for artistic direction, personal style, and visual review.
+
 ### Optional Marigold depth
 
 - Add explicitly selected Marigold V2 depth masks in the desktop editor and MCP, disabled by default. Existing depth and lens-blur paths retain their behavior.

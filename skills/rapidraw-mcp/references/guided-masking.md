@@ -26,6 +26,14 @@ These are choices, not a required sequence. Use the user's preferred starting ma
 
 For a manual mask from scratch, use `mask_create(type:"brush", parameters:{lines:[...]})` or the suitable geometric/range type, then follow the same inspection and effect comparison. A soft interior dodge intentionally covers part of the subject; it is not evidence of a complete object selection. Manual creation is a normal option when it meets the intended edit more simply.
 
+## Select for the rendered change
+
+After retouching, check that a new selection follows the scene now being graded. A mask can retain the silhouette of an object removed by an earlier patch; compare the aligned mask with the current photograph before attributing the mismatch to feathering or model quality. Different selectors may use different inference inputs in the installed build. Do not assume a successful call proves that every selector includes visible retouch patches.
+
+Inspect narrow background openings as well as the outer subject contour. A bird-shaped selection may bridge the sky between primaries; its inverse can then leave pale wedges inside an otherwise darkened sky. Inspect both the protected feather and the opening at native scale. Place manual corrections from the actual local image, with continuous coverage and an edge width suitable for that region; sparse dots or estimated widening strokes can introduce beads, hard wedges or spill onto feather shafts.
+
+If refinements repeatedly trade missed gaps for damaged edges, reconsider the treatment instead of accumulating corrective masks. For a restrained tonal change, test a broad photographic gradient or selective colour adjustment and judge its effect on the subject as well as the surroundings. This is a different treatment, not proof of an accurate background extraction. Keep stronger recolouring or reconstruction confined to a sufficiently precise selection. Retain rejected experiments in history or a version, disable or remove their effects from the selected working recipe, and compare the final combined grade with the valued reference.
+
 ## Native brush contract
 
 `brushSize` is a diameter in full mask-canvas pixels. Put `feather` (0–1) on each line. Parent/submask `opacity` is 0–100. Sample coordinates below illustrate the request shape only; replace them with measurements from the actual photograph.
