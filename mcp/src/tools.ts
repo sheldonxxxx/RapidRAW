@@ -48,7 +48,7 @@ const longEdge = z
   .max(32768)
   .describe('Maximum output long edge in pixels. Preview default 1600; use a region for native detail review.');
 const adjustments = record.describe(
-  'Native RapidRAW adjustment object. Read rapidraw://adjustment-schema first; unknown keys and invalid values are rejected by the engine.',
+  'Native RapidRAW adjustment object. Read needed schemas with capabilities(schema_paths) first; unknown keys and invalid values are rejected. Asset descriptors from session summaries cannot be used as recipes.',
 );
 const subMask = z
   .object({
@@ -438,8 +438,18 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'capabilities',
-    'Inspect engine version, available methods, edit schemas, coordinate rules, and feature limitations. Call before editing.',
-    {},
+    'Inspect engine version, methods, coordinates and limitations. Prefer detail:overview before editing, then request only needed schema_paths. No arguments retains the full schema for compatibility.',
+    {
+      detail: z.enum(['overview', 'full']).optional(),
+      schema_paths: z
+        .array(z.string().min(1).max(256))
+        .min(1)
+        .max(32)
+        .optional()
+        .describe(
+          'Dot paths inside adjustment_schema, e.g. properties.temperature or properties.masks. Returns schemas keyed by path, with coordinate rules and schema_id. Reuse until schema_id changes.',
+        ),
+    },
     true,
   ),
   tool(
@@ -466,8 +476,17 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'get_session',
-    'Inspect source/working paths, revision, dimensions and optional full adjustment state.',
-    { ...session, include_adjustments: z.boolean().optional() },
+    'Inspect source/working paths, revision, dimensions and optional adjustments. Opaque pixels/tensors default to asset descriptors; preserve complete recipes through native save/bundle tools or explicit include_assets.',
+    {
+      ...session,
+      include_adjustments: z.boolean().optional(),
+      include_assets: z
+        .boolean()
+        .optional()
+        .describe(
+          'Programmatic full-state reads only: return encoded assets when include_adjustments:true. Omit for visual editing; prefer native save/bundle files for complete recipes. Subject to the response-size budget.',
+        ),
+    },
     true,
   ),
   tool(

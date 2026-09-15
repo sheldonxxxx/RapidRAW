@@ -4,6 +4,7 @@ import { BridgeError, NativeBridge, isObject, type JsonObject } from './bridge.j
 import { toolDefinitions } from './tools.js';
 import { workflow } from './workflow.js';
 import { OperationJobs } from './operation-jobs.js';
+import { modelOutput, capabilityOutput, rejectAssetDescriptors } from './model-output.js';
 
 // SDK v2 stdio peers default to a 10 MiB read buffer. Keep room for SDK
 // envelopes and framing without changing requested image encoding or geometry.
@@ -101,7 +102,8 @@ function oversizedResult(result: JsonObject, bytes: number, context: ResponseCon
 }
 
 export function toolResult(result: JsonObject, context: ResponseContext = {}): CallToolResult {
-  const structuredContent = { ...result };
+  const structuredContent =
+    context.method === 'get_session' && context.params?.include_assets === true ? { ...result } : modelOutput(result);
   const content: ContentBlock[] = [];
   if (isObject(result.image) && typeof result.image.data === 'string' && typeof result.image.mimeType === 'string') {
     const { data, ...imageMetadata } = result.image;
@@ -134,7 +136,9 @@ function toolError(error: unknown): CallToolResult {
 }
 
 function jsonResource(uri: URL, data: JsonObject, requestId: string | number) {
-  const response = { contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(data) }] };
+  const response = {
+    contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(modelOutput(data)) }],
+  };
   const bytes = responseBytes(response, requestId);
   if (bytes > MCP_RESPONSE_BUDGET_BYTES)
     throw new BridgeError(
@@ -149,7 +153,7 @@ export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpSer
     { name: 'rapidraw-mcp-server', version: '0.1.0' },
     {
       instructions:
-        'Nondestructive local photo editing through RapidRAW. Read rapidraw://workflow and rapidraw_capabilities, inspect preview images and detail crops, then save and verify exports. Source files remain unchanged. Every tool returns structured data; preview tools also return native image blocks.',
+        'Nondestructive local photo editing through RapidRAW. Read rapidraw://workflow and rapidraw_capabilities(detail:"overview"), then request needed schema_paths. Inspect preview images and detail crops, then save and verify exports. Source files remain unchanged. State asset descriptors are not replacement recipes. Every tool returns structured data; preview tools also return native image blocks.',
     },
   );
   const capabilities = async (): Promise<JsonObject> => {
@@ -206,7 +210,8 @@ export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpSer
           });
         try {
           const available = await capabilities();
-          if (definition.method === 'capabilities') return respond(available);
+          if (definition.method === 'capabilities') return respond(capabilityOutput(available, params));
+          rejectAssetDescriptors(params);
           if (definition.host) {
             if (!jobs)
               throw new BridgeError(
@@ -228,7 +233,11 @@ export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpSer
               `This engine does not support ${definition.method}. Check rapidraw_capabilities and build a matching fork revision.`,
             );
           }
-          return respond(await bridge.request(definition.method, params, definition.timeoutMs, context.mcpReq.signal));
+          const nativeParams = { ...params };
+          if (definition.method === 'get_session') delete nativeParams.include_assets;
+          return respond(
+            await bridge.request(definition.method, nativeParams, definition.timeoutMs, context.mcpReq.signal),
+          );
         } catch (error) {
           return toolError(error);
         }
@@ -254,7 +263,15 @@ export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpSer
       mimeType: 'application/json',
     },
     async (uri, context) => {
-      const data = await capabilities();
+      const available = await capabilities();
+      const data = {
+        protocol_version: available.protocol_version,
+        engine: available.engine,
+        bridge_version: available.bridge_version,
+        schema_id: capabilityOutput(available, { detail: 'overview' }).schema_id,
+        coordinate_space: available.coordinate_space,
+        adjustment_schema: available.adjustment_schema,
+      };
       return jsonResource(uri, data, context.mcpReq.id);
     },
   );
@@ -263,7 +280,8 @@ export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpSer
     new ResourceTemplate('rapidraw://sessions/{session_id}', { list: undefined }),
     {
       title: 'Editing session state',
-      description: 'Current source, working image, revision and full adjustments for a session.',
+      description:
+        'Current source, working image, revision and adjustments with opaque asset descriptors. Use native saved state for complete recipes.',
       mimeType: 'application/json',
     },
     async (uri, variables, context) => {

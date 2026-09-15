@@ -120,6 +120,24 @@ test('skill client stops on native error instead of executing queued edits', asy
   assert.equal((await readdir(records[0].output_dir)).filter((p) => p.endsWith('.json')).length, 1);
 });
 
+test('client reads JSON resources selectively and never hides errors behind pick', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'rr-client-resource-'));
+  const { code, records } = await run(workspace, [
+    { resource: 'rapidraw://sessions/asset-state', pick: ['revision', 'adjustments.masks'] },
+    { tool: 'get_session', arguments: { session_id: 'asset-state', include_adjustments: true } },
+    { tool: 'set_adjustments', arguments: { session_id: 'example', patch: { bad: 1 } }, pick: ['revision'] },
+    { tool: 'set_adjustments', arguments: { session_id: 'must-not-run', patch: { exposure: 1 } } },
+  ]);
+  assert.equal(code, 1);
+  assert.equal(records.length, 4);
+  assert.equal(records[1].data['adjustments.masks'][0].id, 'subject');
+  assert.equal(records[2].data.adjustments.masks[0].subMasks[0].parameters.samRefinement.canvasWidth, 100);
+  assert.equal(records[3].data.error.code, 'INVALID_ADJUSTMENT');
+  const resource = JSON.parse(await readFile(records[1].response_path, 'utf8'));
+  assert.ok(JSON.stringify(resource).length < 3500);
+  assert.equal(resource.data.adjustments.aiPatches[0].patchData.color._rapidraw_asset, true);
+});
+
 test('skill client reports uncertain timeout without replaying a queued mutation', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'rr-skill-timeout-'));
   const { code, records } = await run(workspace, [

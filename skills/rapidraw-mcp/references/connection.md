@@ -51,7 +51,7 @@ node /absolute/skill/scripts/mcp-client.mjs \
 Run as an interactive terminal process; retain its execution session ID. `ready` means MCP transport connected, not that the native engine is ready. First send:
 
 ```json
-{ "tool": "capabilities", "timeout_ms": 30000 }
+{ "tool": "capabilities", "arguments": { "detail": "overview" }, "timeout_ms": 30000 }
 ```
 
 Send one request, inspect the response, then send the next. Input uses `arguments`, matching MCP. For long masks write a JSON request file with the filesystem tool and submit `{"file":"/absolute/request.json"}`; long terminal lines can be truncated. On completion send `{"close":true}`. Keep the connection alive between related operations; if the host closes it, reconnect and resume the saved session.
@@ -68,15 +68,17 @@ Keep exact operations in a JSON array when useful. Select one without copying it
 
 The index is zero-based. Read the returned revision before selecting the next operation. This executes one operation, not an automatic batch.
 
-The client prints compact state, `response_path` and image paths. Full structured data is under `data` in the saved response. Inspect only relevant branches rather than loading the entire capabilities schema. For example:
+The client prints method-specific state, `response_path` and image paths. Job/result-session IDs, comparison labels and content indexes, warnings, errors, and export provenance remain available. Saved structured data is under `data`, with opaque native assets replaced by descriptors. These response files are review records, not complete recipes; use native session saves or portable bundles for editable state. The client needs the matching built MCP server, including `dist/model-output.js`. Request selected schemas and reuse them until `schema_id` changes:
 
 ```json
-{"tool":"capabilities","pick":["adjustment_schema.properties.temperature","adjustment_schema.properties.colorGrading"]}
+{"tool":"capabilities","arguments":{"schema_paths":["properties.temperature","properties.colorGrading"]}}
 {"list_tools":["render","mask_create","mask_update"]}
 {"tool":"render","arguments":{"session_id":"SESSION_ID","long_edge":1600}}
 ```
 
 It supports `resource` for MCP resource reads and `timeout_ms` for tool calls. For a longer native operation, launch this client with `--timeout-ms 900000` and give that request a larger client wait, for example `"timeout_ms": 960000`. These are separate limits: the launch flag is forwarded to the server and controls native processing; the JSON field controls how long the client waits. Both default to 300000 ms. The launch flag accepts a positive safe integer; request waits accept 100–1800000 ms. Raising only the request wait does not extend native processing. This client's SDK transport does not forward arbitrary shell environment variables, so use the launch flag rather than relying on `RAPIDRAW_TIMEOUT_MS` set in the parent shell.
+
+`pick` selects dotted paths for stdout, including parsed JSON resources; errors always retain their complete recovery information. For older connected servers, use `{"tool":"capabilities","pick":["coordinate_space","adjustment_schema.properties.temperature"]}`. No-argument capabilities and `detail: "full"` retain the full discovery contract for existing programs. A schema resource is another full schema read; it need not follow a successful selected read.
 
 Image files are raw MCP result bytes, not a substitute renderer. On an MCP/transport error it stops and closes rather than running queued edits or retrying. Inspect its response and persisted state before reconnecting. Keep request secrets out of durable files. If the server SDK dependencies or native binary are missing, report the exact path/error; install/build only when needed and authorized.
 

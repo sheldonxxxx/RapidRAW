@@ -66,6 +66,62 @@ test('image bytes use MCP content without duplicating base64 in structured data'
   assert.ok(!result.content[0].text.includes('iVBOR'));
 });
 
+test('stdio tools and resources redact native assets and reject summary recipes before dispatch', async (t) => {
+  const { client } = await connect(t);
+  const result = await client.callTool({
+    name: 'rapidraw_get_session',
+    arguments: { session_id: 'asset-state', include_adjustments: true },
+  });
+  assert.ok(!result.isError);
+  assert.ok(result.content[0].text.length < 3000);
+  const resource = await client.readResource({ uri: 'rapidraw://sessions/asset-state' });
+  const state = JSON.parse(resource.contents[0].text);
+  assert.deepEqual(state.adjustments, result.structuredContent.adjustments);
+  assert.equal(state.state_representation.omitted_assets, 4);
+  const complete = await client.callTool({
+    name: 'rapidraw_get_session',
+    arguments: {
+      session_id: 'asset-state',
+      include_adjustments: true,
+      include_assets: true,
+    },
+  });
+  assert.equal(
+    complete.structuredContent.adjustments.masks[0].subMasks[0].parameters.samRefinement.logitsBase64.length,
+    349528,
+  );
+  assert.equal(complete.structuredContent.params.include_assets, undefined);
+  const invalid = await client.callTool({
+    name: 'rapidraw_set_adjustments',
+    arguments: {
+      session_id: 'asset-state',
+      mode: 'replace',
+      patch: state.adjustments,
+    },
+  });
+  assert.equal(invalid.isError, true);
+  assert.match(invalid.structuredContent.error.message, /No mutation was requested/);
+  const valid = await client.callTool({
+    name: 'rapidraw_set_adjustments',
+    arguments: { session_id: 'asset-state', patch: { exposure: 0.5 } },
+  });
+  assert.ok(!valid.isError);
+});
+
+test('native tool discovery supports bounded schema reads with legacy full compatibility', async (t) => {
+  const { client } = await connect(t);
+  const get = (args) => client.callTool({ name: 'rapidraw_capabilities', arguments: args });
+  const overview = (await get({ detail: 'overview' })).structuredContent;
+  const selected = (await get({ schema_paths: ['properties.temperature'] })).structuredContent;
+  const full = (await get({})).structuredContent;
+  assert.equal(overview.adjustment_schema, undefined);
+  assert.equal(overview.schema_id, full.schema_id);
+  assert.deepEqual(selected.schemas['properties.temperature'], full.adjustment_schema.properties.temperature);
+  assert.deepEqual(selected.coordinate_space, full.coordinate_space);
+  for (const args of [{ schema_paths: ['properties.bad'] }, { schema_paths: [] }, { detail: 'brief' }])
+    assert.equal((await get(args)).isError, true);
+});
+
 test('invalid tool arguments and engine errors remain actionable errors', async (t) => {
   const { client } = await connect(t);
   const invalid = await client.callTool({

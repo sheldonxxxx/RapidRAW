@@ -11,7 +11,7 @@ Remote: node mcp-client.mjs --server /local/repo/mcp/dist/index.js --connection 
 --connection reads a stdio launcher object with command, args, and optional cwd. In this mode --server only locates the local SDK, and --workspace only stores local responses. Configure native paths and timeouts in the launcher arguments.
 --timeout-ms sets the server's native-processing timeout; per-request timeout_ms separately sets the client wait.
 Keep this process open. Submit one JSON line at a time and inspect its result:
-  {"tool":"capabilities","timeout_ms":30000}
+  {"tool":"capabilities","arguments":{"detail":"overview"},"timeout_ms":30000}
   {"tool":"get_session","arguments":{"session_id":"...","include_adjustments":true}}
   {"file":"/absolute/request.json"}
   {"file":"/absolute/operations.json","index":0,"arguments":{"session_id":"...","expected_revision":0}}
@@ -19,7 +19,7 @@ Keep this process open. Submit one JSON line at a time and inspect its result:
   {"list_tools":["render","mask_create"]}
   {"close":true}
 Optional pick: ["adjustment_schema.properties.temperature"] selects fields for stdout.
-Full structured responses and native image blocks are saved under workspace/client-output.
+Structured response records (opaque assets redacted) and native image blocks are saved under workspace/client-output.
 Large requests belong in files, not terminal input. No requests are retried automatically.`;
 const options = {};
 const argv = process.argv.slice(2);
@@ -98,46 +98,10 @@ const transport = new StdioClientTransport({
   stderr: 'inherit',
 });
 let sequence = 0;
-const summaryKeys = [
-  'session_id',
-  'revision',
-  'mask_id',
-  'dimensions',
-  'working_path',
-  'source_path',
-  'source_unchanged',
-  'path',
-  'width',
-  'height',
-  'rendered_width',
-  'rendered_height',
-  'region',
-  'coordinates',
-  'mask_coverage',
-  'format',
-  'bit_depth',
-  'bytes',
-  'verified',
-  'warnings',
-  'count',
-  'sessions',
-  'protocol_version',
-  'methods',
-  'workspace',
-  'error',
-  'code',
-  'message',
-];
+const { redactClientData, summarizeOutput } = await import(
+  new URL('./model-output.js', pathToFileURL(options.server)).href
+);
 const select = (data, paths) => Object.fromEntries(paths.map((p) => [p, p.split('.').reduce((v, k) => v?.[k], data)]));
-// Do not persist request credentials or duplicate embedded pixel payloads.
-function redact(value, key = '') {
-  if (typeof value === 'string' && /token|password|secret|api.?key/i.test(key)) return '[redacted]';
-  if (typeof value === 'string' && /base64/i.test(key)) return '[large payload omitted]';
-  if (Array.isArray(value)) return value.map((v) => redact(v));
-  if (value && typeof value === 'object')
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redact(v, k)]));
-  return value;
-}
 let input;
 try {
   await client.connect(transport);
@@ -223,24 +187,46 @@ try {
           images.push(imagePath);
         }
       }
-      const data =
-        result.structuredContent ?? result.contents ?? (result.content ?? []).filter((b) => b.type !== 'image');
+      let data = result.structuredContent;
+      if (data === undefined && result.contents) {
+        data = result.contents.map((entry) => {
+          if (entry.mimeType === 'application/json' && typeof entry.text === 'string') {
+            try {
+              return { ...entry, data: JSON.parse(entry.text), text: undefined };
+            } catch {
+              /* Preserve invalid JSON for diagnosis. */
+            }
+          }
+          return entry;
+        });
+        if (data.length === 1 && data[0].data !== undefined) data = data[0].data;
+      }
+      if (data === undefined) {
+        const blocks = (result.content ?? []).filter((b) => b.type !== 'image');
+        if (blocks.length === 1 && blocks[0].type === 'text') {
+          try {
+            data = JSON.parse(blocks[0].text);
+          } catch {
+            data = blocks;
+          }
+        } else data = blocks;
+      }
       const envelope = {
         operation: request.tool ?? request.resource ?? 'list_tools',
         isError: !!result.isError,
         elapsed_ms: Date.now() - started,
-        data: redact(data),
+        data: redactClientData(data),
         images,
       };
       const responsePath = `${prefix}.json`;
       await writeFile(responsePath, JSON.stringify(envelope, null, 2));
-      const brief = request.pick
-        ? select(envelope.data, request.pick)
-        : result.isError || request.list_tools
-          ? envelope.data
-          : Object.fromEntries(
-              summaryKeys.filter((k) => envelope.data?.[k] !== undefined).map((k) => [k, envelope.data[k]]),
-            );
+      const brief = result.isError
+        ? envelope.data
+        : request.pick
+          ? select(envelope.data, request.pick)
+          : request.list_tools || !envelope.data || Array.isArray(envelope.data)
+            ? envelope.data
+            : summarizeOutput(envelope.operation, envelope.data);
       console.log(JSON.stringify({ ...envelope, data: brief, response_path: responsePath }));
       if (result.isError) {
         // Avoid executing queued mutations after a failure whose state needs review.

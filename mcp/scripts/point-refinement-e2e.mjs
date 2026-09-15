@@ -31,7 +31,8 @@ const h = await createNativeHarness({ suite: 'point-refinement', workspace, time
 let failure, fixture, sid, width, height, prompts, mainMask, mainSub;
 const req = (...fields) => ['tool:mask_generate', ...fields.map((field) => `parameter:mask_generate.${field}`)];
 const digest = (value) => hashBytes(JSON.stringify(value));
-const state = async (id = sid) => (await h.call('get_session', { session_id: id, include_adjustments: true })).data;
+const state = async (id = sid) =>
+  (await h.call('get_session', { session_id: id, include_adjustments: true, include_assets: true })).data;
 const render = async (id = sid, options = {}) => h.call('render', { session_id: id, format: 'png', ...options });
 const patch = async (id, adjustments) =>
   h.call('set_adjustments', { session_id: id, expected_revision: (await state(id)).revision, patch: adjustments });

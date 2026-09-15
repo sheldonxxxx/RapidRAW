@@ -42,7 +42,12 @@ lines.on('line', async (line) => {
       protocol_version: 1,
       workspace: args[2],
       methods: toolDefinitions.map((d) => d.method),
-      adjustment_schema: { type: 'object' },
+      coordinate_space: { masks: 'oriented source pixels' },
+      adjustment_schema: {
+        type: 'object',
+        properties: { temperature: { type: 'number', minimum: -100, maximum: 100 } },
+        default: { temperature: 0 },
+      },
     };
   if (method === 'batch_export')
     result = {
@@ -91,6 +96,26 @@ lines.on('line', async (line) => {
   if (method === 'get_session') {
     result.mutation_count = mutationCount;
     if (mutationCount) result.revision = 3;
+    if (params.session_id === 'asset-state' && params.include_adjustments) {
+      result.adjustments = {
+        exposure: 0.3,
+        masks: [
+          {
+            id: 'subject',
+            subMasks: [
+              {
+                id: 'sam',
+                parameters: {
+                  maskDataBase64: 'M'.repeat(20000),
+                  samRefinement: { logitsBase64: 'A'.repeat(349528), canvasWidth: 100 },
+                },
+              },
+            ],
+          },
+        ],
+        aiPatches: [{ patchData: { color: 'C'.repeat(20000), mask: 'P'.repeat(20000), width: 16 } }],
+      };
+    }
   }
   if (params.session_id === 'oversized-error' && method === 'render') {
     process.stdout.write(

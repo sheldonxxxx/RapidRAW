@@ -4,6 +4,12 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### MCP context efficiency
+
+- Replace opaque image/model assets in tool and session-resource responses with read-only descriptors while preserving complete native state and preview bytes. Reject descriptors in edit requests to prevent incomplete recipe replacement.
+- Add capability overviews and selected schema paths with schema identity and coordinate rules; retain full discovery for existing clients.
+- Preserve job IDs, comparison labels, errors and export provenance in the skill client's summaries, support field selection on JSON resources, and document compact per-photo continuation checkpoints.
+
 ### Storage
 
 - Use independent filesystem clones for MCP session sources, portable assets, background model snapshots, and local enhancement model imports on supported filesystems, with streaming/copy fallback elsewhere.

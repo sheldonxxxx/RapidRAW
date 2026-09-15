@@ -180,7 +180,7 @@ export function unreviewedMaskRecord(group, metrics, details) {
 }
 
 export async function readEditableMaskSession(harness, session_id) {
-  const { data } = await harness.call('get_session', { session_id, include_adjustments: true });
+  const { data } = await harness.call('get_session', { session_id, include_adjustments: true, include_assets: true });
   assert.equal(data?.session_id, session_id, 'Editable-state capture must identify the requested session');
   assert.ok(
     data.adjustments && typeof data.adjustments === 'object' && !Array.isArray(data.adjustments),

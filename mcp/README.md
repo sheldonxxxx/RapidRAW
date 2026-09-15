@@ -132,6 +132,8 @@ For choosing a treatment and comparing candidates, see [AI editing workflows](..
 
 Every tool starts with `rapidraw_`; the table shows the suffixes. The engine's live `capabilities` response is authoritative for availability and schemas.
 
+For interactive editing, begin with `rapidraw_capabilities({"detail":"overview"})`, then request exact schema branches with `{"schema_paths":["properties.temperature","properties.colorGrading"]}`. Selected results include constraints, coordinate rules and a `schema_id`; reuse them until that identity changes. No-argument calls and `detail: "full"` preserve the full capabilities contract for existing programs. Unknown schema paths are errors.
+
 The [application/MCP/test matrix](CAPABILITY-MATRIX.md) maps the complete application feature areas to their MCP implementation, test boundary and remaining gaps. The generated evidence ledger distinguishes individual tool calls, parameter coverage, pixel assertions and photographic review.
 
 | Area                        | Tools                                                                                                                                                                              |
@@ -152,13 +154,13 @@ Resources:
 
 - `rapidraw://workflow`: a concrete editing/review/delivery workflow.
 - `rapidraw://adjustment-schema`: current native adjustment and mask schemas, units and capabilities.
-- `rapidraw://sessions/{session_id}`: current complete editing state.
+- `rapidraw://sessions/{session_id}`: current editing state with read-only asset descriptors. Use native saves/bundles or an explicit programmatic `get_session(include_adjustments:true, include_assets:true)` read for complete assets.
 
 The `pro_photo_edit` prompt accepts `path` and optional `intent`. It gives the host's model a complete workflow; the server does not itself run or pay for a language model. Professional results require the agent to inspect the returned images and iterate appropriately.
 
 ## Example editing loop
 
-Call `rapidraw_capabilities`, read the schema resource, then:
+Call `rapidraw_capabilities` with the needed schema paths, then:
 
 ```json
 {"tool":"rapidraw_open_photo","arguments":{"path":"/photos/example.cr3"}}
@@ -232,6 +234,10 @@ Source images and their sidecars are read-only to the workflow. `open_photo` cre
 Installed presets containing explicitly disabled legacy negative-conversion controls are migrated with a warning naming the removed obsolete fields. Active legacy negative conversion is rejected with guidance to use `negative_convert`; unrelated unknown preset keys remain errors.
 
 Tool inputs reject unknown top-level fields. Native validation checks the actual adjustment/mask records against RapidRAW's schemas, so a misspelled adjustment cannot silently become a no-op. Mutations accept `expected_revision` to reject stale changes. Success returns `structuredContent`; previews also return native MCP image blocks without repeating their base64 in the JSON/text result. Engine failures return `isError: true` with a stable code and actionable message.
+
+Tool and session-resource responses replace opaque mask bitmaps, SAM refinement tensors, retouch pixels, depth maps and embedded LUT data with descriptors containing a SHA-256 identity, encoded character count and state path. IDs, editable control values, geometry, refinement metadata and warnings remain available. Native sessions, histories, sidecars, bundles and rendered image bytes keep their complete data. **A summarized adjustment object is not a replacement recipe:** the server rejects asset descriptors in edit requests. Use targeted merge/mask operations or native saved-state/bundle operations. Text and structured results remain available for MCP client compatibility. Programmatic validators that need inline native assets can explicitly request `get_session(include_adjustments:true, include_assets:true)` within the same response-size budget. Ordinary editing should keep the default descriptors; the skill client still redacts assets from its saved response records.
+
+The bundled skill client saves redacted response records and original preview bytes, prints method-specific summaries, and supports `pick` on tool results and parsed JSON resources. Errors retain recovery details even when `pick` is supplied. Build the server after updating the client; it shares response helpers from `dist/model-output.js`. Reconnect an existing server to load these response changes; no native renderer rebuild is required.
 
 The server caps serialized MCP responses at **8 MiB**, leaving room below the SDK's default 10 MiB stdio buffer; `capabilities.transport_limits` reports the budget. Oversized images or state return `RESPONSE_TOO_LARGE` while keeping the connection usable. Requested pixels are never silently resized or transcoded. Retry a read with an explicitly smaller `long_edge`, bounded native `region`, requested JPEG encoding, or `get_session(include_adjustments:false)`. The native operation has already returned when this error is generated: inspect `recovery` session/revision, mask/job IDs and output paths before deciding what remains. Do not replay a mutation. Batch recovery includes at most 16 item summaries and explicitly reports truncation; retain the original request and reconcile omitted items separately. Large session resources raise the same named error; very long native error messages are flagged as truncated. Prompt arguments accept at most 16384 path characters and 65536 intent characters.
 
