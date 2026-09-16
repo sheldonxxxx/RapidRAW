@@ -8,7 +8,7 @@ This independent fork of [RapidRAW](https://github.com/CyberTimon/RapidRAW) adds
 
 Use RapidRAW on its own, connect it to your preferred MCP client, or pair it with [Lightweft](https://github.com/sheldonxxxx/lightweft), the central workspace for photographic direction, rendered review and personal style exploration. Lightweft and the [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit) are separate, optional projects.
 
-**[Set up MCP](mcp/README.md#macos-quick-start)** · **[Use the desktop editor](docs/desktop-guide.md)** · **[Explore Lightweft](https://github.com/sheldonxxxx/lightweft)** · **[See tested capabilities](mcp/CAPABILITY-MATRIX.md)**
+**[Set up MCP](mcp/README.md#macos-quick-start)** · **[Connect Codex](mcp/CODEX.md)** · **[Use the desktop editor](docs/desktop-guide.md)** · **[Explore Lightweft](https://github.com/sheldonxxxx/lightweft)** · **[See tested capabilities](mcp/CAPABILITY-MATRIX.md)**
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/editor.jpg" alt="Upstream RapidRAW desktop editor showing a photograph and adjustment controls">

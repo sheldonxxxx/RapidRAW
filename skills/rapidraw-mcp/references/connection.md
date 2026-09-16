@@ -14,9 +14,9 @@ node /absolute/RapidRAW/mcp/dist/index.js \
 
 Use the actual debug/release or `CARGO_TARGET_DIR` output. `RAPIDRAW_BINARY` and `RAPIDRAW_WORKSPACE` can supply equivalent settings. This process speaks MCP over stdio; it is not a one-command JSON editing CLI. Diagnostics go to stderr. Keep a client connection open across calls and close it when finished.
 
-Read the user's actual MCP host configuration for configured server, binary and workspace paths. In a RapidRAW checkout, `mcp/README.md` provides the [build and connection guide](https://github.com/sheldonxxxx/RapidRAW/blob/main/mcp/README.md#build-and-connect), `mcp/src/tools.ts` defines tool inputs, and `src-tauri/src/mcp_bridge/validation.rs` defines native adjustments. Do not assume this skill is installed next to the repository or invent missing binaries. Build/connect only when needed for the user's task and supported by the environment.
+Read the user's actual MCP host configuration for configured server, binary and workspace paths. Follow the [build and connection guide](https://github.com/sheldonxxxx/RapidRAW/blob/main/mcp/README.md#build-and-connect) or the [Codex configuration guide](https://github.com/sheldonxxxx/RapidRAW/blob/main/mcp/CODEX.md) when setup is needed. Discover tool inputs from the host's live tool schemas or the persistent client's `list_tools`; request native adjustment branches through `capabilities(schema_paths: [...])`. Setup and editing do not require implementation-file inspection. Do not assume this skill is installed next to the repository or invent missing binaries.
 
-An MCP host configuration uses this shape, with real absolute paths:
+Hosts that accept `mcpServers` JSON use this shape, with real absolute paths. Codex uses the TOML guide linked above:
 
 ```json
 {

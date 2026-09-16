@@ -6,7 +6,7 @@ The MCP server uses the official TypeScript SDK v2 and stdio. One connection own
 
 The [RapidRAW MCP skill](../skills/rapidraw-mcp/SKILL.md) provides agent guidance for editing, mask coordinates, derived sessions, recovery, and verified exports. Install it with `npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp`, or place its complete folder in your agent's skills directory. Pair it with your own brief or [Lightweft](https://github.com/sheldonxxxx/lightweft) for photographic direction, shared review and personal style exploration. RapidRAW runs independently; Lightweft and the [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit) are optional companions with separate setup. The MCP connection is configured below.
 
-Choose [macOS setup](#macos-quick-start), [Linux over SSH](REMOTE-SSH.md), or the [tool reference](#capabilities). For a first edit, follow the [example editing loop](#example-editing-loop). All `/absolute/...` paths in this guide are placeholders.
+Choose [macOS setup](#macos-quick-start), [Linux over SSH](REMOTE-SSH.md), [Codex connection and isolated trials](CODEX.md), or the [tool reference](#capabilities). For a first edit, follow the [example editing loop](#example-editing-loop). All `/absolute/...` paths in this guide are placeholders.
 
 ## Connect a beta package
 
@@ -29,7 +29,7 @@ Reconnect your client and call `rapidraw_capabilities` to confirm native startup
 
 This quick start covers macOS with Metal and a debug build of this fork. The [Linux GPU server guide](REMOTE-SSH.md) covers the tested Debian 13/NVIDIA/Xvfb workflow over SSH. **Windows and packaged MCP releases have not been tested for the MCP workflow.**
 
-Use macOS 14+ on Apple Silicon or macOS 13+ on Intel, Node.js 22.12+, [Rust via rustup](https://www.rust-lang.org/tools/install), and [Apple Command Line Tools](https://v2.tauri.app/start/prerequisites/#macos). If the Apple tools are missing, run `xcode-select --install` and finish installation first.
+Use macOS 14+ on Apple Silicon or macOS 13+ on Intel, [Node.js 22.12+ with npm](https://nodejs.org/en/download), [Rust via rustup](https://www.rust-lang.org/tools/install), and [Apple Command Line Tools](https://v2.tauri.app/start/prerequisites/#macos). If the Apple tools are missing, run `xcode-select --install` and finish installation first. After installing prerequisites, open a new terminal and check `git --version`, `node --version`, `npm --version` and `rustup --version` before running the build.
 
 ```sh
 git clone https://github.com/sheldonxxxx/RapidRAW.git
@@ -41,6 +41,8 @@ CARGO_PROFILE_DEV_DEBUG=0 cargo +1.98.1 build \
   --manifest-path src-tauri/Cargo.toml --features mcp --locked
 npm ci --prefix mcp
 npm run build --prefix mcp
+test -x "${CARGO_TARGET_DIR:-$PWD/src-tauri/target}/debug/RapidRAW"
+test -f "$PWD/mcp/dist/index.js"
 ```
 
 This produces `src-tauri/target/debug/RapidRAW` and `mcp/dist/index.js`. Use those absolute paths in the host configuration below, replacing its release binary path with the debug path. Use `command -v node` to find an absolute Node path if your GUI agent does not inherit the shell's PATH. Reconnect the host and call `rapidraw_capabilities` to verify native startup; a successful skill installation alone does not connect the editor.
@@ -60,7 +62,7 @@ npm ci --prefix mcp
 npm run build --prefix mcp
 ```
 
-Configure your MCP host with absolute paths (replace the examples with your checkout and desired output folder):
+For Codex, follow the [TOML configuration guide](CODEX.md#register-the-server). For hosts that accept `mcpServers` JSON, configure absolute paths below (replace the examples with your checkout and desired output folder):
 
 ```json
 {
@@ -79,7 +81,7 @@ Configure your MCP host with absolute paths (replace the examples with your chec
 }
 ```
 
-Use the actual Cargo output path if `CARGO_TARGET_DIR` is configured. `RAPIDRAW_BINARY` and `RAPIDRAW_WORKSPACE` are equivalent environment variables. `--timeout-ms`/`RAPIDRAW_TIMEOUT_MS` sets the default native-operation timeout (300000 ms). Model installation, merge and batch export have a 30-minute maximum; configure the host's tool timeout accordingly. Diagnostics go to stderr; stdout contains only MCP protocol traffic.
+Use the actual Cargo output path if `CARGO_TARGET_DIR` is configured. For unbundled macOS builds, the custom directory must end in **`target`**, for example `/absolute/build-cache/target`: Tauri recognizes `target/debug` or `target/release` as a development resource location. Keep its `.cargo-lock` and generated resources beside the executable; moving the executable alone or naming the directory `build-target` can cause a resource-resolution startup failure. `RAPIDRAW_BINARY` and `RAPIDRAW_WORKSPACE` are equivalent environment variables. `--timeout-ms`/`RAPIDRAW_TIMEOUT_MS` sets the default native-operation timeout (300000 ms). Model installation, merge and batch export have a 30-minute maximum; configure the host's tool timeout accordingly. Diagnostics go to stderr; stdout contains only MCP protocol traffic.
 
 Existing masking, denoise and inpainting tools default to CPU on every platform. Linux deployments can opt into [CUDA for foreground/sky masks, depth and AI denoise](ONNX-CUDA.md) with a separate compatible runtime. Subject selection and local inpainting retain their CPU compatibility paths. The newer enhancement operations have their own [Auto provider policy](../docs/local-enhancement.md#choose-speed-and-detail).
 
@@ -162,15 +164,27 @@ The `pro_photo_edit` prompt accepts `path` and optional `intent`. It gives the h
 
 Call `rapidraw_capabilities` with the needed schema paths, then:
 
+Choose the starting state before editing. `open_photo` inherits an existing sidecar by default, so the first render below includes it. Use `inherit_sidecar: false` when opening only if a fresh treatment is intended. Use `original: true` on a render only for an explicit untouched-source comparison; it bypasses inherited edits. Keep the intended baseline visible when judging the next change.
+
 ```json
 {"tool":"rapidraw_open_photo","arguments":{"path":"/photos/example.cr3"}}
-{"tool":"rapidraw_render","arguments":{"session_id":"RETURNED_ID","original":true,"long_edge":1600}}
+{"tool":"rapidraw_render","arguments":{"session_id":"RETURNED_ID","long_edge":1600}}
 {"tool":"rapidraw_set_adjustments","arguments":{"session_id":"RETURNED_ID","expected_revision":0,"patch":{"exposure":0.25,"highlights":-18,"shadows":12}}}
 {"tool":"rapidraw_render","arguments":{"session_id":"RETURNED_ID","long_edge":1600}}
 {"tool":"rapidraw_analyze","arguments":{"session_id":"RETURNED_ID","histogram":true,"scopes":true}}
 ```
 
 Use the actual returned revision, not the illustrative `0` above. For native detail review, first inspect rendered dimensions, then call `render` with an integer pixel `region`; omitting `long_edge` preserves native 1:1 detail. **Render/analyze regions use full-resolution rendered coordinates after user crop and geometry. Mask geometry and AI subject regions use the corrected, user-oriented/flipped/rotated canvas before crop (`map_coordinates` space `mask`).** The separate `oriented_source` space precedes user geometry. Map measured preview pixel centers with `map_coordinates`, supplying the actual preview dimensions and region. `mask_id` renders a grayscale mask with coverage statistics for edge review.
+
+If a call fails, choose recovery by the returned error before making another edit:
+
+| Result | Connection and next action |
+| --- | --- |
+| `RESPONSE_TOO_LARGE` | **Keep the connection.** Read `recovery`, retain returned IDs/revision/paths, and inspect state. Request a smaller response; the edit may already have completed. Do not replay it. |
+| `REVISION_CONFLICT` | Keep the connection, reread the current session and reconcile the intended patch. |
+| Transport failure, timeout, crash or active native cancellation | Reconnect, inspect saved sessions/jobs/outputs, then decide what remains. Do not replay a mutation blindly. |
+
+See [connection and recovery](../skills/rapidraw-mcp/references/connection.md#results-and-recovery) for model, provider and workspace errors. Cancelling a dedicated background job has its own [worker lifecycle](#comparison-and-job-tools).
 
 Selective editing examples:
 

@@ -19,7 +19,22 @@ sudo apt-get install --no-install-recommends \
 
 Configure the GPU driver and, for a container, its device access and matching userspace libraries. `vulkaninfo --summary` must identify the intended hardware GPU. A working `nvidia-smi` alone does not prove Vulkan access.
 
-Follow [build and connect](README.md#build-and-connect) to build this fork and the Node server on Linux. Do not copy a macOS executable to the server. The examples below use placeholder absolute paths; replace them with the actual Node, executable and workspace locations.
+With Git, Node.js 22.12+ (including npm), and Rust installed, build this fork and its Node server on the Linux machine:
+
+```sh
+git clone https://github.com/sheldonxxxx/RapidRAW.git
+cd RapidRAW
+rustup toolchain install 1.98.1 --profile minimal
+npm ci
+npm run build
+cargo +1.98.1 build --release --features mcp --manifest-path src-tauri/Cargo.toml --locked
+npm ci --prefix mcp
+npm run build --prefix mcp
+test -x "${CARGO_TARGET_DIR:-$PWD/src-tauri/target}/release/RapidRAW"
+test -f "$PWD/mcp/dist/index.js"
+```
+
+See [build and connect](README.md#build-and-connect) for toolchain and runtime details. The launcher below uses this release build. Its paths are placeholders; replace them with the actual Node, executable and workspace locations on the server.
 
 ## Launch through a virtual display
 
@@ -37,17 +52,21 @@ chmod 700 "$XDG_RUNTIME_DIR"
 exec dbus-run-session -- xvfb-run -e /dev/stderr -a \
   -s '-screen 0 1280x720x24 -nolisten tcp -extension GLX' \
   /absolute/path/to/node /absolute/RapidRAW/mcp/dist/index.js \
-  --binary /absolute/RapidRAW/src-tauri/target/debug/RapidRAW \
+  --binary /absolute/RapidRAW/src-tauri/target/release/RapidRAW \
   --workspace /absolute/rapidraw-jobs --timeout-ms 900000
 ```
 
-Use the release executable path if that is the build you produced. `-extension GLX` avoids an Xvfb startup crash observed in NVIDIA EGL/GBM initialization inside the tested container; it does not disable Vulkan compute. If adapter discovery needs an explicit NVIDIA ICD, set `VK_DRIVER_FILES` to its verified installed JSON path in this launcher. Keep these settings process-local.
+This launcher matches the release build linked above. Before connecting, run `test -x /absolute/RapidRAW/src-tauri/target/release/RapidRAW` and `test -f /absolute/RapidRAW/mcp/dist/index.js` on the server. If you deliberately built debug, change both the executable check and launcher to `target/debug/RapidRAW`; honor `CARGO_TARGET_DIR` if configured. Make the launcher executable with `chmod +x /absolute/bin/rapidraw-mcp`.
+
+`-extension GLX` avoids an Xvfb startup crash observed in NVIDIA EGL/GBM initialization inside the tested container; it does not disable Vulkan compute. If adapter discovery needs an explicit NVIDIA ICD, set `VK_DRIVER_FILES` to its verified installed JSON path in this launcher. Keep these settings process-local.
 
 Xvfb and D-Bus live for the connection and terminate when it closes. The launcher must keep stdout exclusively for MCP traffic. Diagnostics belong on stderr, including any remote shell startup messages. Use one workspace per simultaneous client.
 
 ## Connect from your computer
 
 Set up SSH keys and verify the host key interactively first. Then register a command-based stdio server with your MCP host:
+
+Codex users should place the following command/arguments in the TOML table from the [Codex guide](CODEX.md#register-the-server); the JSON below is for hosts that accept `mcpServers` configuration.
 
 ```json
 {

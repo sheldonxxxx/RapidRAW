@@ -2,6 +2,16 @@
 
 These dated results apply to the recorded builds and fixtures. They are historical evidence, not a passing test report for every later commit. The [Linux SSH guide](REMOTE-SSH.md) and [ONNX CUDA guide](ONNX-CUDA.md) describe a separately tested Debian/NVIDIA configuration; earlier entries retain their original platform boundaries. Use the [test instructions](testing-matrix.md) to produce evidence for your build.
 
+## 2026-09-16 isolated source setup on macOS
+
+An isolated source copy on macOS 26.5.1/Apple Silicon installed both npm dependency sets, built the frontend and MCP host, and compiled the native bridge with Rust 1.98.1, Node 26.7.0 and the `mcp` feature. The existing host/toolchain and a filesystem clone of a compatible Cargo cache were reused; this is **not fresh-machine or packaged-app installation evidence**. The build downloaded and verified its Apple Silicon ONNX runtime and notices.
+
+The first native launch failed to resolve resources from a custom directory named `build-target`. Keeping the build tree intact under a directory named `target` restored Tauri's development resource lookup. The [setup guide](README.md#build-and-connect) documents that layout requirement.
+
+The [real-engine regression](scripts/engine-e2e.mjs) then passed **36 MCP calls: 31 successful results and five expected error results**, using an independent copy of one RAW fixture. Checks covered native renders and adjustments, a geometric mask, history, metadata, recipe/session saves, JPEG and 16-bit TIFF export, overwrite/invalid-input protection, batch errors and saved-state/render persistence after reconnect. Source and sidecar hashes remained unchanged. The 6960×4640 TIFF contained 65,519 distinct sample values and samples beyond expanded 8-bit precision. Overview renders were inspected; this setup regression does not qualify an artistic treatment, AI model quality, a new camera, GPU inference or generative services.
+
+Native executable SHA-256: `3d851e6b7a1956621cfe60387d21444474ca4414197b80cbca6198759bedc5b6`. Reproduce the applicable boundaries with the [build and real-engine commands](README.md#verification), using your own source and a new workspace. The [Codex guide](CODEX.md) separates skill files, resolved host configuration, native startup and photographic delivery checks.
+
 ## 2026-09-12 guided AI and manual local edits
 
 Mask acceptance depends on the intended edit. A subtle subject lift needs visible tonal benefit without changing protected surroundings; extraction and strong recoloring need closer boundary precision. The strict fresh-mask findings below retain their original criteria and do not establish that automatic selections are unusable starting points for restrained local edits.

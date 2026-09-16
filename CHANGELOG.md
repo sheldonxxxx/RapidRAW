@@ -4,6 +4,12 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Setup and connection guidance
+
+- Add Codex project/user configuration, skill installation, environment and timeout examples, isolated-workspace preflight, and separate registration/native-render verification steps.
+- Align the Linux SSH launcher with the documented release build and check executable paths before connection. Clarify inherited-sidecar baselines and recovery without reconnecting after oversized responses.
+- Document the `target` directory layout needed for unbundled macOS resource discovery when reusing a custom Cargo build cache.
+
 ### Optional Marigold directional light and colour
 
 - Add opt-in Marigold V2 normals/albedo endpoints on the existing connector and ComfyUI queue, with pinned models and cached RGB16 maps.
