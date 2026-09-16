@@ -1,4 +1,6 @@
 import MarigoldDepthControls from './MarigoldDepthControls';
+import MarigoldSurfaceControls from './MarigoldSurfaceControls';
+import { isSurfaceMask } from '../../../utils/surfaceGeometry';
 import DepthMapPreview from './DepthMapPreview';
 import { applyLinearFalloffSelection, applyMaskAdjustmentUpdate, insertCreatedSubMask } from './maskInteractions';
 import { buildPresetMenu } from './presetMenu';
@@ -22,6 +24,7 @@ interface SettingsPanelProps {
   setSettingsSectionOpen: (isOpen: boolean) => void;
   presets: UserPreset[];
   handleGenerateAiDepthMask: ReturnType<typeof useAiMasking>['handleGenerateAiDepthMask'];
+  handleGenerateSurfaceMask: ReturnType<typeof useAiMasking>['handleGenerateSurfaceMask'];
 }
 interface SubMaskRowProps {
   subMask: SubMask;
@@ -334,7 +337,12 @@ function MasksListRoot({ children, onClick }: { children: React.ReactNode; onCli
 export default function MasksPanel() {
   const { t } = useTranslation();
   const { setAdjustments } = useEditorActions();
-  const { handleGenerateAiDepthMask, handleGenerateAiForegroundMask, handleGenerateAiSkyMask } = useAiMasking();
+  const {
+    handleGenerateAiDepthMask,
+    handleGenerateAiForegroundMask,
+    handleGenerateAiSkyMask,
+    handleGenerateSurfaceMask,
+  } = useAiMasking();
   const { setCustomEscapeHandler, isAdjustmentsPanelVisible } = useUIStore(
     useShallow((state) => {
       const leftVisible = state.uiVisibility.leftPanel;
@@ -611,6 +619,8 @@ export default function MasksPanel() {
     if (type === Mask.AiForeground) handleGenerateAiForegroundMask(subMask.id);
     else if (type === Mask.AiSky) handleGenerateAiSkyMask(subMask.id);
     else if (type === Mask.AiDepth) handleGenerateAiDepthMask(subMask.id, subMask.parameters);
+    else if (type === Mask.AiNormals || type === Mask.AiAlbedo)
+      void handleGenerateSurfaceMask(subMask.id, type === Mask.AiNormals ? 'normals' : 'albedo');
   };
 
   const handleAddSubMask = (
@@ -620,6 +630,11 @@ export default function MasksPanel() {
     insertIndex: number = -1,
     depthProvider?: 'marigold',
   ) => {
+    if (
+      isSurfaceMask(type) &&
+      adjustments.masks.find((m) => m.id === containerId)?.subMasks.some((s) => isSurfaceMask(s.type))
+    )
+      return;
     const subMask = createMaskLogic(type, mode);
     if (depthProvider) {
       subMask.parameters.depthProvider = depthProvider;
@@ -647,6 +662,8 @@ export default function MasksPanel() {
     if (type === Mask.AiForeground) handleGenerateAiForegroundMask(subMask.id);
     else if (type === Mask.AiSky) handleGenerateAiSkyMask(subMask.id);
     else if (type === Mask.AiDepth) handleGenerateAiDepthMask(subMask.id, subMask.parameters);
+    else if (type === Mask.AiNormals || type === Mask.AiAlbedo)
+      void handleGenerateSurfaceMask(subMask.id, type === Mask.AiNormals ? 'normals' : 'albedo');
   };
 
   const handleGridClick = (type: Mask, forceNewMaskContainer: boolean = false) => {
@@ -662,8 +679,8 @@ export default function MasksPanel() {
     handleGridClick(type, true);
   };
 
-  const buildMarigoldMenu = (targetContainerId?: string | null, mode = SubMaskMode.Additive): Option[] =>
-    appSettings?.marigoldDepthEnabled
+  const buildMarigoldMenu = (targetContainerId?: string | null, mode = SubMaskMode.Additive): Option[] => [
+    ...(appSettings?.marigoldDepthEnabled
       ? [
           {
             label: t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' }),
@@ -675,7 +692,22 @@ export default function MasksPanel() {
             },
           },
         ]
-      : [];
+      : []),
+    ...(appSettings?.marigoldSurfaceEnabled
+      ? [Mask.AiNormals, Mask.AiAlbedo].map((type) => ({
+          label:
+            type === Mask.AiNormals
+              ? t('masks.types.normals', { defaultValue: 'Marigold Directional Light' })
+              : t('masks.types.albedo', { defaultValue: 'Marigold Colour' }),
+          icon: MASK_ICON_MAP[type],
+          disabled:
+            isGeneratingAiMask ||
+            !!adjustments.masks.find((m) => m.id === targetContainerId)?.subMasks.some((s) => isSurfaceMask(s.type)),
+          onClick: () =>
+            targetContainerId ? handleAddSubMask(targetContainerId, type, mode) : handleAddMaskContainer(type),
+        }))
+      : []),
+  ];
 
   const handleAddMaskContextMenu = (event: React.MouseEvent, targetContainerId?: string | null) => {
     event.preventDefault();
@@ -1185,6 +1217,19 @@ export default function MasksPanel() {
                           {t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' })}
                         </button>
                       )}
+                      {appSettings?.marigoldSurfaceEnabled &&
+                        [Mask.AiNormals, Mask.AiAlbedo].map((type) => (
+                          <button
+                            key={type}
+                            className="rounded-md bg-surface p-2 text-sm hover:bg-card-active disabled:opacity-50"
+                            disabled={isGeneratingAiMask}
+                            onClick={() => handleAddMaskContainer(type)}
+                          >
+                            {type === Mask.AiNormals
+                              ? t('masks.types.normals', { defaultValue: 'Marigold Directional Light' })
+                              : t('masks.types.albedo', { defaultValue: 'Marigold Colour' })}
+                          </button>
+                        ))}
                     </div>
                     <Text variant={TextVariants.heading} className="mb-2">
                       {t('editor.masks.basicTitle', 'Basic Tools')}
@@ -1330,6 +1375,7 @@ export default function MasksPanel() {
                       setSettingsSectionOpen={setSettingsSectionOpen}
                       presets={presets}
                       handleGenerateAiDepthMask={handleGenerateAiDepthMask}
+                      handleGenerateSurfaceMask={handleGenerateSurfaceMask}
                     />
                   </motion.div>
                 )}
@@ -2029,6 +2075,7 @@ function SettingsPanel({
   setSettingsSectionOpen,
   presets,
   handleGenerateAiDepthMask,
+  handleGenerateSurfaceMask,
 }: SettingsPanelProps) {
   const { t } = useTranslation();
   const { showContextMenu } = useContextMenu();
@@ -2280,6 +2327,16 @@ function SettingsPanel({
                 </Text>
               )}
 
+              {(activeSubMask.type === Mask.AiNormals || activeSubMask.type === Mask.AiAlbedo) && (
+                <MarigoldSurfaceControls
+                  key={activeSubMask.id}
+                  subMask={activeSubMask}
+                  enabled={appSettings?.marigoldSurfaceEnabled ?? false}
+                  generate={handleGenerateSurfaceMask}
+                  updateSubMask={updateSubMask}
+                  onDragStateChange={onDragStateChange}
+                />
+              )}
               {activeSubMask.type === Mask.AiDepth &&
                 (appSettings?.marigoldDepthEnabled || activeSubMask.parameters.depthProvider === 'marigold') && (
                   <MarigoldDepthControls

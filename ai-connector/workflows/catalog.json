@@ -178,6 +178,72 @@
         "marigold_v2_depth_log_stage2.safetensors",
         "marigold_v2_depth_log_stage2_vae.safetensors"
       ]
+    },
+    {
+      "id": "marigold-v2-normals-q4",
+      "label": "Marigold V2 normals Q4",
+      "file": "../rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json",
+      "format": "connector-template",
+      "tested_comfyui_revision": "36da3ff763687eab86a35e1019995dd1fb369b0d",
+      "scope": "Optional normals mask workflow. SOURCE and RESULT are replaced by the connector.",
+      "sha256": "a329d88201a3b0c58907c2a9b7aa3a5b674f4eb0b3f11279940a82ebd386fdad",
+      "node_classes": [
+        "BasicGuider",
+        "ConditioningLoader",
+        "DisableNoise",
+        "ImageScaleToTotalPixels",
+        "KSamplerSelect",
+        "LoadImage",
+        "LoraLoaderModelOnly",
+        "ManualSigmas",
+        "MarigoldV2PostProcess",
+        "ModelSamplingAuraFlow",
+        "RapidRAWMarigoldSampler",
+        "SaveImageAdvanced",
+        "UnetLoaderGGUF",
+        "VAEDecode",
+        "VAEEncode",
+        "VAELoader"
+      ],
+      "model_files": [
+        "Qwen-Image-Edit-2509-Q4_K_M.gguf",
+        "marigold_v2_normals.safetensors",
+        "marigold_v2_normals_conditioning.safetensors",
+        "marigold_v2_normals_vae.safetensors"
+      ]
+    },
+    {
+      "id": "marigold-v2-albedo-q4",
+      "label": "Marigold V2 albedo Q4",
+      "file": "../rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json",
+      "format": "connector-template",
+      "tested_comfyui_revision": "36da3ff763687eab86a35e1019995dd1fb369b0d",
+      "scope": "Optional albedo mask workflow. SOURCE and RESULT are replaced by the connector.",
+      "sha256": "a464c760a99e0cf301b126c98f6a4a66c713ae902bf895f5d339b3f2247cd2a1",
+      "node_classes": [
+        "BasicGuider",
+        "ConditioningLoader",
+        "DisableNoise",
+        "ImageScaleToTotalPixels",
+        "KSamplerSelect",
+        "LoadImage",
+        "LoraLoaderModelOnly",
+        "ManualSigmas",
+        "MarigoldV2PostProcess",
+        "ModelSamplingAuraFlow",
+        "RapidRAWMarigoldSampler",
+        "SaveImageAdvanced",
+        "UnetLoaderGGUF",
+        "VAEDecode",
+        "VAEEncode",
+        "VAELoader"
+      ],
+      "model_files": [
+        "Qwen-Image-Edit-2509-Q4_K_M.gguf",
+        "marigold_v2_albedo.safetensors",
+        "marigold_v2_albedo_conditioning.safetensors",
+        "marigold_v2_albedo_vae.safetensors"
+      ]
     }
   ]
 }

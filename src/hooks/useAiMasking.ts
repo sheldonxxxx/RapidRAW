@@ -7,6 +7,7 @@ import { Adjustments, AiPatch, MaskContainer, Coord, GenerationOptions } from '.
 import { SubMask, MaskParameters } from '../components/panel/right/Masks';
 import { Invokes } from '../components/ui/AppProperties';
 import { useAuth } from '@clerk/react';
+import { surfaceRequestSnapshot } from '../utils/surfaceGeometry';
 
 const pendingMarigold = new Map<string, { cancelled: boolean }>();
 export const isMarigoldPending = (id: string) => pendingMarigold.has(id);
@@ -326,6 +327,41 @@ export function useAiMasking() {
     }
   };
 
+  const handleGenerateSurfaceMask = async (subMaskId: string, kind: 'normals' | 'albedo') => {
+    const before = useEditorStore.getState();
+    if (!before.selectedImage?.path || before.isGeneratingAiMask) return;
+    const identity = before.selectedImage;
+    const geometry = surfaceRequestSnapshot(before.adjustments);
+    const request = { cancelled: false };
+    pendingMarigold.set(subMaskId, request);
+    setEditor({ isGeneratingAiMask: true });
+    try {
+      const generated = await invoke<MaskParameters>('generate_marigold_surface_mask', {
+        kind,
+        path: identity.path,
+        jsAdjustments: JSON.parse(geometry),
+      });
+      const current = useEditorStore.getState();
+      if (
+        request.cancelled ||
+        current.selectedImage !== identity ||
+        surfaceRequestSnapshot(current.adjustments) !== geometry
+      ) {
+        toast.info('Surface result discarded because the photo changed or the request was cancelled.');
+        return;
+      }
+      const part = current.adjustments.masks.flatMap((m) => m.subMasks).find((s) => s.id === subMaskId);
+      if (!part || part.type !== `ai-${kind}`) return;
+      current.patchesSentToBackend.delete(subMaskId);
+      updateSubMask(subMaskId, { parameters: { ...part.parameters, ...generated } });
+    } catch (error) {
+      toast.error(`Marigold ${kind} failed: ${error}`);
+    } finally {
+      pendingMarigold.delete(subMaskId);
+      setEditor({ isGeneratingAiMask: false });
+    }
+  };
+
   const handleGenerateAiDepthMask = async (
     subMaskId: string,
     parameters: MaskParameters,
@@ -495,6 +531,7 @@ export function useAiMasking() {
     handleToggleAiPatchVisibility,
     handleGenerateAiMask,
     handleGenerateAiDepthMask,
+    handleGenerateSurfaceMask,
     handleGenerateAiForegroundMask,
     handleGenerateAiSkyMask,
   };

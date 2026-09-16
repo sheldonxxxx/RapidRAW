@@ -4,6 +4,12 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Optional Marigold directional light and colour
+
+- Add opt-in Marigold V2 normals/albedo endpoints on the existing connector and ComfyUI queue, with pinned models and cached RGB16 maps.
+- Add optional desktop/MCP mask controls for directional dodge/burn and albedo colour selection/recolouring, with saved RGB16 maps, offline rendering, native exports and portable-session support. Invalidate maps after lens/perspective or retouch changes; preserve alignment through display rotation, flips and crop. Existing tools and defaults remain available. See the [surface tools guide](ai-connector/SURFACES.md).
+- Include the two chosen surface workflows and an optional CPU preview utility. Keep surface generation separately enabled on both connector and editor.
+
 ### Editing guidance
 
 - Clarify distraction removal through the established connector, local inpainting fallback, and native-detail repair checks while preserving original photographs and retained scene content.

@@ -24,6 +24,8 @@ For repeated MCP editing and test runs, see [storage and model-cache guidance](m
 
 **Optional Marigold depth masks:** [set up depth selections](ai-connector/MARIGOLD.md) using the same AI connector and ComfyUI as generative editing. This source-build feature is disabled by default and keeps built-in depth and lens blur available.
 
+**Optional Marigold tools:** [directional light and colour selections](ai-connector/SURFACES.md) use normals and albedo through the same connector. Adjust light direction, select surface colours and recolour while retaining source texture. Saved maps work offline in native previews and exports.
+
 ## Choose your starting point
 
 | You want to…                                                      | Start here                                                                                                                                                                                   |

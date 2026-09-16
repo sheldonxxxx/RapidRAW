@@ -212,6 +212,7 @@ export interface DirectoryTree {
 
 export interface AppSettings {
   marigoldDepthEnabled?: boolean;
+  marigoldSurfaceEnabled?: boolean;
   aiConnectorAddress?: string;
   aiProvider?: string;
   decorations?: boolean;

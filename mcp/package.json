@@ -28,7 +28,8 @@
     "coverage": "node scripts/coverage-report.mjs",
     "test:large": "npm run build && node scripts/large-image-e2e.mjs",
     "test:advanced": "npm run build && node scripts/advanced-e2e.mjs",
-    "test:denoise": "npm run build && node scripts/denoise-e2e.mjs"
+    "test:denoise": "npm run build && node scripts/denoise-e2e.mjs",
+    "test:surfaces": "npm run build && node scripts/marigold-surfaces-e2e.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

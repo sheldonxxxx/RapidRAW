@@ -36,8 +36,9 @@ pub fn sync_orientation(adjustments: &mut Value) {
         for mask in masks {
             if let Some(parts) = mask["subMasks"].as_array_mut() {
                 for part in parts {
-                    if part["type"] == "ai-depth"
-                        && part["parameters"]["depthProvider"] == "marigold"
+                    if (part["type"] == "ai-depth"
+                        && part["parameters"]["depthProvider"] == "marigold")
+                        || crate::marigold_surface::is_surface(part["type"].as_str().unwrap_or(""))
                     {
                         for (key, value) in &geometry {
                             if !value.is_null() {
@@ -51,7 +52,7 @@ pub fn sync_orientation(adjustments: &mut Value) {
     }
 }
 
-fn endpoint(address: &str) -> Result<String, String> {
+pub(crate) fn endpoint(address: &str) -> Result<String, String> {
     let text = if address.contains("://") {
         address.to_owned()
     } else {
@@ -70,7 +71,7 @@ fn endpoint(address: &str) -> Result<String, String> {
     Ok(text.trim_end_matches('/').to_owned())
 }
 
-fn connection_error(error: reqwest::Error) -> String {
+pub(crate) fn connection_error(error: reqwest::Error) -> String {
     log::warn!("Marigold connector request failed: {error:?}");
     if error.is_timeout() {
         "The AI connector took too long to respond. Check its connection and GPU queue.".into()
@@ -79,7 +80,7 @@ fn connection_error(error: reqwest::Error) -> String {
     }
 }
 
-async fn response_json(mut response: reqwest::Response) -> Result<Value, String> {
+pub(crate) async fn response_json(mut response: reqwest::Response) -> Result<Value, String> {
     let success = response.status().is_success();
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {

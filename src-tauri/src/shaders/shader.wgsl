@@ -163,10 +163,10 @@ struct MaskAdjustments {
     red_curve_count: u32,
     green_curve_count: u32,
     blue_curve_count: u32,
-    _pad_end4: f32,
-    _pad_end5: f32,
-    _pad_end6: f32,
-    _pad_end7: f32,
+    surface_recolor_r: f32,
+    surface_recolor_g: f32,
+    surface_recolor_b: f32,
+    surface_recolor_amount: f32,
 }
 
 struct AllAdjustments {
@@ -1806,6 +1806,20 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                 m.color_grading_shadows, m.color_grading_midtones, m.color_grading_highlights, m.color_grading_global, m.color_grading_blending, m.color_grading_balance
             );
             composite_rgb_linear = mix(composite_rgb_linear, mask_graded, influence);
+            if (m.surface_recolor_amount > 0.0) {
+                let weights = vec3<f32>(0.2126, 0.7152, 0.0722);
+                let recolor_target = srgb_to_linear(vec3<f32>(m.surface_recolor_r, m.surface_recolor_g, m.surface_recolor_b));
+                let target_luma = dot(recolor_target, weights);
+                if (target_luma > 0.00001) {
+                    let y = max(0.0, dot(composite_rgb_linear, weights));
+                    let delta = recolor_target * (y / target_luma) - vec3<f32>(y);
+                    let ceiling = (vec3<f32>(max(1.0, y)) - vec3<f32>(y)) / max(delta, vec3<f32>(0.00000001));
+                    let limits = select(vec3<f32>(1.0), ceiling, delta > vec3<f32>(0.00000001));
+                    let saturation = clamp(min(limits.r, min(limits.g, limits.b)), 0.0, 1.0);
+                    let colored = vec3<f32>(y) + delta * saturation;
+                    composite_rgb_linear = mix(composite_rgb_linear, colored, influence * m.surface_recolor_amount);
+                }
+            }
         }
     }
 

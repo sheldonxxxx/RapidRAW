@@ -19,6 +19,25 @@ export const createSubMask = (
   };
 
   switch (type) {
+    case Mask.AiNormals:
+      return {
+        ...common,
+        parameters: { maskDataBase64: null, normalAngle: 0, normalAmount: 0.5, grow: 0, feather: 0 },
+      };
+    case Mask.AiAlbedo:
+      return {
+        ...common,
+        parameters: {
+          maskDataBase64: null,
+          surfacePointX: 0.5,
+          surfacePointY: 0.5,
+          surfaceTolerance: 0.13,
+          surfaceColor: [90, 160, 220],
+          surfaceAmount: 0,
+          grow: 0,
+          feather: 0,
+        },
+      };
     case Mask.Radial:
       return {
         ...common,

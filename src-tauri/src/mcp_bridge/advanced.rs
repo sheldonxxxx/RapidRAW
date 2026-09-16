@@ -293,7 +293,7 @@ impl Bridge {
         let session = self.session(params)?.clone();
         session.check_revision(params)?;
         let kind = required(params, "kind")?;
-        if !["subject", "foreground", "sky", "depth"].contains(&kind) {
+        if !["subject", "foreground", "sky", "depth", "normals", "albedo"].contains(&kind) {
             return Err("INVALID_ARGUMENT: unknown AI mask kind".into());
         }
         let provider = params
@@ -318,13 +318,30 @@ impl Bridge {
             .ok_or("INVALID_ARGUMENT: parameters must be an object")?;
         for key in controls_map.keys() {
             if ![
-                "grow", "feather", "minDepth", "maxDepth", "minFade", "maxFade",
+                "grow",
+                "feather",
+                "minDepth",
+                "maxDepth",
+                "minFade",
+                "maxFade",
+                "normalAngle",
+                "normalAmount",
+                "surfacePointX",
+                "surfacePointY",
+                "surfaceTolerance",
+                "surfaceAmount",
+                "surfaceColor",
             ]
             .contains(&key.as_str())
             {
                 return Err(format!(
                     "INVALID_ARGUMENT: unsupported AI mask parameter {key}"
                 ));
+            }
+            if (key.starts_with("normal") && kind != "normals")
+                || (key.starts_with("surface") && kind != "albedo")
+            {
+                return Err(format!("INVALID_ARGUMENT: {key} does not apply to {kind}"));
             }
             if kind != "depth"
                 && ["minDepth", "maxDepth", "minFade", "maxFade"].contains(&key.as_str())
@@ -338,7 +355,30 @@ impl Bridge {
         let subject_request = subject_refinement::prepare(params, &session)?;
         number(&controls, "grow", 0.0, -100.0, 100.0)?;
         number(&controls, "feather", 0.0, 0.0, 100.0)?;
-        if provider == "builtin" {
+        if matches!(kind, "normals" | "albedo") && params.get("region").is_some() {
+            return Err("INVALID_ARGUMENT: intersect surface masks with a brush or subject mask to limit the region".into());
+        }
+        if kind == "normals" {
+            number(&controls, "normalAngle", 0.0, -180.0, 180.0)?;
+            number(&controls, "normalAmount", 0.5, -1.5, 1.5)?;
+        }
+        if kind == "albedo" {
+            number(&controls, "surfacePointX", 0.5, 0.0, 1.0)?;
+            number(&controls, "surfacePointY", 0.5, 0.0, 1.0)?;
+            number(&controls, "surfaceTolerance", 0.13, 0.005, 1.0)?;
+            number(&controls, "surfaceAmount", 0.0, 0.0, 1.0)?;
+            if let Some(color) = controls.get("surfaceColor") {
+                if color.as_array().is_none_or(|a| {
+                    a.len() != 3 || a.iter().any(|v| v.as_u64().is_none_or(|v| v > 255))
+                }) {
+                    return Err(
+                        "INVALID_ARGUMENT: surfaceColor must contain three integers from 0 to 255"
+                            .into(),
+                    );
+                }
+            }
+        }
+        if provider == "builtin" && !matches!(kind, "normals" | "albedo") {
             self.ensure_models("masks", false).await?;
         }
         self.activate(&session.id).await?;
@@ -394,6 +434,27 @@ impl Bridge {
                     )
                     .await?,
                 ),
+                "normals" | "albedo" => {
+                    let mut generated = crate::marigold_surface::generate_marigold_surface_mask(
+                        kind.into(),
+                        adjustments.clone(),
+                        session.working_path.clone(),
+                        state.clone(),
+                        self.handle.clone(),
+                    )
+                    .await?;
+                    if kind == "normals" {
+                        generated["normalAngle"] = json!(0);
+                        generated["normalAmount"] = json!(0.5);
+                    } else {
+                        generated["surfacePointX"] = json!(0.5);
+                        generated["surfacePointY"] = json!(0.5);
+                        generated["surfaceTolerance"] = json!(0.13);
+                        generated["surfaceAmount"] = json!(0);
+                        generated["surfaceColor"] = json!([90, 160, 220]);
+                    }
+                    Ok(generated)
+                }
                 "depth" if provider == "marigold" => {
                     let mut generated = crate::marigold_depth::generate_marigold_depth_mask(
                         adjustments.clone(),
@@ -489,7 +550,8 @@ impl Bridge {
             bitmap.ok_or("MASK_GENERATION_FAILED: Generated mask could not be rasterized")?
         };
         let statistics = mask_statistics(&bitmap);
-        if target.is_none() && statistics["empty"] == true {
+        if target.is_none() && !matches!(kind, "normals" | "albedo") && statistics["empty"] == true
+        {
             return Err("EMPTY_MASK: Model selected no pixels. Adjust the subject region or mask parameters and retry.".into());
         }
         let mut next = adjustments.clone();

@@ -295,6 +295,50 @@ fn submask_parameter_schema(kind: &str) -> Value {
             props.extend(fields("startX startY endX endY", number(0.0, 100000.0)));
             required.extend(["startX", "startY", "endX", "endY"]);
         }
+        "ai-normals" | "ai-albedo" => {
+            let kind_name = if kind == "ai-normals" {
+                "normals"
+            } else {
+                "albedo"
+            };
+            props.insert(
+                "surfaceArtifact".into(),
+                object(
+                    json!({
+                        "version":{"type":"integer","const":1}, "kind":{"const":kind_name},
+                        "profile":{"const":format!("marigold-v2-{kind_name}-q4-v1")},
+                        "sourceWidth":integer(1,100000),"sourceHeight":integer(1,100000),
+                        "sourceHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64},
+                        "geometryHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64},
+                        "workflowHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64},
+                        "mapHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64}
+                    }),
+                    &[
+                        "version",
+                        "kind",
+                        "profile",
+                        "sourceWidth",
+                        "sourceHeight",
+                        "sourceHash",
+                        "geometryHash",
+                        "workflowHash",
+                        "mapHash",
+                    ],
+                ),
+            );
+            required.push("surfaceArtifact");
+            if kind == "ai-normals" {
+                props.insert("normalAngle".into(), number(-360.0, 360.0));
+                props.insert("normalAmount".into(), number(-1.5, 1.5));
+            } else {
+                props.extend(fields(
+                    "surfacePointX surfacePointY surfaceAmount",
+                    number(0.0, 1.0),
+                ));
+                props.insert("surfaceTolerance".into(), number(0.005, 1.0));
+                props.insert("surfaceColor".into(), array(integer(0, 255), 3, 3));
+            }
+        }
         "ai-depth" => {
             props.insert(
                 "depthProvider".into(),
@@ -387,6 +431,8 @@ fn submask_schema() -> Value {
         "ai-foreground",
         "ai-sky",
         "ai-depth",
+        "ai-normals",
+        "ai-albedo",
         "quick-eraser",
         "all",
         "clone",
@@ -730,6 +776,14 @@ fn validate_submask(value: &Value, path: &str, ids: &mut HashSet<String>) -> Res
             &format!("{path}.parameters.maskDataBase64"),
         )?;
     }
+    if crate::marigold_surface::is_surface(kind) {
+        let artifact = serde_json::from_value(params["surfaceArtifact"].clone())
+            .map_err(|_| format!("{path}: missing surface artifact"))?;
+        crate::marigold_surface::validate_artifact(
+            params["maskDataBase64"].as_str().unwrap(),
+            &artifact,
+        )?;
+    }
     if kind == "ai-depth" {
         if params["depthProvider"] == "marigold" {
             let artifact = serde_json::from_value(params["depthArtifact"].clone())
@@ -869,6 +923,21 @@ pub fn validate_adjustments(value: &Value, dimensions: (u32, u32)) -> Result<(),
         return Err("adjustments.lutPath: use null to remove a LUT, not an empty path".into());
     }
     let mut ids = HashSet::new();
+    if let Some(masks) = value["masks"].as_array() {
+        let slots: usize = masks
+            .iter()
+            .map(|m| {
+                1 + usize::from(
+                    m["subMasks"]
+                        .as_array()
+                        .is_some_and(|parts| parts.iter().any(|p| p["type"] == "ai-normals")),
+                )
+            })
+            .sum();
+        if slots > crate::image_processing::MAX_MASKS {
+            return Err("adjustments.masks: maximum 32 render slots; each directional light mask uses two slots".into());
+        }
+    }
     for collection in ["masks", "aiPatches"] {
         if let Some(containers) = value[collection].as_array() {
             for (index, container) in containers.iter().enumerate() {
@@ -881,6 +950,17 @@ pub fn validate_adjustments(value: &Value, dimensions: (u32, u32)) -> Result<(),
                     validate_curves(&container["adjustments"], &format!("{path}.adjustments"))?;
                 }
                 let submasks = container["subMasks"].as_array().unwrap();
+                let surface_count = submasks
+                    .iter()
+                    .filter(|sm| {
+                        crate::marigold_surface::is_surface(sm["type"].as_str().unwrap_or(""))
+                    })
+                    .count();
+                if surface_count > 1 || (collection == "aiPatches" && surface_count > 0) {
+                    return Err(format!(
+                        "{path}: use one normals or albedo component per adjustment mask"
+                    ));
+                }
                 if container["visible"] == true && !submasks.iter().any(|sm| sm["visible"] == true)
                 {
                     return Err(format!("{path}: visible container has no visible submask"));

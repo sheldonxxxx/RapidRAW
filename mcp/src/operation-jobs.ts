@@ -28,7 +28,11 @@ interface CapturedModels {
   assets: { name: string; path: string; sha256: string }[];
 }
 const modelKind = (operation: string, args: JsonObject): ModelKind | undefined => {
-  if (operation === 'mask_generate' && args.kind === 'depth' && args.depth_provider === 'marigold') return undefined;
+  if (
+    operation === 'mask_generate' &&
+    (args.kind === 'normals' || args.kind === 'albedo' || (args.kind === 'depth' && args.depth_provider === 'marigold'))
+  )
+    return undefined;
   if (operation === 'enhance') {
     const request = args.request as JsonObject | undefined;
     if (!request || typeof request !== 'object') return fail('INVALID_ARGUMENT', 'Enhancement request is required');

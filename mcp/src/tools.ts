@@ -566,10 +566,10 @@ export const toolDefinitions: ToolDefinition[] = [
   }),
   tool(
     'mask_generate',
-    'Generate an AI mask. Depth defaults to the built-in model; depth_provider=marigold explicitly sends analysis pixels to the separately enabled depth service and saves a reusable 16-bit map. Subject include/exclude points use the full mask canvas before crop. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
+    'Generate an AI mask. Normals/albedo explicitly use the separately enabled shared AI connector and save RGB16 maps. Normals parameters: normalAngle (degrees), normalAmount (signed exposure stops, -1.5..1.5). Albedo parameters: surfacePointX/Y (0..1 on the unrotated map), surfaceTolerance (.005..1), surfaceColor (RGB 0..255), surfaceAmount (0..1). Saved maps work offline; intersect with regional masks to confine edits. Depth defaults to the built-in model; depth_provider=marigold explicitly sends analysis pixels to the separately enabled depth service and saves a reusable 16-bit map. Subject include/exclude points use the full mask canvas before crop. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
     {
       ...mutation,
-      kind: z.enum(['subject', 'foreground', 'sky', 'depth']),
+      kind: z.enum(['subject', 'foreground', 'sky', 'depth', 'normals', 'albedo']),
       depth_provider: z.enum(['builtin', 'marigold']).optional(),
       name: z.string().max(200).optional(),
       region: region.optional(),
