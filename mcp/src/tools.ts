@@ -409,8 +409,8 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'start_denoise',
-    'Start a background native AI or BM3D denoise job after capturing the source and current edits. Returns job_id; use get_job for progress and result_session_id. One worker per workspace; editing remains available during computation. Requires installed AI assets. Result is a separate session retaining RAW interpretation.',
-    { ...mutation, intensity: percent.optional(), method: z.enum(['ai', 'bm3d']).optional() },
+    'Start background denoise with captured source and edits. ai (default) is lightweight NIND; bm3d is native CPU; nonlocal is GPU Bayer RAW-to-RAW using a configured PyTorch CUDA worker and pinned checkpoint. Nonlocal creates a float Bayer DNG developed by the normal RAW pipeline; quality balanced uses one pass, maximum four rotations. Intensity defaults to 100 for nonlocal, 50 otherwise. Returns job_id; get_job yields result_session_id. One worker per workspace; editing remains available. Original session is preserved.',
+    { ...mutation, intensity: percent.optional(), method: z.enum(['ai', 'bm3d', 'nonlocal']).optional(), quality: z.enum(['balanced', 'maximum']).optional() },
   ),
   tool(
     'get_job',
@@ -426,7 +426,7 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'cancel_job',
-    'Request cooperative cancellation between BM3D patches or AI tiles without stopping the editing engine. Poll until cancelled. If completion already won the race, returns the completed result.',
+    'Cancel a denoise job without stopping the editing engine. BM3D and NIND stop between patches or tiles; Nonlocal terminates its own CUDA worker. Poll until cancelled. If completion already won the race, returns the completed result.',
     job,
     false,
     { idempotent: true },

@@ -2590,7 +2590,7 @@ pub fn get_all_adjustments_from_json(
     let mut mask_adjustments = [MaskAdjustments::default(); MAX_MASKS];
     let mut mask_count = 0;
 
-    let mask_definitions = crate::marigold_surface::render_masks(&js_adjustments);
+    let mask_definitions = crate::marigold_surface::render_masks(js_adjustments);
 
     for (i, mask_def) in mask_definitions
         .iter()

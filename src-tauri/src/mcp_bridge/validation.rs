@@ -274,6 +274,17 @@ fn submask_parameter_schema(kind: &str) -> Value {
             if matches!(kind, "clone" | "heal") {
                 props.extend(fields("sourceX sourceY", number(0.0, 100000.0)));
             }
+            if kind == "heal" {
+                props.insert("textureOnly".into(), boolean());
+                props.insert("textureRadius".into(), number(1.0, 32.0));
+                props.insert("textureTileSize".into(), json!({"type":"integer","minimum":64,"maximum":2048,"description":"Optional square donor area centred at source_point. Repeat reflected fine detail only, without repeating donor colour. Inspect for repeated structures; omit for full-footprint sampling."}));
+                props.get_mut("textureOnly").unwrap()["description"] = json!(
+                    "A visible heal submask enables texture transfer for the whole combined patch, retaining destination broad colour and light. Use only on a clean repair; default false."
+                );
+                props.get_mut("textureRadius").unwrap()["description"] = json!(
+                    "Gaussian separation scale (sigma) in source pixels for textureOnly healing; default 8. All visible texture-only submasks must agree."
+                );
+            }
             if kind == "liquify" {
                 props.insert("pressure".into(), number(1.0, 100.0));
                 props.insert(
@@ -1201,6 +1212,23 @@ mod tests {
 
     fn mask() -> Value {
         json!({"id":"mask-1","name":"Subject","visible":true,"invert":false,"adjustments":{"exposure":0.5},"subMasks":[{"id":"shape-1","type":"radial","visible":true,"mode":"additive","parameters":{"centerX":50,"centerY":50,"radiusX":20,"radiusY":30,"rotation":0,"feather":0.5}}]})
+    }
+
+    #[test]
+    fn texture_healing_parameters_are_opt_in_and_bounded() {
+        let mut definition = mask();
+        definition["subMasks"][0]["type"] = json!("heal");
+        definition["subMasks"][0]["parameters"] = json!({
+            "lines":[{"tool":"brush","brushSize":100,"points":[{"x":100,"y":100}]}],
+            "textureOnly":true,"textureRadius":8
+        });
+        validate_adjustments(&json!({"masks":[definition.clone()]}), (400, 300)).unwrap();
+        for radius in [0.0, 33.0] {
+            definition["subMasks"][0]["parameters"]["textureRadius"] = json!(radius);
+            assert!(
+                validate_adjustments(&json!({"masks":[definition.clone()]}), (400, 300)).is_err()
+            );
+        }
     }
 
     #[test]

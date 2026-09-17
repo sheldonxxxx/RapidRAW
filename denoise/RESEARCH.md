@@ -1,0 +1,44 @@
+# RAW denoising research
+
+The target is faithful photographic detail at high ISO, with the existing NIND path retained for lighter workloads and a separate GPU path for demanding photographs. A larger checkpoint alone is not evidence of progress. Research must account for sensor statistics, CFA sampling, colour reconstruction, repeated texture, training coverage and the final rendering.
+
+## Evidence informing the design
+
+| Direction | Primary evidence | Consequence for this implementation |
+| --- | --- | --- |
+| Joint RAW restoration | [DxO's DeepPRIME XD3 overview](https://www.dxo.com/en/news/deepprime-xd3-fourth-generation) describes joint denoising, demosaicing and chromatic-aberration correction, with improved synthetic-to-real training. | A post-render denoiser cannot reproduce the entire commercial pipeline. Work before demosaicing and assess joint reconstruction separately. Vendor claims do not establish our quality. |
+| Camera-independent training | The [AIM 2025 RAW challenge](https://arxiv.org/abs/2510.06601) reports leading results from improved training and noise synthesis, including random masking. | Separate architecture changes from noise synthesis, data coverage and training strategy in ablations. |
+| Nonlocal texture | [Learned Nonlocal Feature Matching and Filtering](https://arxiv.org/abs/2604.17453) learns matching, collaborative filtering and aggregation in multiscale features, conditioned on noise. | Start with its released RAW checkpoint and verified architecture, retaining authorship and license. Its published ranking is not our independently measured ranking. |
+| Real paired RAW data | [RawNIND](https://arxiv.org/abs/2501.08924) provides real RAW captures and joint RAW/linear-RGB restoration methods. | Use real captures for development; keep camera, scene and exposure provenance. Low-ISO references retain residual noise and require registration for real-pair scoring. |
+| Blind noise estimation | [YOND](https://arxiv.org/abs/2506.03645) studies camera-independent noise estimation and variance stabilization; [RPG-VST](https://arxiv.org/abs/2607.24291) examines robust parameter fitting. | Estimate noise from unclipped sensor statistics, expose fit diagnostics, and test estimated parameters against controlled known noise. Do not equate our Haar estimator with either paper's method. |
+| Shadow colour | [Why Low-Light Cameras Go Color Blind](https://arxiv.org/abs/2607.11090) examines black-level error and colour bias. | Preserve signed black-subtracted samples during estimation. Evaluate channel bias and structured-noise stress, rather than silently neutralizing colour. |
+
+Generative restoration is a separate fidelity/realism tradeoff. Invented texture can appear convincing while changing feathers, lettering or distant structures. The current loss and inference path use no text-conditioned generator, GAN loss or generative image service. Diffusion-based noise synthesis remains a possible training-data experiment; it is not a reason to synthesize new scene detail during restoration.
+
+## Implemented experimental system
+
+The model has 15,282,866 parameters. Input is four normalized sensor planes in **R, G-on-red-row, B, G-on-blue-row** order, followed by four noise standard-deviation maps. Output is four denoised planes. CFA coordinates, per-channel black/white levels and source hashes accompany each output. No rescaling, training or full-frame model execution is required on the Mac client.
+
+The blind estimator fits nonnegative shot/read parameters from diagonal Haar coefficients. It selects lower-texture blocks within intensity strata, uses robust weighted regression, and records coverage, variance fit and weak identifiability. Negative samples after black subtraction are retained: dropping them would bias dark-region statistics. This estimator remains susceptible to texture and structured sensor noise.
+
+Inference uses halo tiles and streams them through the GPU. A separate PyTorch sampler checks the custom CUDA operator numerically. Optional transform averaging is evaluated independently of noise-map changes. Its variance is an observable sensitivity diagnostic, not a probability of correctness.
+
+Adaptation synthesizes Poisson shot noise, Gaussian read noise, exposure and channel variation, with optional row offsets, black bias and noise-map jitter. Training uses a RAW fidelity loss with bounded shadow emphasis. The structured and shot/read-only runs start from the same weights and seed so they can be compared. Each run retains its best and latest checkpoints, intermediate validation records, loss and parameter settings. Rejected intermediate weights are not individually retained.
+
+## Evaluation protocol
+
+1. **Numerical contracts:** verify CFA phases, odd edge dimensions, complete tile coverage, tile boundaries on known filters, sampler equivalence, nonfinite rejection and noise estimation with known corruption.
+2. **Controlled corruption:** add fixed, seeded noise to low-ISO RAW targets. Compare known and estimated noise maps, pilot conditioning, transform averaging and structured-noise correction. Report RAW PSNR, edge PSNR, flat-region error, channel bias and an exposure-normalized gamma-domain metric. The latter is a sensor-plane diagnostic, not a complete rendered perceptual score.
+3. **Training separation:** split by scene before adaptation. Never choose a checkpoint on test scenes. Record upstream pretraining overlap as unknown unless training provenance resolves it. Small crops and a few cameras cannot establish broad generalization.
+4. **Real RAW inspection:** render matched original/candidate pairs at full resolution, inspect the whole scene and native detail, and measure runtime, GPU memory, source integrity and colour handling. Check feathers, hair, thin branches, lettering, stars, smooth gradients and saturation separately. User acceptance remains separate from internal assessment.
+5. **Commercial comparison:** process the same camera RAWs with a named product/version. Record settings; disable unrelated sharpening or match it explicitly; account for lens correction, crop and colour transforms before scoring. Use blind paired preferences and real native-detail inspection. Commercial output is a comparison reference, not ground truth or a training target by default.
+
+## Promotion and further work
+
+An improvement must beat the frozen baseline on the intended conditions without unacceptable losses elsewhere. First-stage checkpoint selection rejects any validation-crop regression above 0.20 dB even when the average rises. Final promotion additionally needs rendered detail, colour, seam and full-resolution checks. A failed ablation remains evidence; adding its switch does not make it an improvement.
+
+The real-pair diagnostic implements translation registration and robust exposure/offset fitting on the noisy input, reused unchanged for all predictions. It reports residual subpixel shifts and photometric fit error, avoiding Bayer interpolation. These approximations do not remove reference noise, motion or optical differences; the measurements are not official RawNIND benchmark scores.
+
+The next research stages are larger camera-separated validation; stricter real-pair alignment and confidence masks; camera-calibrated dark frames and flat fields; joint denoise/demosaic comparisons; and distillation only after a stronger teacher is demonstrated. Burst fusion deserves a separate branch where several registered exposures exist, since motion and occlusion change the problem. Model fitting on a six-scene subset is a pilot experiment, not sufficient training for commercial parity.
+
+Commercial-level quality remains the research target. Neither benchmark leadership nor a match to DxO, Adobe or Topaz is established by this package.

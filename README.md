@@ -100,6 +100,8 @@ RapidRAW edits the pixels it receives. Camera-native fisheye stitching and spher
 
 Existing mask and denoise operations default to CPU on every platform. Their Linux CUDA support is opt-in and separate from GPU photo rendering; subject selection and local inpainting retain CPU compatibility paths.
 
+For GPU RAW denoising on an NVIDIA server, the optional [Nonlocal backend](denoise/README.md) integrates with MCP background jobs. It produces a Bayer DNG that uses RapidRAW's normal demosaic and colour pipeline, with captured edits in a separate session. The existing lightweight NIND option remains available. Nonlocal requires a separately configured Python/CUDA environment; it is experimental, and commercial parity has not been established.
+
 Passing an operation or test does not establish the quality of a photograph. Fine hair/feather masks, wide panorama framing, genuine HDR/focus brackets and film-negative quality have remaining acceptance gaps. See the [verification record](mcp/VERIFICATION.md), [capability matrix](mcp/CAPABILITY-MATRIX.md) and [remaining priorities](mcp/GAP-ASSESSMENT.md) for precise boundaries. Upstream platform availability is separate from this fork's MCP testing.
 
 ## Originals, privacy and local state

@@ -173,6 +173,7 @@ impl Bridge {
             .map_err(|e| e.to_string())?
             .join("models");
         let mut groups = serde_json::Map::new();
+        groups.insert("nonlocal".into(), crate::raw_denoise::status());
         for kind in ["masks", "inpaint", "denoise"] {
             let mut assets = Vec::new();
             let mut ready = true;
@@ -367,15 +368,15 @@ impl Bridge {
             number(&controls, "surfacePointY", 0.5, 0.0, 1.0)?;
             number(&controls, "surfaceTolerance", 0.13, 0.005, 1.0)?;
             number(&controls, "surfaceAmount", 0.0, 0.0, 1.0)?;
-            if let Some(color) = controls.get("surfaceColor") {
-                if color.as_array().is_none_or(|a| {
+            if let Some(color) = controls.get("surfaceColor")
+                && color.as_array().is_none_or(|a| {
                     a.len() != 3 || a.iter().any(|v| v.as_u64().is_none_or(|v| v > 255))
-                }) {
-                    return Err(
-                        "INVALID_ARGUMENT: surfaceColor must contain three integers from 0 to 255"
-                            .into(),
-                    );
-                }
+                })
+            {
+                return Err(
+                    "INVALID_ARGUMENT: surfaceColor must contain three integers from 0 to 255"
+                        .into(),
+                );
             }
         }
         if provider == "builtin" && !matches!(kind, "normals" | "albedo") {

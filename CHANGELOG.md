@@ -4,6 +4,14 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Experimental GPU RAW denoising
+
+- Integrate optional Nonlocal CUDA inference with MCP `start_denoise`. Return a separate float Bayer DNG and retain captured edits, using RapidRAW's existing decoder, demosaic and colour pipeline. Add one-pass/four-rotation modes, reusable verified predictions, cancellable worker processes and persistent job results. Keep NIND and BM3D available.
+- Add an optional Python Bayer RAW denoising backend with per-channel noise estimation, tiled GPU inference, native-resolution sRGB exports and source/model provenance. Preserve the existing desktop/MCP NIND denoiser.
+- Add reproducible noise-synthesis evaluation, approximate real-pair diagnostics and scene-separated adaptation tools with regression gates. This is a research implementation; commercial parity is not established.
+- Extend GPU research with a fixed 40-scene study, content-selected crops, matched RAW/gradient-loss adaptation, tile-context diagnostics and checkpoint-hash-verified held-out evaluation. Preserve failed experiments and the existing lightweight denoiser.
+- Fix real-pair registration metadata serialization for nonzero crop origins.
+
 ### Setup and connection guidance
 
 - Add Codex project/user configuration, skill installation, environment and timeout examples, isolated-workspace preflight, and separate registration/native-render verification steps.
@@ -18,6 +26,8 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ### Editing guidance
 
+- Add opt-in texture-only healing for clean repairs with mismatched fine texture. It transfers donor detail while retaining broad destination colour and light; ordinary healing remains unchanged.
+- Add a combined clone, heal and mask-blending workflow for repairs with mismatched texture or visible joins, including donor-coordinate checks and separate native-resolution boundary inspection.
 - Clarify distraction removal through the established connector, local inpainting fallback, and native-detail repair checks while preserving original photographs and retained scene content.
 - Add guidance for checking masks against retouched scenes and narrow background openings, and reconsidering treatments when refinements damage edges.
 - Link Lightweft as the companion workspace for artistic direction, personal style, and visual review.

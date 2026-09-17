@@ -44,6 +44,8 @@ mod negative_conversion;
 mod panorama_stitching;
 mod panorama_utils;
 mod preset_converter;
+#[cfg(feature = "mcp")]
+mod raw_denoise;
 mod raw_processing;
 #[cfg(test)]
 mod runtime_regression_tests;

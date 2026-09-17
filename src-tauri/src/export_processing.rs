@@ -425,7 +425,7 @@ fn process_image_for_export_pipeline(
         apply_all_transformations(Cow::Borrowed(base_image), js_adjustments);
     let (img_w, img_h) = transformed_image.dimensions();
 
-    let mask_definitions = crate::marigold_surface::render_masks(&js_adjustments);
+    let mask_definitions = crate::marigold_surface::render_masks(js_adjustments);
 
     let warped_image = resolve_warped_image_for_masks(state, js_adjustments, &mask_definitions);
     let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
@@ -728,7 +728,7 @@ fn export_masks_for_image(
         apply_all_transformations(Cow::Borrowed(base_image), js_adjustments);
     ensure_export_not_cancelled(cancellation_token)?;
     let (img_w, img_h) = transformed_image.dimensions();
-    let mask_definitions = crate::marigold_surface::render_masks(&js_adjustments);
+    let mask_definitions = crate::marigold_surface::render_masks(js_adjustments);
 
     let warped_image = resolve_warped_image_for_masks(state, js_adjustments, &mask_definitions);
     let mut mask_bitmaps = Vec::with_capacity(mask_definitions.len());

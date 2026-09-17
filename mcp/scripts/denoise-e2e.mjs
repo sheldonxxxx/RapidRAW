@@ -112,6 +112,7 @@ async function connect() {
       command: process.execPath,
       args: [fileURLToPath(new URL('../dist/index.js', import.meta.url)), '--binary', binary, '--workspace', workspace],
       stderr: 'inherit',
+      env: { ...process.env },
     }),
   );
 }

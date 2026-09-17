@@ -1,0 +1,128 @@
+{
+  "dataset": "RawNIND",
+  "doi": "10.14428/DVN/DEQCIM",
+  "license": "CC-BY-SA-4.0 per source metadata; retain per-file provenance",
+  "selection": "Eight additional training scenes selected by camera/file coverage after Sony-only adaptation regressed on validation, before held-out testing. No test outputs consulted.",
+  "files": [
+    {
+      "scene": "7D-3",
+      "split": "train",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_7D-3_GT_ISO100_sha1=5e34c7445cac7688bb424b6cda45eb5bc99754e6.cr2",
+      "id": 29330,
+      "bytes": 23935823,
+      "checksum": {
+        "type": "MD5",
+        "value": "9ab3dc27807311981e128c544e721c54"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29330",
+      "camera": "Canon EOS 7D"
+    },
+    {
+      "scene": "7D-6",
+      "split": "train",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_7D-6_GT_ISO100_sha1=2cedd56613cd9811b313f2d8e16399bf63c6aa58.cr2",
+      "id": 29226,
+      "bytes": 24914557,
+      "checksum": {
+        "type": "MD5",
+        "value": "6a16bf1774e905c12dc3490ab53625b5"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29226",
+      "camera": "Canon EOS 7D"
+    },
+    {
+      "scene": "Kortlek",
+      "split": "train",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_Kortlek_GT_ISO100_sha1=b5a564cd9291224caf363b6b03054365d59d316b.cr2",
+      "id": 29004,
+      "bytes": 27726541,
+      "checksum": {
+        "type": "MD5",
+        "value": "79fab7b1b8d2886a38ffde446cb44e8d"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29004",
+      "camera": "Canon EOS 6D"
+    },
+    {
+      "scene": "Metalldel",
+      "split": "train",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_Metalldel_GT_ISO100_sha1=3e57815c443bedd3778d3b9b1ea08a97d9d482ad.cr2",
+      "id": 28889,
+      "bytes": 24707287,
+      "checksum": {
+        "type": "MD5",
+        "value": "71e9a9526e4c269954159acd6721c3be"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28889",
+      "camera": "Canon EOS 6D"
+    },
+    {
+      "scene": "MuseeL-C500D-mammal",
+      "split": "train",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_MuseeL-C500D-mammal_GT_ISO100_sha1=53e8a797952880f32bddefcc62f031b1a0f515ca.cr2",
+      "id": 28974,
+      "bytes": 19195811,
+      "checksum": {
+        "type": "MD5",
+        "value": "4fdaa8089e001c9b7487a2ee4303ef16"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28974",
+      "camera": "Canon EOS 500D"
+    },
+    {
+      "scene": "MuseeL-skull-C500D",
+      "split": "train",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_MuseeL-skull-C500D_GT_ISO100_sha1=d0fc6c2ba21382a80482f2f2fe37ef5c46042e93.cr2",
+      "id": 29828,
+      "bytes": 18405755,
+      "checksum": {
+        "type": "MD5",
+        "value": "74e636a52ac6bbf156e856f9cf7a4d5b"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29828",
+      "camera": "Canon EOS 500D"
+    },
+    {
+      "scene": "Iain02",
+      "split": "train",
+      "role": "clean",
+      "iso": 200,
+      "filename": "Bayer_Iain02_GT_ISO200_sha1=a6a0ef645b6aca1ee0edfc53edd744f056c72ba3.nef",
+      "id": 28489,
+      "bytes": 5529047,
+      "checksum": {
+        "type": "MD5",
+        "value": "47abba006fc611d75acee42f6025daa8"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28489",
+      "camera": "NIKON D40"
+    },
+    {
+      "scene": "D60-3",
+      "split": "train",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_D60-3_GT_ISO100_sha1=166a79c86423cb67eee21012b663baeb13a5fb24.crw",
+      "id": 28717,
+      "bytes": 6257570,
+      "checksum": {
+        "type": "MD5",
+        "value": "03003a436a1492fcb7b2378aad55e693"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28717",
+      "camera": "unknown-.crw"
+    }
+  ]
+}
