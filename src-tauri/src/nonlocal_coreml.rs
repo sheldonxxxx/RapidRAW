@@ -194,6 +194,9 @@ fn manifest_io(manifest: &Value, key: &str, name: &str, channels: i64) -> Result
 
 #[derive(Debug)]
 pub(crate) struct CoreMlContract {
+    // Only read by the macOS-only `open_backend`; Linux builds validate
+    // bundles fail-closed without loading them.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub package: PathBuf,
     /// Robust runtime tree hash (relative paths + bytes) for cache identity.
     pub tree_sha256: String,

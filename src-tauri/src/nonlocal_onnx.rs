@@ -442,6 +442,9 @@ pub(crate) fn open_backend(config: &NativeConfig, contract: &BundleContract) -> 
 /// another provider and errors propagate.
 pub(crate) trait TilePredictor {
     fn predict_tile(&mut self, tile: &[f32]) -> Result<Vec<f32>>;
+    // Only called from macOS-gated CoreML paths; the ONNX Linux path
+    // records its provider through config instead.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     fn provider_name(&self) -> &'static str;
 }
 
