@@ -67,6 +67,6 @@ Background refinement uses `start_operation` with `operation: "mask_generate"` a
 
 ## Review and reproduction
 
-Start with [setup and verification](README.md#verification) and the [testing matrix](testing-matrix.md). Pure tests check prompt bounds/labels, logit integrity/padding, schema transport and captured revisions. The native acceptance runner verifies actual inference, edits, history, portable state and workers. Photographic improvement needs a separate review with unchanged first attempts, explicit inclusion/exclusion criteria and representative images.
+Start with [setup and verification](../../mcp/README.md#verification) and the [testing matrix](testing.md). Pure tests check prompt bounds/labels, logit integrity/padding, schema transport and captured revisions. The native acceptance runner verifies actual inference, edits, history, portable state and workers. Photographic improvement needs a separate review with unchanged first attempts, explicit inclusion/exclusion criteria and representative images.
 
 Use existing `mask_update.submask_operations` to add or edit corrective brush/range masks when appropriate. Assess inclusion, spill and boundary detail independently: growing or blurring a mask alone cannot prove that missing anatomy or fine strands were recovered.

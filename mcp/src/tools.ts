@@ -409,7 +409,7 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'start_denoise',
-    'Start background denoise with captured source and edits. ai (default) is lightweight NIND; bm3d is native CPU; nonlocal is GPU Bayer RAW-to-RAW using a configured PyTorch CUDA worker and pinned checkpoint. Nonlocal creates a float Bayer DNG developed by the normal RAW pipeline; quality balanced uses one pass, maximum four rotations. Intensity defaults to 100 for nonlocal, 50 otherwise. Returns job_id; get_job yields result_session_id. One worker per workspace; editing remains available. Original session is preserved.',
+    'Start background denoise with captured source and edits. ai (default) is lightweight NIND; bm3d is native CPU; nonlocal is Bayer RAW-to-RAW using the provider-selected installed bundle (RAPIDRAW_NONLOCAL_BUNDLE override when set) with native ONNX on CPU or Linux CUDA, or direct CoreML.framework on macOS. Use install_model kind=nonlocal first when the bundle is absent; start_denoise never downloads. Nonlocal creates a float Bayer DNG developed by the normal RAW pipeline; quality balanced uses one pass, maximum four rotations. Intensity defaults to 100 for nonlocal, 50 otherwise. Returns job_id; get_job yields result_session_id. One worker per workspace; editing remains available. Original session is preserved.',
     { ...mutation, intensity: percent.optional(), method: z.enum(['ai', 'bm3d', 'nonlocal']).optional(), quality: z.enum(['balanced', 'maximum']).optional() },
   ),
   tool(
@@ -426,7 +426,7 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'cancel_job',
-    'Cancel a denoise job without stopping the editing engine. BM3D and NIND stop between patches or tiles; Nonlocal terminates its own CUDA worker. Poll until cancelled. If completion already won the race, returns the completed result.',
+    'Cancel a denoise job without stopping the editing engine. BM3D, NIND and Nonlocal stop between patches or tiles. Poll until cancelled. If completion already won the race, returns the completed result.',
     job,
     false,
     { idempotent: true },
@@ -673,8 +673,8 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'install_model',
-    'Download and install RapidRAW local model assets for masks, inpainting or denoise. This makes network requests and may download large files.',
-    { kind: z.enum(['masks', 'inpaint', 'denoise']) },
+    'Download and install RapidRAW local model assets for masks, inpainting, denoise or nonlocal (Bayer RAW denoise runtime bundle selected by RAPIDRAW_NONLOCAL_PROVIDER). This makes network requests and may download large files.',
+    { kind: z.enum(['masks', 'inpaint', 'denoise', 'nonlocal']) },
     false,
     { network: true, idempotent: true, timeoutMs: 1_800_000 },
   ),

@@ -2,7 +2,7 @@
 
 RapidRAW uses **CPU inference by default on every platform**. Linux MCP deployments can opt into CUDA for foreground masking, sky masking, depth estimation and AI denoise. This is separate from the Vulkan/Metal photo renderer: installing a GPU driver or CUDA does not enable ONNX acceleration by itself.
 
-This guide configures the native MCP process. The desktop application's bundled runtime selection is unchanged, and macOS needs no CUDA libraries, new Cargo feature or runtime replacement. Follow the [Linux SSH/Xvfb guide](REMOTE-SSH.md) first for a server without a desktop environment.
+This guide configures the native MCP process. The desktop application's bundled runtime selection is unchanged, and macOS needs no CUDA libraries, new Cargo feature or runtime replacement. Follow the [Linux SSH/Xvfb guide](remote-ssh.md) first for a server without a desktop environment.
 
 ## Provider policy
 
@@ -53,7 +53,7 @@ ldd onnxruntime-linux-x64-gpu_cuda13-1.30.0/lib/libonnxruntime_providers_cuda.so
 
 Keep `libonnxruntime.so`, its versioned target, `libonnxruntime_providers_cuda.so` and `libonnxruntime_providers_shared.so` together from the same release. Preserve the archive's library symlinks. CUDA runtime, cuBLAS, cuRAND, NVIDIA driver libraries and matching cuDNN must be discoverable by the process. A successful `ldd` check covers direct dependencies; executing the models checks libraries loaded later. TensorRT is not used by this policy.
 
-Replace the bundled `ORT_DYLIB_PATH` line in the [SSH launcher](REMOTE-SSH.md#launch-through-a-virtual-display) with the following, and add the provider selection:
+Replace the bundled `ORT_DYLIB_PATH` line in the [SSH launcher](remote-ssh.md#launch-through-a-virtual-display) with the following, and add the provider selection:
 
 ```sh
 export ORT_DYLIB_PATH=/absolute/rapidraw-runtimes/onnxruntime-linux-x64-gpu_cuda13-1.30.0/lib/libonnxruntime.so
@@ -78,9 +78,9 @@ Call `rapidraw_models` before and after an AI operation. Its `onnx_execution` ob
 
 A `cuda` session is **not proof that every graph operator ran on GPU**. ONNX Runtime may assign unsupported operators to CPU. Use [ONNX profiling](https://onnxruntime.ai/docs/performance/tune-performance/profiling-tools.html) for operator assignments, and observe GPU memory while exercising real operations. `nvidia-smi` activity alone is insufficient.
 
-The [native ONNX provider regression runner](scripts/onnx-provider-e2e.mjs) starts a fresh engine, uses a real RAW to produce a bounded 1024-pixel fixture, exercises all four mask types, inpainting at 448 and 768 pixels, and tiled AI denoise. It verifies provider diagnostics, dimensions, unchanged model/source hashes and rendered outputs. It records first-call and warm operation times; these include native preparation and serialization, rather than isolated ONNX inference time.
+The [native ONNX provider regression runner](../../mcp/scripts/onnx-provider-e2e.mjs) starts a fresh engine, uses a real RAW to produce a bounded 1024-pixel fixture, exercises all four mask types, inpainting at 448 and 768 pixels, and tiled AI denoise. It verifies provider diagnostics, dimensions, unchanged model/source hashes and rendered outputs. It records first-call and warm operation times; these include native preparation and serialization, rather than isolated ONNX inference time.
 
-Build the [native engine and MCP package](README.md#build-and-connect), install the verified `masks`, `inpaint` and `denoise` model groups through `rapidraw_install_model`, and prepare separate fresh test workspaces with those assets in `models/`. The runner never downloads models or calls generative services. Use a RAW whose subject, foreground, sky and depth selections are nonempty and whose aspect ratio accommodates both inpainting regions. All paths below are placeholders; run from the repository root on the GPU server:
+Build the [native engine and MCP package](../../mcp/README.md#build-and-connect), install the verified `masks`, `inpaint` and `denoise` model groups through `rapidraw_install_model`, and prepare separate fresh test workspaces with those assets in `models/`. The runner never downloads models or calls generative services. Use a RAW whose subject, foreground, sky and depth selections are nonempty and whose aspect ratio accommodates both inpainting regions. All paths below are placeholders; run from the repository root on the GPU server:
 
 ```sh
 export RAPIDRAW_BINARY=/absolute/RapidRAW/src-tauri/target/debug/RapidRAW
@@ -107,4 +107,4 @@ dbus-run-session -- xvfb-run -a \
 
 Both runs use the same runtime to isolate provider differences. An external runtime upgrade can also change CPU model outputs; retain reference renders and compare runtime versions separately before adopting the upgrade. Configure the same verified Vulkan ICD and runtime directory as your working SSH launcher if the system requires them. Repeated runs require new workspaces; completed evidence is not overwritten.
 
-Results are saved as `onnx-provider-results.json` alongside PNG artifacts. Optional `RAPIDRAW_ONNX_TOLERANCE` sets normalized mean-absolute and 99th-percentile pixel-difference gates; the runner defaults to 0.01 and 0.05. Passing those gates is a regression check, not approval of photographic quality. Inspect the actual mask boundaries, inpainted regions and denoised detail before delivery. See the [test matrix](testing-matrix.md) for broader engine validation.
+Results are saved as `onnx-provider-results.json` alongside PNG artifacts. Optional `RAPIDRAW_ONNX_TOLERANCE` sets normalized mean-absolute and 99th-percentile pixel-difference gates; the runner defaults to 0.01 and 0.05. Passing those gates is a regression check, not approval of photographic quality. Inspect the actual mask boundaries, inpainted regions and denoised detail before delivery. See the [test matrix](testing.md) for broader engine validation.

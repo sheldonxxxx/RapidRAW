@@ -7,7 +7,7 @@ import { decodePng } from './png-fixtures.mjs';
 import { validatePhotoManifest } from './photo-quality-manifest.mjs';
 import { nativeReviewTiles, isDisconnected, recoverCompletedResponse } from './photo-review-policy.mjs';
 const manifestPath = process.env.RAPIDRAW_PHOTO_MANIFEST;
-assert.ok(manifestPath, 'Set RAPIDRAW_PHOTO_MANIFEST to a local fixture manifest; see testing-matrix.md');
+assert.ok(manifestPath, 'Set RAPIDRAW_PHOTO_MANIFEST to a local fixture manifest; see docs/mcp/testing.md');
 const manifest = await validatePhotoManifest(JSON.parse(await readFile(resolve(manifestPath), 'utf8')));
 const workspace = resolve(process.env.RAPIDRAW_WORKSPACE ?? `test-output/photo-quality-${Date.now()}`);
 const h = await createNativeHarness({ suite: 'photographic-fixtures', workspace, timeout: 1800000 });

@@ -2,7 +2,7 @@
 
 Run both the Node MCP server and native RapidRAW engine on the Linux machine. A local MCP client can launch them through SSH and use the existing stdio transport. Previews travel as MCP image blocks; RAW inputs, session files, models and exports use the server's filesystem. Transfer originals and delivery files separately with SFTP, rsync or shared storage.
 
-The native bridge still initializes Tauri/GTK. It needs a display server, but no full desktop environment or physical monitor. Xvfb supplies the display while Vulkan performs offscreen GPU processing. ONNX inference defaults to CPU. Linux MCP deployments can separately enable [validated CUDA inference](ONNX-CUDA.md) for foreground/sky masks, depth and AI denoise; installing CUDA alone does not select that provider.
+The native bridge still initializes Tauri/GTK. It needs a display server, but no full desktop environment or physical monitor. Xvfb supplies the display while Vulkan performs offscreen GPU processing. ONNX inference defaults to CPU. Linux MCP deployments can separately enable [validated CUDA inference](onnx-cuda.md) for foreground/sky masks, depth and AI denoise; installing CUDA alone does not select that provider.
 
 ## Build on the server
 
@@ -34,7 +34,7 @@ test -x "${CARGO_TARGET_DIR:-$PWD/src-tauri/target}/release/RapidRAW"
 test -f "$PWD/mcp/dist/index.js"
 ```
 
-See [build and connect](README.md#build-and-connect) for toolchain and runtime details. The launcher below uses this release build. Its paths are placeholders; replace them with the actual Node, executable and workspace locations on the server.
+See [build and connect](../../mcp/README.md#build-and-connect) for toolchain and runtime details. The launcher below uses this release build. Its paths are placeholders; replace them with the actual Node, executable and workspace locations on the server.
 
 ## Launch through a virtual display
 
@@ -66,7 +66,7 @@ Xvfb and D-Bus live for the connection and terminate when it closes. The launche
 
 Set up SSH keys and verify the host key interactively first. Then register a command-based stdio server with your MCP host:
 
-Codex users should place the following command/arguments in the TOML table from the [Codex guide](CODEX.md#register-the-server); the JSON below is for hosts that accept `mcpServers` configuration.
+Codex users should place the following command/arguments in the TOML table from the [Codex guide](../../AGENT_SETUP.md#codex); the JSON below is for hosts that accept `mcpServers` configuration.
 
 ```json
 {
@@ -93,7 +93,7 @@ Codex users should place the following command/arguments in the TOML table from 
 
 `-T` prevents a pseudo-terminal from changing protocol framing. Keepalives detect a broken connection. Configure a host tool timeout that covers native processing; model installation and supported long operations can need up to 30 minutes. Reconnect the host after adding the server, then call `rapidraw_capabilities` and `rapidraw_models`.
 
-For direct inspection, the [persistent skill client](../skills/rapidraw-mcp/scripts/mcp-client.mjs) accepts the same launcher as a plain JSON object containing `command`, `args`, and optional absolute `cwd`:
+For direct inspection, the [persistent skill client](../../skills/rapidraw-mcp/scripts/mcp-client.mjs) accepts the same launcher as a plain JSON object containing `command`, `args`, and optional absolute `cwd`:
 
 ```sh
 node /local/RapidRAW/skills/rapidraw-mcp/scripts/mcp-client.mjs \
@@ -102,7 +102,7 @@ node /local/RapidRAW/skills/rapidraw-mcp/scripts/mcp-client.mjs \
   --workspace /local/rapidraw-evidence
 ```
 
-Here `--server` locates the locally installed MCP SDK, and `--workspace` stores local responses and previews. The remote launcher owns the native binary, remote workspace and native timeout. Do not combine `--connection` with `--binary` or `--timeout-ms`. Read the [client request and recovery contract](../skills/rapidraw-mcp/references/connection.md#persistent-fallback-client) before submitting edits.
+Here `--server` locates the locally installed MCP SDK, and `--workspace` stores local responses and previews. The remote launcher owns the native binary, remote workspace and native timeout. Do not combine `--connection` with `--binary` or `--timeout-ms`. Read the [client request and recovery contract](../../skills/rapidraw-mcp/references/connection.md#persistent-fallback-client) before submitting edits.
 
 ## Verify the complete workflow
 
@@ -112,4 +112,4 @@ Here `--server` locates the locally installed MCP SDK, and `--workspace` stores 
 4. Save the session and export an original-resolution file. Reconnect and verify the saved adjustments and identical rendered result.
 5. Download the export, verify its hash against the server copy, inspect it locally, and check that the original RAW and sidecar remain unchanged.
 
-The [engine regression](scripts/engine-e2e.mjs), [adjustment matrix](scripts/coverage-e2e.mjs), [advanced operations](scripts/advanced-e2e.mjs), [portable sessions](scripts/portable-sessions-e2e.mjs), and [background operations](scripts/operation-jobs-e2e.mjs) exercise the real native engine. Run them under the same virtual-display environment, each with its own `RAPIDRAW_WORKSPACE`; follow their documented fixture requirements. See the [test matrix](testing-matrix.md) for additional coverage and evidence boundaries. Generative provider execution is a separate opt-in test.
+The [engine regression](../../mcp/scripts/engine-e2e.mjs), [adjustment matrix](../../mcp/scripts/coverage-e2e.mjs), [advanced operations](../../mcp/scripts/advanced-e2e.mjs), [portable sessions](../../mcp/scripts/portable-sessions-e2e.mjs), and [background operations](../../mcp/scripts/operation-jobs-e2e.mjs) exercise the real native engine. Run them under the same virtual-display environment, each with its own `RAPIDRAW_WORKSPACE`; follow their documented fixture requirements. See the [test matrix](testing.md) for additional coverage and evidence boundaries. Generative provider execution is a separate opt-in test.

@@ -54,6 +54,9 @@ const transport = new StdioClientTransport({
     '900000',
   ],
   stderr: 'pipe',
+  // SDK v2 only inherits a safe allowlist; forward the full environment so
+  // headless runners keep DISPLAY/GDK_BACKEND/ORT_DYLIB_PATH for the native engine.
+  env: { ...process.env },
 });
 let diagnostics = '';
 transport.stderr.on('data', (chunk) => {

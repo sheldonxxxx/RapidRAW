@@ -93,7 +93,7 @@ Added/duplicated/edited/removed IDs appear in `submask_ids`. Whole-mask and subm
 
 ## Verification
 
-Run the commands below from `mcp/` after building the server and native engine using the [setup guide](README.md#build-and-connect).
+Run the commands below from `mcp/` after building the server and native engine using the [setup guide](../../mcp/README.md#build-and-connect).
 
 Native unit tests compare coordinate ramps to real CPU geometry pixels across orientation, flips, crop, manual perspective, radial/lens distortion, fine rotation and guided correction. They also verify submask atomicity, clipping, linear-luminance sampling, bounds and overlay locality.
 

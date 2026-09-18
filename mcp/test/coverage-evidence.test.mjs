@@ -80,7 +80,7 @@ test('runtime provenance includes actual engine/server code but separates suite 
   ])
     assert.equal(isRuntimeSource(path), true, path);
   for (const path of [
-    'mcp/VERIFICATION.md',
+    'docs/mcp/history/verification-2026-09.md',
     'mcp/scripts/coverage-e2e.mjs',
     'mcp/test/coverage-evidence.test.mjs',
     'test-output/evidence.jsonl',

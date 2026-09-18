@@ -54,7 +54,11 @@ fn model_assets(kind: &str) -> Result<Vec<(&'static str, &'static str)>> {
         ],
         "inpaint" => vec![(ai::LAMA_FILENAME, ai::LAMA_SHA256)],
         "denoise" => vec![(ai::DENOISE_FILENAME, ai::DENOISE_SHA256)],
-        _ => return Err("INVALID_ARGUMENT: model kind must be masks, inpaint or denoise".into()),
+        _ => {
+            return Err(
+                "INVALID_ARGUMENT: model kind must be masks, inpaint, denoise or nonlocal".into(),
+            );
+        }
     })
 }
 
@@ -165,6 +169,47 @@ impl Bridge {
         }
     }
 
+    /// Nonlocal bundle verification/installation. Explicit
+    /// `install_model` (allow_download) downloads the pinned provider
+    /// bundle; every other call only verifies what is already installed.
+    /// Never requires ORT, even for the ONNX variant: installation is
+    /// hash/validation-gated file delivery, not inference.
+    pub(super) async fn ensure_nonlocal_models(&self, allow_download: bool) -> Result<()> {
+        let model_directory = self
+            .paths
+            .models
+            .canonicalize()
+            .map_err(|e| format!("INVALID_PATH: Cannot resolve model workspace: {e}"))?;
+        if model_directory != self.paths.models || !model_directory.starts_with(&self.paths.root) {
+            return Err(
+                "INVALID_PATH: Model directory must be a real directory inside the workspace"
+                    .into(),
+            );
+        }
+        let provider = crate::nonlocal_onnx::provider_from_env().map_err(|e| e.to_string())?;
+        if std::env::var_os("RAPIDRAW_NONLOCAL_BUNDLE").is_some() {
+            // Explicit developer override: verify only, never download.
+            let (bundle, _) =
+                crate::nonlocal_install::resolve_bundle(Some(&model_directory), provider)
+                    .map_err(|e| e.to_string())?;
+            return crate::nonlocal_install::validate_resolved_bundle(provider, &bundle)
+                .map_err(|e| e.to_string());
+        }
+        let installed = crate::nonlocal_install::install_dir(&model_directory, provider);
+        if installed.is_dir()
+            && crate::nonlocal_install::validate_resolved_bundle(provider, &installed).is_ok()
+        {
+            return Ok(());
+        }
+        if !allow_download {
+            return Err("MODEL_NOT_INSTALLED: No verified Nonlocal bundle is installed. Call install_model with kind='nonlocal'.".into());
+        }
+        crate::nonlocal_install::install(&model_directory, provider)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub(super) fn models_status(&self) -> Result<Value> {
         let installed = self
             .handle
@@ -173,7 +218,10 @@ impl Bridge {
             .map_err(|e| e.to_string())?
             .join("models");
         let mut groups = serde_json::Map::new();
-        groups.insert("nonlocal".into(), crate::raw_denoise::status());
+        groups.insert(
+            "nonlocal".into(),
+            crate::nonlocal_install::status(&self.paths.models),
+        );
         for kind in ["masks", "inpaint", "denoise"] {
             let mut assets = Vec::new();
             let mut ready = true;
@@ -213,6 +261,12 @@ impl Bridge {
     }
 
     pub(super) async fn ensure_models(&self, kind: &str, allow_download: bool) -> Result<()> {
+        // Nonlocal bundles install from the pinned Hub distribution without
+        // any ONNX Runtime requirement, so this branch runs before the ORT
+        // check below. Other kinds are unchanged.
+        if kind == "nonlocal" {
+            return self.ensure_nonlocal_models(allow_download).await;
+        }
         let model_directory = self
             .paths
             .models

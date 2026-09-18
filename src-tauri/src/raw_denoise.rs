@@ -1,6 +1,16 @@
 //! Bayer-domain Nonlocal inference. Decoding and DNG writing use the editor's
-//! RAW library; the CUDA subprocess only sees normalized packed sensor planes.
-use crate::denoising::DenoiseControl;
+//! RAW library; inference runs in-process through the native ONNX Runtime
+//! backend (`crate::nonlocal_onnx`) on CPU or Linux CUDA, or directly
+//! through CoreML.framework (`crate::nonlocal_coreml`) on macOS.
+//! Cancellation lands on tile boundaries: an active ORT/CoreML prediction
+//! is not forcibly aborted.
+use crate::{
+    denoising::DenoiseControl,
+    nonlocal_coreml::{self, COREML_BACKEND_GENERATION, COREML_PACKAGE_SHA},
+    nonlocal_onnx::{
+        self, ALGORITHM, BACKEND_GENERATION, NativeConfig, ONNX_MODEL_SHA, SOURCE_CHECKPOINT_SHA,
+    },
+};
 use anyhow::{Context, Result, bail, ensure};
 use rawler::{
     decoders::{RawDecodeParams, RawMetadata},
@@ -16,15 +26,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
-    io::{BufRead, BufReader, BufWriter, Read, Write},
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
-    sync::mpsc,
-    time::{Duration, Instant},
 };
-
-const MODEL_SHA: &str = "c16747d852b93a95908792cdbac901f89cca98e35b91ea7db6214de42fbd3cad";
-const ALGORITHM: &str = "nonlocal-raw-v1";
 
 pub(crate) fn hash_file(path: &Path) -> Result<String> {
     let mut file = File::open(path)?;
@@ -40,39 +44,11 @@ pub(crate) fn hash_file(path: &Path) -> Result<String> {
     Ok(hex::encode(hash.finalize()))
 }
 
-fn configured_path(name: &str) -> Result<PathBuf> {
-    let path = PathBuf::from(
-        std::env::var_os(name)
-            .with_context(|| format!("NONLOCAL_UNAVAILABLE: Set {name} on the GPU host"))?,
-    );
-    ensure!(
-        path.is_absolute() && path.is_file(),
-        "NONLOCAL_UNAVAILABLE: {name} must name an existing absolute file"
-    );
-    Ok(path)
-}
-
-pub(crate) fn configuration() -> Result<(PathBuf, PathBuf)> {
-    let python = configured_path("RAPIDRAW_NONLOCAL_PYTHON")?;
-    let checkpoint = configured_path("RAPIDRAW_NONLOCAL_CHECKPOINT")?;
-    ensure!(
-        hash_file(&checkpoint)? == MODEL_SHA,
-        "NONLOCAL_UNAVAILABLE: Checkpoint checksum mismatch"
-    );
-    Ok((python, checkpoint))
-}
-
-pub(crate) fn status() -> Value {
-    match configuration() {
-        Ok(_) => {
-            json!({"configured":true,"weights_verified":true,"runtime":"pytorch-cuda","cuda_verified":false,
-            "method":"nonlocal","entrypoint":"start_denoise","output":"bayer-dng","model_sha256":MODEL_SHA,
-            "note":"CUDA availability is checked when the worker starts; no CPU fallback."})
-        }
-        Err(e) => {
-            json!({"configured":false,"weights_verified":false,"method":"nonlocal","error":e.to_string()})
-        }
-    }
+/// Workspace-aware configuration: an explicit `RAPIDRAW_NONLOCAL_BUNDLE`
+/// wins, otherwise the bundle installed under `models/nonlocal/` is used.
+/// Never downloads; missing bundles fail with `MODEL_NOT_INSTALLED`.
+pub(crate) fn configuration_with_models(models_dir: Option<&Path>) -> Result<NativeConfig> {
+    nonlocal_onnx::configuration_with_models(models_dir)
 }
 
 struct Packed {
@@ -299,6 +275,41 @@ fn regular_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Write packed sensor planes as little-endian float32, matching the Python
+/// worker's `np.fromfile(..., dtype="<f4")` boundary. Extracted so the
+/// diagnostic fixture exporter reuses the exact production bytes.
+fn write_packed_input(path: &Path, values: &[f32]) -> Result<()> {
+    let mut writer = BufWriter::new(File::create(path)?);
+    for value in values {
+        writer.write_all(&value.to_le_bytes())?;
+    }
+    writer.flush()?;
+    drop(writer);
+    Ok(())
+}
+
+/// Build the native-ONNX cache/request identity (protocol 2). Legacy
+/// protocol-1 PyTorch-worker entries live under a different directory and a
+/// different hash preimage, so they can never be accepted as native results.
+fn native_onnx_request(
+    config: &NativeConfig,
+    packed_height: usize,
+    packed_width: usize,
+    input_sha: &str,
+    source_sha: &str,
+    ensemble: u32,
+    ort_build: &str,
+) -> Value {
+    json!({"protocol":2,"algorithm":ALGORITHM,"backend":BACKEND_GENERATION,
+        "model_sha256":ONNX_MODEL_SHA,"source_checkpoint_sha256":SOURCE_CHECKPOINT_SHA,
+        "input_sha256":input_sha,"source_sha256":source_sha,
+        "shape":[4,packed_height,packed_width],"tile":320,"halo":64,"ensemble":ensemble,
+        "provider":config.provider_as_str(),
+        "device_id":config.device_id_or_null(),
+        "graph_optimization":false,"tf32":false,
+        "ort_build":ort_build})
+}
+
 fn prediction(
     directory: &Path,
     request: &Value,
@@ -317,9 +328,16 @@ fn prediction(
     for key in [
         "protocol",
         "algorithm",
+        "backend",
         "shape",
         "input_sha256",
         "model_sha256",
+        "source_checkpoint_sha256",
+        "provider",
+        "device_id",
+        "graph_optimization",
+        "tf32",
+        "ort_build",
     ] {
         ensure!(
             result[key] == request[key],
@@ -349,99 +367,181 @@ fn prediction(
     Ok((values, result))
 }
 
-fn run_worker(
-    python: &Path,
-    checkpoint: &Path,
+/// Build the direct-CoreML cache/request identity (protocol 3, namespace
+/// `nonlocal-coreml-cache`). It can never collide with protocol-2 ONNX or
+/// protocol-1 worker entries: backend generation, artifact hashes and
+/// runtime all differ.
+fn native_coreml_request(
+    tree_sha256: &str,
+    packed_height: usize,
+    packed_width: usize,
+    input_sha: &str,
+    source_sha: &str,
+    ensemble: u32,
+) -> Value {
+    json!({"protocol":3,"algorithm":ALGORITHM,"backend":COREML_BACKEND_GENERATION,
+        "package_sha256":COREML_PACKAGE_SHA,"package_tree_sha256":tree_sha256,
+        "source_checkpoint_sha256":SOURCE_CHECKPOINT_SHA,
+        "input_sha256":input_sha,"source_sha256":source_sha,
+        "shape":[4,packed_height,packed_width],"tile":320,"halo":64,"ensemble":ensemble,
+        "provider":"coreml","compute_units":nonlocal_coreml::COREML_COMPUTE_UNITS,
+        "allow_low_precision_accumulation":false,
+        "os":nonlocal_coreml::runtime_identity(),
+        "runtime":nonlocal_coreml::COREML_RUNTIME})
+}
+
+/// Validate a cached direct-CoreML prediction against the fresh request.
+/// Mirrors `prediction()`: every identity field must match, then checksum,
+/// size and finiteness are enforced fail-closed.
+fn prediction_coreml(
     directory: &Path,
-    control: &DenoiseControl,
-) -> Result<()> {
-    let log = directory.join("stderr.log");
-    let mut command = Command::new(python);
-    command
-        .args(["-m", "rapidraw_denoise.worker", "--directory"])
-        .arg(directory)
-        .arg("--checkpoint")
-        .arg(checkpoint)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(File::create(&log)?);
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::process::CommandExt;
-        let parent = std::process::id() as libc::pid_t;
-        // The CUDA worker must not survive an interrupted native engine.
-        unsafe {
-            command.pre_exec(move || {
-                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                if libc::getppid() != parent {
-                    return Err(std::io::Error::other("Native parent stopped"));
-                }
-                Ok(())
-            });
-        }
+    request: &Value,
+    request_sha: &str,
+    count: usize,
+) -> Result<(Vec<f32>, Value)> {
+    let result_path = directory.join("result.json");
+    let pixels_path = directory.join("prediction.f32");
+    regular_file(&result_path)?;
+    regular_file(&pixels_path)?;
+    ensure!(
+        fs::metadata(&result_path)?.len() < 1024 * 1024,
+        "Oversized Nonlocal result manifest"
+    );
+    let result: Value = serde_json::from_slice(&fs::read(result_path)?)?;
+    for key in [
+        "protocol",
+        "algorithm",
+        "backend",
+        "shape",
+        "input_sha256",
+        "package_sha256",
+        "package_tree_sha256",
+        "source_checkpoint_sha256",
+        "provider",
+        "runtime",
+        "compute_units",
+        "allow_low_precision_accumulation",
+        "os",
+    ] {
+        ensure!(
+            result[key] == request[key],
+            "Nonlocal prediction {key} mismatch"
+        );
     }
-    let mut child = command
-        .spawn()
-        .context("NONLOCAL_UNAVAILABLE: Could not start the CUDA worker")?;
-    let stdout = child.stdout.take().unwrap();
-    let (send, receive) = mpsc::sync_channel(32);
-    let reader = std::thread::spawn(move || {
-        for line in BufReader::new(stdout)
-            .lines()
-            .map_while(std::result::Result::ok)
-        {
-            if let Ok(value) = serde_json::from_str::<Value>(&line) {
-                let _ = send.try_send(value);
-            }
-        }
-    });
-    let start = Instant::now();
-    let result = loop {
-        if let Err(e) = control.check() {
-            break Err(anyhow::anyhow!(e));
-        }
-        if start.elapsed() > Duration::from_secs(1800) {
-            break Err(anyhow::anyhow!(
-                "NONLOCAL_TIMEOUT: CUDA worker exceeded 30 minutes"
-            ));
-        }
-        while let Ok(event) = receive.try_recv() {
-            if let Some(fraction) = event["progress"].as_f64().filter(|v| v.is_finite()) {
-                control.report(
-                    0.1 + fraction.clamp(0., 1.) as f32 * 0.8,
-                    "Nonlocal CUDA inference",
-                );
-            }
-        }
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => break Ok(()),
-            Ok(Some(status)) => {
-                let stderr = fs::read_to_string(&log).unwrap_or_default();
-                let tail = stderr
-                    .lines()
-                    .rev()
-                    .take(12)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                break Err(anyhow::anyhow!(
-                    "NONLOCAL_FAILED: Worker exited {status}: {tail}"
-                ));
-            }
-            Err(e) => break Err(e.into()),
-            Ok(None) => std::thread::sleep(Duration::from_millis(100)),
-        }
-    };
-    if result.is_err() {
-        let _ = child.kill();
-    }
-    let _ = child.wait();
-    let _ = reader.join();
-    result
+    ensure!(
+        result["request_sha256"] == request_sha,
+        "Nonlocal request checksum mismatch"
+    );
+    ensure!(
+        fs::metadata(&pixels_path)?.len() == count as u64 * 4
+            && result["prediction_sha256"] == hash_file(&pixels_path)?,
+        "Nonlocal prediction checksum/size mismatch"
+    );
+    let bytes = fs::read(pixels_path)?;
+    let values: Vec<f32> = bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| f32::from_le_bytes(*b))
+        .collect();
+    ensure!(
+        values.iter().all(|v| v.is_finite()),
+        "Nonfinite Nonlocal prediction"
+    );
+    Ok((values, result))
+}
+
+/// Provenance fragment for a validated native ONNX cache hit. The
+/// generation provider comes only from the hash-validated receipt (which
+/// `prediction()` already required to equal the fresh request); the noise
+/// profile is recomputed deterministically from the current hash-verified
+/// packed input. No ONNX inference runs here, and timing/disagreement fields
+/// are left absent because they were never persisted.
+fn cache_hit_provenance(
+    request: &Value,
+    receipt: &Value,
+    packed: &[f32],
+    height: usize,
+    width: usize,
+) -> Result<Value> {
+    cache_hit_fragment(
+        request,
+        receipt,
+        packed,
+        height,
+        width,
+        &["cpu", "cuda"],
+        &[
+            "provider",
+            "device_id",
+            "graph_optimization",
+            "tf32",
+            "ort_build",
+        ],
+    )
+}
+
+/// Shared cache-hit fragment builder. Allowed providers and identity keys
+/// are backend-specific; the noise profile is always recomputed from the
+/// current hash-verified packed input and inference is never invoked.
+fn cache_hit_fragment(
+    request: &Value,
+    receipt: &Value,
+    packed: &[f32],
+    height: usize,
+    width: usize,
+    allowed_providers: &[&str],
+    identity_keys: &[&str],
+) -> Result<Value> {
+    let provider = receipt
+        .get("provider")
+        .and_then(|v| v.as_str())
+        .with_context(|| "NONLOCAL_CACHE_INVALID: cached receipt missing provider")?;
+    ensure!(
+        allowed_providers.contains(&provider),
+        "NONLOCAL_CACHE_INVALID: cached provider is not a supported native provider"
+    );
+    ensure!(
+        receipt["backend"] == request["backend"]
+            && identity_keys
+                .iter()
+                .all(|key| receipt[*key] == request[*key]),
+        "NONLOCAL_CACHE_INVALID: cached receipt identity mismatch"
+    );
+    let profile = nonlocal_onnx::estimate_noise(packed, height, width)?;
+    Ok(json!({
+        "provider_actual": provider,
+        "ensemble": request["ensemble"].clone(),
+        "noise_profile": profile.to_json(),
+    }))
+}
+
+/// Provenance fragment for a validated direct CoreML cache hit. Mirrors the
+/// ONNX contract: provider identity from the validated receipt, noise
+/// profile recomputed without model inference.
+fn cache_hit_provenance_coreml(
+    request: &Value,
+    receipt: &Value,
+    packed: &[f32],
+    height: usize,
+    width: usize,
+) -> Result<Value> {
+    cache_hit_fragment(
+        request,
+        receipt,
+        packed,
+        height,
+        width,
+        &["coreml"],
+        &[
+            "package_sha256",
+            "package_tree_sha256",
+            "runtime",
+            "compute_units",
+            "allow_low_precision_accumulation",
+            "os",
+        ],
+    )
 }
 
 pub(crate) struct Output {
@@ -452,6 +552,17 @@ impl Output {
     pub fn path(&self) -> PathBuf {
         self.directory.path().join("result.dng")
     }
+}
+
+/// Truthful provenance for a strength/intensity-zero job: no bundle or
+/// provider configuration was consulted and no inference ran, so no backend,
+/// runtime, model/package or cache identity may be claimed.
+fn skipped_provenance(source_sha: &str, quality: &str, packed: &Packed) -> Value {
+    json!({"algorithm":ALGORITHM,
+        "inference_executed":false,"reason":"intensity-zero",
+        "quality":quality,
+        "source_sha256":source_sha,"packed_shape":[4,packed.height,packed.width],"output":"float32-bayer-dng",
+        "normalization":"per-CFA black/white; signed noise estimation; unclipped highlights preserved"})
 }
 
 pub(crate) fn denoise(
@@ -498,7 +609,19 @@ pub(crate) fn denoise(
             "NONLOCAL_STORAGE: Need 20 GiB reserve plus RAW job working space"
         );
     }
-    let cache = root.join("nonlocal-cache");
+    let models_dir = root.join("models");
+    let provider = if strength > 0. {
+        Some(configuration_with_models(Some(&models_dir))?.provider)
+    } else {
+        None
+    };
+    // Backend-specific cache namespaces: CoreML predictions live under
+    // `nonlocal-coreml-cache` (protocol 3) and can never collide with
+    // protocol-2 ONNX or protocol-1 worker entries.
+    let cache = root.join(match provider {
+        Some(nonlocal_onnx::Provider::Coreml) => "nonlocal-coreml-cache",
+        _ => "nonlocal-onnx-cache",
+    });
     fs::create_dir_all(&cache)?;
     ensure!(
         fs::symlink_metadata(&cache)?.file_type().is_dir(),
@@ -507,59 +630,239 @@ pub(crate) fn denoise(
     let directory = tempfile::Builder::new()
         .prefix("work-")
         .tempdir_in(&cache)?;
-    let mut provenance = json!({"algorithm":ALGORITHM,"model_sha256":MODEL_SHA,"quality":quality,"cache_hit":false,
-        "source_sha256":source_sha,"packed_shape":[4,packed.height,packed.width],"output":"float32-bayer-dng",
-        "normalization":"per-CFA black/white; signed noise estimation; unclipped highlights preserved"});
-    if strength > 0. {
-        let (python, checkpoint) = configuration()?;
-        let input_path = directory.path().join("input.f32");
-        let mut writer = BufWriter::new(File::create(&input_path)?);
-        for value in &packed.values {
-            writer.write_all(&value.to_le_bytes())?;
-        }
-        writer.flush()?;
-        drop(writer);
-        let request = json!({"protocol":1,"algorithm":ALGORITHM,"model_sha256":MODEL_SHA,
-            "input_sha256":hash_file(&input_path)?,"source_sha256":source_sha,
-            "shape":[4,packed.height,packed.width],"tile":320,"halo":64,"ensemble":if quality=="maximum"{4}else{1}});
-        let request_bytes = serde_json::to_vec(&request)?;
-        let request_sha = hex::encode(Sha256::digest(&request_bytes));
-        let cached = cache.join(&request_sha);
-        let (values, receipt) = if cached.exists() {
-            ensure!(
-                fs::symlink_metadata(&cached)?.file_type().is_dir(),
-                "Nonlocal cache entry must be a real directory"
-            );
-            provenance["cache_hit"] = json!(true);
-            prediction(&cached, &request, &request_sha, packed.values.len()).context(
-                "NONLOCAL_CACHE_INVALID: Remove this corrupt cache entry before retrying",
-            )?
-        } else {
-            fs::write(directory.path().join("request.json"), request_bytes)?;
-            control.check().map_err(anyhow::Error::msg)?;
-            run_worker(&python, &checkpoint, directory.path(), control)?;
-            let prediction = prediction(
-                directory.path(),
-                &request,
-                &request_sha,
-                packed.values.len(),
-            )?;
-            control.check().map_err(anyhow::Error::msg)?;
-            let staging = tempfile::Builder::new()
-                .prefix("cache-")
-                .tempdir_in(&cache)?;
-            for name in ["result.json", "prediction.f32"] {
-                crate::storage_copy::copy_new(
-                    &directory.path().join(name),
-                    &staging.path().join(name),
-                )?;
+    let mut provenance = if strength > 0. {
+        match provider {
+            Some(nonlocal_onnx::Provider::Coreml) => {
+                json!({"algorithm":ALGORITHM,"backend":COREML_BACKEND_GENERATION,
+                    "runtime":nonlocal_coreml::COREML_RUNTIME,"package_sha256":COREML_PACKAGE_SHA,
+                    "source_checkpoint_sha256":SOURCE_CHECKPOINT_SHA,
+                    "compute_units":nonlocal_coreml::COREML_COMPUTE_UNITS,
+                    "allow_low_precision_accumulation":false,
+                    "os":nonlocal_coreml::runtime_identity(),
+                    "quality":quality,"cache_hit":false,
+                    "source_sha256":source_sha,"packed_shape":[4,packed.height,packed.width],"output":"float32-bayer-dng",
+                    "normalization":"per-CFA black/white; signed noise estimation; unclipped highlights preserved"})
             }
-            fs::rename(staging.path(), &cached)?;
-            prediction
-        };
-        provenance["worker"] = receipt;
-        provenance["cache_key"] = json!(request_sha);
-        blend(&mut raw, &packed, &values, strength)?;
+            _ => json!({"algorithm":ALGORITHM,"backend":BACKEND_GENERATION,
+                "runtime":"onnxruntime","model_sha256":ONNX_MODEL_SHA,
+                "source_checkpoint_sha256":SOURCE_CHECKPOINT_SHA,
+                "quality":quality,"cache_hit":false,
+                "source_sha256":source_sha,"packed_shape":[4,packed.height,packed.width],"output":"float32-bayer-dng",
+                "normalization":"per-CFA black/white; signed noise estimation; unclipped highlights preserved"}),
+        }
+    } else {
+        skipped_provenance(source_sha, quality, &packed)
+    };
+    if strength > 0. {
+        let config = configuration_with_models(Some(&models_dir))?;
+        if config.provider == nonlocal_onnx::Provider::Coreml {
+            let contract = nonlocal_coreml::validate_bundle(&config.bundle)?;
+            provenance["provider_requested"] = json!(config.provider_as_str());
+            provenance["package_tree_sha256"] = json!(contract.tree_sha256);
+            let input_path = directory.path().join("input.f32");
+            write_packed_input(&input_path, &packed.values)?;
+            let request = native_coreml_request(
+                &contract.tree_sha256,
+                packed.height,
+                packed.width,
+                &hash_file(&input_path)?,
+                source_sha,
+                if quality == "maximum" { 4 } else { 1 },
+            );
+            let request_bytes = serde_json::to_vec(&request)?;
+            let request_sha = hex::encode(Sha256::digest(&request_bytes));
+            let cached = cache.join(&request_sha);
+            let (values, receipt) = if cached.exists() {
+                ensure!(
+                    fs::symlink_metadata(&cached)?.file_type().is_dir(),
+                    "Nonlocal cache entry must be a real directory"
+                );
+                provenance["cache_hit"] = json!(true);
+                let hit = prediction_coreml(&cached, &request, &request_sha, packed.values.len())
+                    .context(
+                    "NONLOCAL_CACHE_INVALID: Remove this corrupt cache entry before retrying",
+                )?;
+                let fragment = cache_hit_provenance_coreml(
+                    &request,
+                    &hit.1,
+                    &packed.values,
+                    packed.height,
+                    packed.width,
+                )
+                .context(
+                    "NONLOCAL_CACHE_INVALID: Remove this corrupt cache entry before retrying",
+                )?;
+                provenance["provider_actual"] = fragment["provider_actual"].clone();
+                provenance["ensemble"] = fragment["ensemble"].clone();
+                provenance["noise_profile"] = fragment["noise_profile"].clone();
+                hit
+            } else {
+                fs::write(directory.path().join("request.json"), &request_bytes)?;
+                control.check().map_err(anyhow::Error::msg)?;
+                // One compiled MLModel per job, reused for all tiles and
+                // passes. macOS only; other platforms fail closed in
+                // configuration() before reaching here.
+                #[cfg(target_os = "macos")]
+                let outcome: Result<(Vec<f32>, Value)> = (|| {
+                    use crate::nonlocal_onnx::TilePredictor as _;
+                    let mut backend = nonlocal_coreml::open_backend(&config, &contract)?;
+                    provenance["provider_actual"] = json!(backend.provider_name());
+                    provenance["model_load_seconds"] = json!(backend.load_secs);
+                    let result = nonlocal_onnx::denoise_packed(
+                        &mut backend,
+                        &packed.values,
+                        packed.height,
+                        packed.width,
+                        if quality == "maximum" { 4 } else { 1 },
+                        control,
+                    )?;
+                    control.check().map_err(anyhow::Error::msg)?;
+                    let prediction_path = directory.path().join("prediction.f32");
+                    write_packed_input(&prediction_path, &result.prediction)?;
+                    let receipt = json!({"protocol":3,"algorithm":ALGORITHM,"backend":COREML_BACKEND_GENERATION,
+                        "shape":[4,packed.height,packed.width],
+                        "input_sha256":request["input_sha256"],"package_sha256":COREML_PACKAGE_SHA,
+                        "package_tree_sha256":request["package_tree_sha256"],
+                        "source_checkpoint_sha256":SOURCE_CHECKPOINT_SHA,
+                        "request_sha256":request_sha,"prediction_sha256":hash_file(&prediction_path)?,
+                        "provider":"coreml","runtime":request["runtime"],"compute_units":request["compute_units"],
+                        "allow_low_precision_accumulation":false,"os":request["os"]});
+                    fs::write(
+                        directory.path().join("result.json"),
+                        serde_json::to_vec(&receipt)?,
+                    )?;
+                    let prediction = prediction_coreml(
+                        directory.path(),
+                        &request,
+                        &request_sha,
+                        packed.values.len(),
+                    )?;
+                    control.check().map_err(anyhow::Error::msg)?;
+                    provenance["noise_profile"] = result.profile.to_json();
+                    provenance["ensemble"] = request["ensemble"].clone();
+                    provenance["disagreement_mean_variance"] =
+                        json!(result.disagreement_mean_variance);
+                    provenance["inference_seconds"] = json!(result.elapsed_secs);
+                    let staging = tempfile::Builder::new()
+                        .prefix("cache-")
+                        .tempdir_in(&cache)?;
+                    for name in ["result.json", "prediction.f32"] {
+                        crate::storage_copy::copy_new(
+                            &directory.path().join(name),
+                            &staging.path().join(name),
+                        )?;
+                    }
+                    fs::rename(staging.path(), &cached)?;
+                    Ok(prediction)
+                })();
+                #[cfg(not(target_os = "macos"))]
+                let outcome: Result<(Vec<f32>, Value)> = Err(anyhow::anyhow!(
+                    "NONLOCAL_PROVIDER_UNSUPPORTED: CoreML inference is supported on macOS only"
+                ));
+                outcome?
+            };
+            provenance["receipt"] = receipt;
+            provenance["cache_key"] = json!(request_sha);
+            blend(&mut raw, &packed, &values, strength)?;
+        } else {
+            let contract = nonlocal_onnx::validate_bundle(&config.bundle)?;
+            provenance["provider_requested"] = json!(config.provider_as_str());
+            provenance["graph_optimization"] = json!(false);
+            provenance["tf32"] = json!(false);
+            provenance["ort_build"] = json!(nonlocal_onnx::ort_identity());
+            let input_path = directory.path().join("input.f32");
+            write_packed_input(&input_path, &packed.values)?;
+            let request = native_onnx_request(
+                &config,
+                packed.height,
+                packed.width,
+                &hash_file(&input_path)?,
+                source_sha,
+                if quality == "maximum" { 4 } else { 1 },
+                &nonlocal_onnx::ort_identity(),
+            );
+            let request_bytes = serde_json::to_vec(&request)?;
+            let request_sha = hex::encode(Sha256::digest(&request_bytes));
+            let cached = cache.join(&request_sha);
+            let (values, receipt) = if cached.exists() {
+                ensure!(
+                    fs::symlink_metadata(&cached)?.file_type().is_dir(),
+                    "Nonlocal cache entry must be a real directory"
+                );
+                provenance["cache_hit"] = json!(true);
+                let hit = prediction(&cached, &request, &request_sha, packed.values.len())
+                    .context(
+                        "NONLOCAL_CACHE_INVALID: Remove this corrupt cache entry before retrying",
+                    )?;
+                let fragment = cache_hit_provenance(
+                    &request,
+                    &hit.1,
+                    &packed.values,
+                    packed.height,
+                    packed.width,
+                )
+                .context(
+                    "NONLOCAL_CACHE_INVALID: Remove this corrupt cache entry before retrying",
+                )?;
+                provenance["provider_actual"] = fragment["provider_actual"].clone();
+                provenance["ensemble"] = fragment["ensemble"].clone();
+                provenance["noise_profile"] = fragment["noise_profile"].clone();
+                hit
+            } else {
+                fs::write(directory.path().join("request.json"), &request_bytes)?;
+                control.check().map_err(anyhow::Error::msg)?;
+                // One ORT session per job, reused for all tiles and passes.
+                let mut backend = nonlocal_onnx::open_backend(&config, &contract)?;
+                provenance["provider_actual"] = json!(backend.provider);
+                let result = nonlocal_onnx::denoise_packed(
+                    &mut backend,
+                    &packed.values,
+                    packed.height,
+                    packed.width,
+                    if quality == "maximum" { 4 } else { 1 },
+                    control,
+                )?;
+                control.check().map_err(anyhow::Error::msg)?;
+                let prediction_path = directory.path().join("prediction.f32");
+                write_packed_input(&prediction_path, &result.prediction)?;
+                let receipt = json!({"protocol":2,"algorithm":ALGORITHM,"backend":BACKEND_GENERATION,
+                    "shape":[4,packed.height,packed.width],
+                    "input_sha256":request["input_sha256"],"model_sha256":ONNX_MODEL_SHA,
+                    "source_checkpoint_sha256":SOURCE_CHECKPOINT_SHA,
+                    "request_sha256":request_sha,"prediction_sha256":hash_file(&prediction_path)?,
+                    "provider":request["provider"],"device_id":request["device_id"],
+                    "graph_optimization":false,"tf32":false,"ort_build":request["ort_build"]});
+                fs::write(
+                    directory.path().join("result.json"),
+                    serde_json::to_vec(&receipt)?,
+                )?;
+                let prediction = prediction(
+                    directory.path(),
+                    &request,
+                    &request_sha,
+                    packed.values.len(),
+                )?;
+                control.check().map_err(anyhow::Error::msg)?;
+                provenance["noise_profile"] = result.profile.to_json();
+                provenance["ensemble"] = request["ensemble"].clone();
+                provenance["disagreement_mean_variance"] = json!(result.disagreement_mean_variance);
+                provenance["inference_seconds"] = json!(result.elapsed_secs);
+                let staging = tempfile::Builder::new()
+                    .prefix("cache-")
+                    .tempdir_in(&cache)?;
+                for name in ["result.json", "prediction.f32"] {
+                    crate::storage_copy::copy_new(
+                        &directory.path().join(name),
+                        &staging.path().join(name),
+                    )?;
+                }
+                fs::rename(staging.path(), &cached)?;
+                prediction
+            };
+            provenance["receipt"] = receipt;
+            provenance["cache_key"] = json!(request_sha);
+            blend(&mut raw, &packed, &values, strength)?;
+        }
     }
     control.check().map_err(anyhow::Error::msg)?;
     control.report(0.95, "Writing Bayer DNG");
@@ -709,11 +1012,16 @@ mod tests {
     #[test]
     fn prediction_cache_rejects_corruption_and_wrong_provenance() {
         let root = tempfile::tempdir().unwrap();
-        let request = json!({"protocol":1,"algorithm":ALGORITHM,"shape":[4,8,8],"input_sha256":"input","model_sha256":MODEL_SHA});
+        let base = json!({"protocol":2,"algorithm":ALGORITHM,"backend":BACKEND_GENERATION,
+            "shape":[4,8,8],"input_sha256":"input","model_sha256":ONNX_MODEL_SHA,
+            "source_checkpoint_sha256":SOURCE_CHECKPOINT_SHA,"provider":"cpu","device_id":null,
+            "graph_optimization":false,"tf32":false,"ort_build":"test"});
+        let mut request = base.clone();
         let pixels = root.path().join("prediction.f32");
         fs::write(&pixels, vec![0_u8; 4 * 8 * 8 * 4]).unwrap();
-        let receipt = json!({"protocol":1,"algorithm":ALGORITHM,"shape":[4,8,8],"input_sha256":"input","model_sha256":MODEL_SHA,
-            "request_sha256":"request","prediction_sha256":hash_file(&pixels).unwrap()});
+        let mut receipt = base.clone();
+        receipt["request_sha256"] = json!("request");
+        receipt["prediction_sha256"] = json!(hash_file(&pixels).unwrap());
         fs::write(
             root.path().join("result.json"),
             serde_json::to_vec(&receipt).unwrap(),
@@ -721,11 +1029,14 @@ mod tests {
         .unwrap();
         assert!(prediction(root.path(), &request, "request", 256).is_ok());
         assert!(prediction(root.path(), &request, "wrong", 256).is_err());
+        // A CUDA receipt must not satisfy a CPU request (and vice versa).
+        request["provider"] = json!("cuda");
+        assert!(prediction(root.path(), &request, "request", 256).is_err());
+        request["provider"] = json!("cpu");
         fs::write(&pixels, vec![1_u8; 4 * 8 * 8 * 4]).unwrap();
         assert!(prediction(root.path(), &request, "request", 256).is_err());
         let bytes: Vec<_> = (0..256).flat_map(|_| f32::NAN.to_le_bytes()).collect();
         fs::write(&pixels, bytes).unwrap();
-        let mut receipt = receipt;
         receipt["prediction_sha256"] = json!(hash_file(&pixels).unwrap());
         fs::write(
             root.path().join("result.json"),
@@ -735,12 +1046,262 @@ mod tests {
         assert!(prediction(root.path(), &request, "request", 256).is_err());
     }
     #[test]
+    fn cache_hit_provenance_carries_required_identity() {
+        // Deterministic 128x128 packed input with enough texture for the
+        // blind noise fit (mirrors the nonlocal_onnx golden generator).
+        const H: usize = 128;
+        const W: usize = 128;
+        let mut packed = vec![0f32; 4 * H * W];
+        for c in 0..4 {
+            for y in 0..H {
+                for x in 0..W {
+                    let k = ((x * 7 + y * 13 + c * 11) % 64) as f32;
+                    let idx = ((c * H + y) * W + x) as u64;
+                    let n01 = ((((idx * 1103515245 + 12345) >> 16) % 1024) as f32) / 1024.0;
+                    let base = 0.15f32 + 0.5 * (x as f32 / 128.0) + 0.1 * (k / 64.0);
+                    let scale = 0.9f32 + 0.05 * c as f32;
+                    let noise = ((n01 - 0.5) * 0.04) * (0.3 + base);
+                    packed[(c * H + y) * W + x] = base * scale + noise;
+                }
+            }
+        }
+        let config = NativeConfig {
+            bundle: PathBuf::from("/bundle"),
+            provider: crate::nonlocal_onnx::Provider::Cpu,
+            device_id: 0,
+            mem_limit_mb: None,
+        };
+        let request = native_onnx_request(&config, H, W, "input-sha", "source-sha", 1, "test");
+        let request_sha = hex::encode(Sha256::digest(serde_json::to_vec(&request).unwrap()));
+        let root = tempfile::tempdir().unwrap();
+        let entry = root.path().join(&request_sha);
+        fs::create_dir(&entry).unwrap();
+        let values = vec![0.25f32; 4 * H * W];
+        write_packed_input(&entry.join("prediction.f32"), &values).unwrap();
+        let receipt = json!({"protocol":2,"algorithm":ALGORITHM,"backend":BACKEND_GENERATION,
+            "shape":[4,H,W],"input_sha256":request["input_sha256"],
+            "model_sha256":ONNX_MODEL_SHA,"source_checkpoint_sha256":SOURCE_CHECKPOINT_SHA,
+            "request_sha256":request_sha,
+            "prediction_sha256":hash_file(&entry.join("prediction.f32")).unwrap(),
+            "provider":request["provider"],"device_id":request["device_id"],
+            "graph_optimization":false,"tf32":false,"ort_build":request["ort_build"]});
+        fs::write(
+            entry.join("result.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        let validated = prediction(&entry, &request, &request_sha, packed.len()).unwrap();
+        let fragment = cache_hit_provenance(&request, &validated.1, &packed, H, W).unwrap();
+        assert_eq!(fragment["provider_actual"], json!("cpu"));
+        assert_eq!(fragment["ensemble"], json!(1));
+        assert_eq!(
+            fragment["noise_profile"]["method"],
+            json!("stratified-haar-irls-v1")
+        );
+        assert_eq!(
+            fragment["noise_profile"]["shot"].as_array().unwrap().len(),
+            4
+        );
+        assert_eq!(
+            fragment["noise_profile"]["read"].as_array().unwrap().len(),
+            4
+        );
+        // Required top-level identity is satisfiable without inference timing.
+        assert_eq!(request["backend"], json!(BACKEND_GENERATION));
+        assert_eq!(request["model_sha256"], json!(ONNX_MODEL_SHA));
+        assert_eq!(
+            request["source_checkpoint_sha256"],
+            json!(SOURCE_CHECKPOINT_SHA)
+        );
+        assert!(!fragment.get("inference_seconds").is_some());
+        assert!(!fragment.get("disagreement_mean_variance").is_some());
+    }
+    #[test]
+    fn coreml_cache_identity_is_isolated_from_onnx() {
+        // Protocol, backend, artifact and runtime identities must differ so
+        // no ONNX, CoreML or legacy worker prediction can collide.
+        let config = NativeConfig {
+            bundle: PathBuf::from("/bundle"),
+            provider: crate::nonlocal_onnx::Provider::Cpu,
+            device_id: 0,
+            mem_limit_mb: None,
+        };
+        let onnx = native_onnx_request(&config, 8, 16, "input-sha", "source-sha", 1, "test-ort");
+        let coreml = native_coreml_request("tree-sha", 8, 16, "input-sha", "source-sha", 1);
+        assert_eq!(onnx["protocol"], json!(2));
+        assert_eq!(coreml["protocol"], json!(3));
+        assert_eq!(onnx["backend"], json!(BACKEND_GENERATION));
+        assert_eq!(coreml["backend"], json!(COREML_BACKEND_GENERATION));
+        assert_ne!(onnx["backend"], coreml["backend"]);
+        assert_eq!(coreml["provider"], json!("coreml"));
+        assert_eq!(coreml["runtime"], json!("coreml"));
+        assert_eq!(coreml["package_sha256"], json!(COREML_PACKAGE_SHA));
+        assert_eq!(coreml["package_tree_sha256"], json!("tree-sha"));
+        assert_eq!(
+            coreml["source_checkpoint_sha256"],
+            json!(SOURCE_CHECKPOINT_SHA)
+        );
+        assert_eq!(coreml["compute_units"], json!("all"));
+        assert_eq!(coreml["allow_low_precision_accumulation"], json!(false));
+        assert!(coreml["os"].as_str().unwrap().starts_with("coreml/"));
+        assert_eq!(coreml["ensemble"], json!(1));
+        // Request bytes (and therefore cache keys) differ across families.
+        assert_ne!(
+            hex::encode(Sha256::digest(serde_json::to_vec(&onnx).unwrap())),
+            hex::encode(Sha256::digest(serde_json::to_vec(&coreml).unwrap()))
+        );
+    }
+    #[test]
+    fn coreml_cache_rejects_cross_family_and_corrupt_receipts() {
+        let root = tempfile::tempdir().unwrap();
+        let request = native_coreml_request("tree-sha", 8, 8, "input-sha", "source-sha", 1);
+        let request_sha = hex::encode(Sha256::digest(serde_json::to_vec(&request).unwrap()));
+        let pixels = root.path().join("prediction.f32");
+        fs::write(&pixels, vec![0_u8; 4 * 8 * 8 * 4]).unwrap();
+        let mut receipt = request.clone();
+        receipt["request_sha256"] = json!(&request_sha);
+        receipt["prediction_sha256"] = json!(hash_file(&pixels).unwrap());
+        fs::write(
+            root.path().join("result.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        assert!(prediction_coreml(root.path(), &request, &request_sha, 256).is_ok());
+        assert_eq!(receipt["runtime"], json!("coreml"));
+        // A receipt missing or misreporting runtime is rejected.
+        let mut no_runtime = receipt.clone();
+        no_runtime.as_object_mut().unwrap().remove("runtime");
+        fs::write(
+            root.path().join("result.json"),
+            serde_json::to_vec(&no_runtime).unwrap(),
+        )
+        .unwrap();
+        assert!(prediction_coreml(root.path(), &request, &request_sha, 256).is_err());
+        let mut wrong_runtime = receipt.clone();
+        wrong_runtime["runtime"] = json!("onnxruntime");
+        fs::write(
+            root.path().join("result.json"),
+            serde_json::to_vec(&wrong_runtime).unwrap(),
+        )
+        .unwrap();
+        assert!(prediction_coreml(root.path(), &request, &request_sha, 256).is_err());
+        fs::write(
+            root.path().join("result.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        // An ONNX receipt must not satisfy a CoreML request.
+        let mut onnx_receipt = receipt.clone();
+        onnx_receipt["backend"] = json!(BACKEND_GENERATION);
+        onnx_receipt["protocol"] = json!(2);
+        fs::write(
+            root.path().join("result.json"),
+            serde_json::to_vec(&onnx_receipt).unwrap(),
+        )
+        .unwrap();
+        assert!(prediction_coreml(root.path(), &request, &request_sha, 256).is_err());
+        fs::write(
+            root.path().join("result.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        // Tree-hash drift invalidates the cache entry.
+        let mut drifted = request.clone();
+        drifted["package_tree_sha256"] = json!("other-tree");
+        assert!(prediction_coreml(root.path(), &drifted, &request_sha, 256).is_err());
+        // OS/build drift invalidates the cache entry.
+        let mut os_drifted = request.clone();
+        os_drifted["os"] = json!("coreml/macos-aarch64/99.0/99.0.0");
+        assert!(prediction_coreml(root.path(), &os_drifted, &request_sha, 256).is_err());
+        // Corrupt pixels fail the checksum.
+        fs::write(&pixels, vec![1_u8; 4 * 8 * 8 * 4]).unwrap();
+        assert!(prediction_coreml(root.path(), &request, &request_sha, 256).is_err());
+    }
+    #[test]
+    fn coreml_cache_hit_provenance_needs_no_inference() {
+        const H: usize = 128;
+        const W: usize = 128;
+        let mut packed = vec![0f32; 4 * H * W];
+        for c in 0..4 {
+            for y in 0..H {
+                for x in 0..W {
+                    let k = ((x * 7 + y * 13 + c * 11) % 64) as f32;
+                    let idx = ((c * H + y) * W + x) as u64;
+                    let n01 = ((((idx * 1103515245 + 12345) >> 16) % 1024) as f32) / 1024.0;
+                    let base = 0.15f32 + 0.5 * (x as f32 / 128.0) + 0.1 * (k / 64.0);
+                    let scale = 0.9f32 + 0.05 * c as f32;
+                    let noise = ((n01 - 0.5) * 0.04) * (0.3 + base);
+                    packed[(c * H + y) * W + x] = base * scale + noise;
+                }
+            }
+        }
+        let request = native_coreml_request("tree-sha", H, W, "input-sha", "source-sha", 4);
+        let request_sha = hex::encode(Sha256::digest(serde_json::to_vec(&request).unwrap()));
+        let root = tempfile::tempdir().unwrap();
+        let entry = root.path().join(&request_sha);
+        fs::create_dir(&entry).unwrap();
+        write_packed_input(&entry.join("prediction.f32"), &vec![0.25f32; 4 * H * W]).unwrap();
+        let mut receipt = request.clone();
+        receipt["request_sha256"] = json!(&request_sha);
+        receipt["prediction_sha256"] = json!(hash_file(&entry.join("prediction.f32")).unwrap());
+        fs::write(
+            entry.join("result.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        let validated = prediction_coreml(&entry, &request, &request_sha, packed.len()).unwrap();
+        let fragment = cache_hit_provenance_coreml(&request, &validated.1, &packed, H, W).unwrap();
+        assert_eq!(fragment["provider_actual"], json!("coreml"));
+        assert_eq!(fragment["ensemble"], json!(4));
+        assert_eq!(
+            fragment["noise_profile"]["method"],
+            json!("stratified-haar-irls-v1")
+        );
+        assert!(!fragment.get("inference_seconds").is_some());
+    }
+    #[test]
     fn values_above_white_survive_the_prediction_blend() {
         let mut raw = fixture("RGGB", 0);
         raw.data = RawImageData::Float(vec![5000.; 24 * 24]);
         let packed = prepare(&mut raw).unwrap();
         blend(&mut raw, &packed, &vec![0.; packed.values.len()], 1.).unwrap();
         assert!(raw.data.as_f32().iter().all(|v| *v == 5000.));
+    }
+    #[test]
+    fn zero_strength_provenance_claims_no_inference_identity() {
+        // Pure builder: no bundle or provider configuration is consulted, so
+        // a CoreML-selected host and an unconfigured host emit identical
+        // zero-strength provenance that cannot claim a backend that never ran.
+        let mut raw = fixture("RGGB", 0);
+        let packed = prepare(&mut raw).unwrap();
+        let value = skipped_provenance("source-sha", "balanced", &packed);
+        assert_eq!(value["algorithm"], json!(ALGORITHM));
+        assert_eq!(value["inference_executed"], json!(false));
+        assert_eq!(value["reason"], json!("intensity-zero"));
+        assert_eq!(value["quality"], json!("balanced"));
+        assert_eq!(value["source_sha256"], json!("source-sha"));
+        assert_eq!(
+            value["packed_shape"],
+            json!([4, packed.height, packed.width])
+        );
+        assert_eq!(value["output"], json!("float32-bayer-dng"));
+        for key in [
+            "backend",
+            "runtime",
+            "model_sha256",
+            "package_sha256",
+            "package_tree_sha256",
+            "source_checkpoint_sha256",
+            "compute_units",
+            "os",
+            "provider_requested",
+            "provider_actual",
+            "cache_hit",
+            "cache_key",
+            "receipt",
+        ] {
+            assert!(value.get(key).is_none(), "unexpected {key}: {value}");
+        }
     }
     #[test]
     fn multistrip_dng_has_standard_scalar_strip_height() {
@@ -783,6 +1344,149 @@ mod tests {
             .raw_image(&source, &RawDecodeParams::default(), false)
             .unwrap();
         assert_eq!(raw.data.as_f32(), reloaded.data.as_f32());
+    }
+    #[test]
+    fn native_onnx_transport_matches_production_boundary() {
+        // The diagnostic fixture exporter must reuse the exact production bytes
+        // and protocol-2 request schema of the native ONNX path.
+        let values: Vec<f32> = vec![0.5, -0.25, 1.0, f32::from_bits(0x3f800001)];
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("input.f32");
+        write_packed_input(&path, &values).unwrap();
+        let mut expected = Vec::new();
+        for v in &values {
+            expected.extend_from_slice(&v.to_le_bytes());
+        }
+        assert_eq!(fs::read(&path).unwrap(), expected);
+        assert_eq!(fs::metadata(&path).unwrap().len(), values.len() as u64 * 4);
+        let config = NativeConfig {
+            bundle: PathBuf::from("/bundle"),
+            provider: crate::nonlocal_onnx::Provider::Cpu,
+            device_id: 0,
+            mem_limit_mb: None,
+        };
+        let request = native_onnx_request(&config, 8, 16, "input-sha", "source-sha", 1, "test");
+        assert_eq!(request["protocol"], json!(2));
+        assert_eq!(request["backend"], json!(BACKEND_GENERATION));
+        assert_eq!(request["model_sha256"], json!(ONNX_MODEL_SHA));
+        assert_eq!(
+            request["source_checkpoint_sha256"],
+            json!(SOURCE_CHECKPOINT_SHA)
+        );
+        assert_eq!(request["shape"], json!([4, 8, 16]));
+        assert_eq!(request["provider"], json!("cpu"));
+        assert_eq!(request["device_id"], Value::Null);
+        assert_eq!(request["graph_optimization"], json!(false));
+        assert_eq!(request["tf32"], json!(false));
+        let max_request = native_onnx_request(&config, 8, 16, "input-sha", "source-sha", 4, "test");
+        assert_eq!(max_request["ensemble"], json!(4));
+        // Request bytes must be valid JSON with stable key order for hashing.
+        let bytes = serde_json::to_vec(&request).unwrap();
+        let parsed: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(parsed, request);
+    }
+    #[test]
+    #[ignore = "Requires RAPIDRAW_TEST_RAW and RAPIDRAW_NONLOCAL_FIXTURE_DIR; exports native input.f32 + request.json for capture_reference.py"]
+    fn capture_nonlocal_fixture_inputs() {
+        use rawler::{decoders::RawDecodeParams, rawsource::RawSource};
+        let source = PathBuf::from(
+            std::env::var_os("RAPIDRAW_TEST_RAW")
+                .expect("Set RAPIDRAW_TEST_RAW to an absolute photo path"),
+        );
+        let out_dir = PathBuf::from(
+            std::env::var_os("RAPIDRAW_NONLOCAL_FIXTURE_DIR")
+                .expect("Set RAPIDRAW_NONLOCAL_FIXTURE_DIR to an absolute fresh directory"),
+        );
+        assert!(source.is_absolute(), "RAPIDRAW_TEST_RAW must be absolute");
+        assert!(
+            out_dir.is_absolute(),
+            "RAPIDRAW_NONLOCAL_FIXTURE_DIR must be absolute"
+        );
+        if out_dir.exists() {
+            let count = fs::read_dir(&out_dir).unwrap().count();
+            assert_eq!(
+                count, 0,
+                "Fixture directory must be new and empty; refusing to overwrite"
+            );
+        } else {
+            fs::create_dir_all(&out_dir).unwrap();
+        }
+        let before = fs::read(&source).unwrap();
+        let source_sha = hex::encode(Sha256::digest(&before));
+        let input = RawSource::new_from_slice(&before);
+        let decoder = rawler::get_decoder(&input).unwrap();
+        let mut raw = decoder
+            .raw_image(&input, &RawDecodeParams::default(), false)
+            .unwrap();
+        let sensor_shape = [raw.width, raw.height];
+        let crop_before = raw.crop_area;
+        let active_before = raw.active_area;
+        let mut packed = prepare(&mut raw).unwrap();
+        // Exact production transport.
+        let input_path = out_dir.join("input.f32");
+        write_packed_input(&input_path, &packed.values).unwrap();
+        assert_eq!(
+            fs::metadata(&input_path).unwrap().len(),
+            packed.values.len() as u64 * 4
+        );
+        let input_sha = hash_file(&input_path).unwrap();
+        let config = configuration_with_models(None)
+            .expect("Set RAPIDRAW_NONLOCAL_BUNDLE (+ provider) to export the production request");
+        let request = native_onnx_request(
+            &config,
+            packed.height,
+            packed.width,
+            &input_sha,
+            &source_sha,
+            1,
+            &nonlocal_onnx::ort_identity(),
+        );
+        let request_bytes = serde_json::to_vec(&request).unwrap();
+        let request_sha = hex::encode(Sha256::digest(&request_bytes));
+        fs::write(out_dir.join("request.json"), &request_bytes).unwrap();
+        // Numerical cross-check: Python must read identical values.
+        let n = packed.values.len();
+        let mut le = Vec::with_capacity(n * 4);
+        for v in &packed.values {
+            le.extend_from_slice(&v.to_le_bytes());
+        }
+        assert_eq!(fs::read(&input_path).unwrap(), le);
+        let metadata = json!({
+            "source_sha256": source_sha,
+            "input_sha256": input_sha,
+            "request_sha256": request_sha,
+            "packed_shape": [4, packed.height, packed.width],
+            "sensor_shape": sensor_shape,
+            "cfa_positions_yx": packed.positions,
+            "black": packed.black,
+            "white": packed.white,
+            "crop_area": crop_before.map(|r| json!({"x": r.p.x, "y": r.p.y, "w": r.d.w, "h": r.d.h})),
+            "active_area": active_before.map(|r| json!({"x": r.p.x, "y": r.p.y, "w": r.d.w, "h": r.d.h})),
+            "tile": 320, "halo": 64, "ensemble": 1,
+            "algorithm": ALGORITHM, "backend": BACKEND_GENERATION,
+            "model_sha256": ONNX_MODEL_SHA,
+            "source_checkpoint_sha256": SOURCE_CHECKPOINT_SHA, "protocol": 2,
+        });
+        fs::write(
+            out_dir.join("metadata.json"),
+            serde_json::to_vec_pretty(&metadata).unwrap(),
+        )
+        .unwrap();
+        // Source must remain untouched.
+        assert_eq!(fs::read(&source).unwrap(), before);
+        // Silence unused warning if Packed gains fields later.
+        let _ = &mut packed.values;
+        eprintln!(
+            "Wrote native fixture: {} (packed {:?}, input {}, request {})",
+            out_dir.display(),
+            [4, packed.height, packed.width],
+            input_sha,
+            request_sha
+        );
+        eprintln!(
+            "Next: validate with the native ONNX bundle (RAPIDRAW_NONLOCAL_BUNDLE) or feed {} to capture_reference.py for a fresh controlled reference",
+            out_dir.display()
+        );
     }
     #[test]
     #[ignore = "Requires RAPIDRAW_TEST_RAW and optional RAPIDRAW_TEST_DNG on a host with a real Bayer fixture"]

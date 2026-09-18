@@ -98,7 +98,12 @@ try {
   assert.deepEqual(result.dimensions, parent.dimensions);
   assert.deepEqual(result.adjustments, parent.adjustments, 'Result must retain captured edits');
   assert.equal(result.metadata.derivedFrom.nonlocal.cache_hit, false);
-  assert.equal(result.metadata.derivedFrom.nonlocal.worker.sampler, process.env.RAPIDRAW_DENOISE_SAMPLER ?? 'reference');
+  // Native provenance carries backend generation instead of the retired
+  // Python-worker sampler field. Assert the generation matches the provider
+  // under test so CPU and CoreML runs are distinguishable.
+  const expectedBackend = (process.env.RAPIDRAW_NONLOCAL_PROVIDER ?? 'cpu') === 'coreml' ? 'native-coreml-v1' : 'native-onnx-v1';
+  assert.equal(result.metadata.derivedFrom.nonlocal.backend, expectedBackend);
+  assert.equal(result.metadata.derivedFrom.nonlocal.algorithm, 'nonlocal-raw-v1');
   assert.equal(hash(await readFile(source)), originalHash);
   await data('set_adjustments', { session_id: parent.session_id, patch: { exposure: 0.35 } });
   const width = result.dimensions.width, height = result.dimensions.height;
