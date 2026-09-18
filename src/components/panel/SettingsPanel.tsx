@@ -1,4 +1,5 @@
 import MarigoldDepthSettings from './MarigoldDepthSettings';
+import MarigoldSurfaceSettings from './MarigoldSurfaceSettings';
 import type { AppSettings } from '../ui/AppProperties';
 import type { Variants } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
@@ -2159,6 +2160,7 @@ export default function SettingsPanel({
 
                     <AiProviderSwitch selectedProvider={aiProvider} onProviderChange={handleProviderChange} />
                     <MarigoldDepthSettings settings={appSettings} onChange={onSettingsChange} />
+                    <MarigoldSurfaceSettings settings={appSettings} onChange={onSettingsChange} />
 
                     <div className="mt-8">
                       <AnimatePresence mode="wait">

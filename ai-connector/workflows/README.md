@@ -1,16 +1,18 @@
 # Chosen ComfyUI workflows
 
-These are the five workflows offered by the RapidRAW connector. Use [connector setup](../README.md) for ordinary editing; RapidRAW then prepares source pixels, computes context, uploads the selection and applies the returned crop at its original coordinates.
+These are the seven chosen workflows offered by the RapidRAW connector. Use [connector setup](../README.md) for ordinary editing; RapidRAW then prepares source pixels, computes context, uploads the selection and applies the returned crop at its original coordinates.
 
-| Workflow                  | Download                                                                       | Choice in RapidRAW                                |
-| ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------- |
-| Klein 4B                  | [API JSON](klein4-v1.api.json)                                                 | Generative profile; 1 MP default, 1 or 2 MP       |
-| Klein 4B closer context   | [API JSON](klein4-tight2mp.api.json)                                           | Generative profile; 2 MP default, 1 or 2 MP       |
-| Klein 9B KV               | [API JSON](klein9-kv.api.json)                                                 | Generative profile; 1 MP                          |
-| Boogu Edit Turbo          | [API JSON](boogu-turbo4-context.api.json)                                      | Generative profile; 1 MP                          |
-| Marigold V2 Q4 shared GPU | [Connector template](../rapidraw_connector/depth_profiles/marigold-v2-q4.json) | Optional Marigold Depth mask; fixed 0.67 Comfy MP |
+| Workflow                  | Download                                                                                 | Choice in RapidRAW                                |
+| ------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Klein 4B                  | [API JSON](klein4-v1.api.json)                                                           | Generative profile; 1 MP default, 1 or 2 MP       |
+| Klein 4B closer context   | [API JSON](klein4-tight2mp.api.json)                                                     | Generative profile; 2 MP default, 1 or 2 MP       |
+| Klein 9B KV               | [API JSON](klein9-kv.api.json)                                                           | Generative profile; 1 MP                          |
+| Boogu Edit Turbo          | [API JSON](boogu-turbo4-context.api.json)                                                | Generative profile; 1 MP                          |
+| Marigold V2 Q4 shared GPU | [Connector template](../rapidraw_connector/depth_profiles/marigold-v2-q4.json)           | Optional Marigold Depth mask; fixed 0.67 Comfy MP |
+| Marigold V2 normals Q4    | [Connector template](../rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json) | Optional Marigold Directional Light mask          |
+| Marigold V2 albedo Q4     | [Connector template](../rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json)  | Optional Marigold Colour mask                     |
 
-The four generative examples come from the connector's [runtime graph builder](../rapidraw_connector/workflows.py), using its [profile configurations](../profiles/profiles.json). The depth link is the actual runtime template, so there is no separate copy to drift from the connector.
+The four generative examples come from the connector's [runtime graph builder](../rapidraw_connector/workflows.py), using its [profile configurations](../profiles/profiles.json). The Marigold links are the actual runtime templates, so there is no separate copy to drift from the connector.
 
 ## Tested versions and dependencies
 
@@ -35,10 +37,12 @@ The example geometry and prompt are replacements, not the original test photogra
 
 The graph returns **unblended generated RGB for the context crop**. Standalone output is not a finished masked photo: restore it to the native context size, place it at the captured coordinates and apply the original full-resolution selection alpha once. The RapidRAW connector and engine already perform this contract; use that path for normal editing.
 
-## Marigold template
+## Marigold templates
 
-The connector replaces `SOURCE` with its prepared full-frame input and `RESULT` with a unique output prefix. For direct API use, supply a Comfy input filename and unique prefix yourself. The output node is `16`, saving a 16-bit PNG with nearer regions brighter. Keep `img_to_img_velocity`, shift 1.73, Euler, sigmas `0.5, 0`, disabled noise and LoRA strength 1.0.
+The connector replaces `SOURCE` with its prepared full-frame input and `RESULT` with a unique output prefix. For direct API use, supply a Comfy input filename and unique prefix yourself. The output node is `16`, saving a 16-bit PNG. Depth is grayscale with nearer regions brighter; normals and albedo use RGB16. Keep `img_to_img_velocity`, shift 1.73, Euler, sigmas `0.5, 0`, disabled noise and LoRA strength 1.0.
 
 Install the scoped sampler before submission. It applies its memory policy during Marigold sampling; no second ComfyUI process or global reservation flag is needed. The connector additionally handles caching, checksum validation, job serialization and workflow switching. Direct API submissions bypass those connector protections and should wait for the shared queue to be idle.
 
 Depth is relative log depth, not metres or an alpha matte. Inspect boundaries and ranges through the editor's **Visualize depth** function and rendered mask overlays. The current optional feature supplies depth masks; it does not add a Marigold lens-blur selector.
+
+Normals encode camera-space directions and albedo estimates surface colour. Follow the [surface setup and editing guide](../SURFACES.md) for task weights, colour-space handling and saved-map controls.

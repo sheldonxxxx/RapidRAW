@@ -8,7 +8,7 @@ This independent fork of [RapidRAW](https://github.com/CyberTimon/RapidRAW) adds
 
 Use RapidRAW on its own, connect it to your preferred MCP client, or pair it with [Lightweft](https://github.com/sheldonxxxx/lightweft), the central workspace for photographic direction, rendered review and personal style exploration. Lightweft and the [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit) are separate, optional projects.
 
-**[Set up MCP](mcp/README.md#macos-quick-start)** · **[Use the desktop editor](docs/desktop-guide.md)** · **[Explore Lightweft](https://github.com/sheldonxxxx/lightweft)** · **[See tested capabilities](mcp/CAPABILITY-MATRIX.md)**
+**[Agent setup](AGENT_SETUP.md)** · **[MCP package](mcp/README.md)** · **[MCP docs](docs/mcp/README.md)** · **[Use the desktop editor](docs/desktop-guide.md)** · **[Explore Lightweft](https://github.com/sheldonxxxx/lightweft)**
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/editor.jpg" alt="Upstream RapidRAW desktop editor showing a photograph and adjustment controls">
@@ -20,20 +20,22 @@ _Desktop screenshot from upstream RapidRAW. The MCP interface is an addition mai
 
 **[ComfyUI integration guide](docs/comfyui.md):** one connector for generative editing and optional depth, tested ComfyUI revisions, GPU memory guidance and [downloadable chosen workflows](ai-connector/workflows/README.md).
 
-For repeated MCP editing and test runs, see [storage and model-cache guidance](mcp/README.md#storage-for-repeated-editing-and-tests).
+For repeated MCP editing and test runs, see [storage and model-cache guidance](mcp/README.md#runtime-contract).
 
 **Optional Marigold depth masks:** [set up depth selections](ai-connector/MARIGOLD.md) using the same AI connector and ComfyUI as generative editing. This source-build feature is disabled by default and keeps built-in depth and lens blur available.
+
+**Optional Marigold tools:** [directional light and colour selections](ai-connector/SURFACES.md) use normals and albedo through the same connector. Adjust light direction, select surface colours and recolour while retaining source texture. Saved maps work offline in native previews and exports.
 
 ## Choose your starting point
 
 | You want to…                                                      | Start here                                                                                                                                                                                   |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Edit photographs directly in a desktop application                | [Desktop guide](docs/desktop-guide.md) and [upstream application downloads](https://github.com/CyberTimon/RapidRAW/releases)                                                                 |
-| Let an AI agent use RapidRAW's native engine                      | Use a fork beta package or source build and follow the [MCP setup guide](mcp/README.md)                                                                                                      |
+| Let an AI agent use RapidRAW's native engine                      | Install a fork beta package and connect the pinned npm host with the [agent setup guide](AGENT_SETUP.md) (package-first normal path; source build is the fallback)                           |
 | Give your agent an editing workflow and a place to review results | Start with [Lightweft](https://github.com/sheldonxxxx/lightweft), then add RapidRAW as an optional execution tool                                                                            |
 | Prepare saved Insta360 files before editing                       | Use the independent [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit), then follow the [spherical handoff guide](skills/rapidraw-mcp/references/spherical-photos.md) |
 
-**Fork beta packages include the native MCP bridge.** Choose a matching asset from the [fork releases](https://github.com/sheldonxxxx/RapidRAW/releases), then [build and connect the separate Node host](mcp/README.md#connect-a-beta-package). Source builds require the `mcp` Cargo feature. Upstream application downloads do not contain this fork's bridge. The server uses your MCP client's model; it does not include a language model or a hosted editing service.
+**Fork beta packages include the native MCP bridge.** Choose a matching asset from the [fork releases](https://github.com/sheldonxxxx/RapidRAW/releases), then connect the pinned npm host [`@sheldonxxxx/rapidraw-mcp@0.1.0`](AGENT_SETUP.md) without cloning this repository. Upstream application downloads do not contain this fork's bridge. Fresh-machine acceptance of packaged MCP downloads has not been established; the source-build workflows retain their recorded test boundaries. The server uses your MCP client's model; it does not include a language model or a hosted editing service.
 
 Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0 for local AI inference. Intel Mac builds retain the existing runtime. See the [runtime and hardware guide](docs/local-enhancement.md#apple-silicon-runtime).
 
@@ -55,11 +57,11 @@ Compatible AI Connectors also expose workflow, AI resolution and seed choices in
 
 For removal, recolouring, adding objects and lettering, follow the [AI editing workflows](docs/ai-editing-workflows.md). Start with Klein 4B at 1 MP and compare the rendered result before changing models or resolution.
 
-The server exposes **65 MCP tools** over stdio. Local AI operations need their model assets installed. HDR, focus merging, panorama and negative conversion are also exposed, with photographic acceptance limits documented in the [capability matrix](mcp/CAPABILITY-MATRIX.md). The live `rapidraw_capabilities` response defines the available tools and schemas for your build.
+The server exposes **65 MCP tools** over stdio. Local AI operations need their model assets installed. HDR, focus merging, panorama and negative conversion are also exposed, with photographic acceptance limits documented in the [historical capability snapshot](docs/mcp/history/capability-matrix-2026-09.md). The live `rapidraw_capabilities` response defines the available tools and schemas for your build.
 
 ## Connect an agent
 
-1. Build and connect the fork using the [macOS quick start](mcp/README.md#macos-quick-start) or the [Linux GPU server guide](mcp/REMOTE-SSH.md).
+1. Install a fork beta package and connect the pinned npm host using the [agent setup guide](AGENT_SETUP.md). Source builds via the [source-build fallback](mcp/README.md#build-and-connect) or the [Linux GPU server guide](docs/mcp/remote-ssh.md) remain the fallback for development or unsupported platforms.
 2. Optionally install the execution skill:
 
    ```sh
@@ -89,16 +91,18 @@ RapidRAW edits the pixels it receives. Camera-native fisheye stitching and spher
 
 ## Tested configurations and current limits
 
-| Configuration                                                 | Evidence and setup                                                                                                                                 |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS with Metal, native debug build                          | Native editing, state, rendering and export acceptance in the [verification record](mcp/VERIFICATION.md); [setup](mcp/README.md#macos-quick-start) |
-| Debian 13 x86-64, NVIDIA GPU, SSH and Xvfb                    | Exercised server workflow documented in the [Linux guide](mcp/REMOTE-SSH.md); this is a specific tested configuration                              |
-| Optional Linux ONNX CUDA inference                            | Foreground/sky masks, depth and AI denoise; [model policy and runtime setup](mcp/ONNX-CUDA.md)                                                     |
-| Windows, packaged MCP releases and fresh-machine installation | No completed native acceptance claim                                                                                                               |
+| Configuration                                                 | Evidence and setup                                                                                                                                                                   |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| macOS with Metal, native debug build                          | Native editing, state, rendering and export acceptance in the [historical verification snapshot](docs/mcp/history/verification-2026-09.md); [setup](mcp/README.md#build-and-connect) |
+| Debian 13 x86-64, NVIDIA GPU, SSH and Xvfb                    | Exercised server workflow documented in the [Linux guide](docs/mcp/remote-ssh.md); this is a specific tested configuration                                                           |
+| Optional Linux ONNX CUDA inference                            | Foreground/sky masks, depth and AI denoise; [model policy and runtime setup](docs/mcp/onnx-cuda.md)                                                                                  |
+| Windows, packaged MCP releases and fresh-machine installation | No completed native acceptance claim                                                                                                                                                 |
 
 Existing mask and denoise operations default to CPU on every platform. Their Linux CUDA support is opt-in and separate from GPU photo rendering; subject selection and local inpainting retain CPU compatibility paths.
 
-Passing an operation or test does not establish the quality of a photograph. Fine hair/feather masks, wide panorama framing, genuine HDR/focus brackets and film-negative quality have remaining acceptance gaps. See the [verification record](mcp/VERIFICATION.md), [capability matrix](mcp/CAPABILITY-MATRIX.md) and [remaining priorities](mcp/GAP-ASSESSMENT.md) for precise boundaries. Upstream platform availability is separate from this fork's MCP testing.
+For GPU RAW denoising on an NVIDIA server, the optional [Nonlocal backend](denoise/README.md) integrates with MCP background jobs. It produces a Bayer DNG that uses RapidRAW's normal demosaic and colour pipeline, with captured edits in a separate session. The existing lightweight NIND option remains available. Nonlocal runs in-process through native ONNX Runtime from a pinned installed bundle (`RAPIDRAW_NONLOCAL_PROVIDER=cpu` or Linux CUDA), or directly through CoreML.framework on macOS (`RAPIDRAW_NONLOCAL_PROVIDER=coreml`); install it once with `install_model kind="nonlocal"` (`RAPIDRAW_NONLOCAL_BUNDLE` remains an explicit manual-bundle override); it is experimental, and commercial parity has not been established.
+
+Passing an operation or test does not establish the quality of a photograph. Fine hair/feather masks, wide panorama framing, genuine HDR/focus brackets and film-negative quality have remaining acceptance gaps. See the [historical verification snapshot](docs/mcp/history/verification-2026-09.md), [historical capability snapshot](docs/mcp/history/capability-matrix-2026-09.md) and [historical gap assessment](docs/mcp/history/gap-assessment-2026-09.md) for precise boundaries; the live `rapidraw_capabilities` response defines the available tools and schemas for your build. Upstream platform availability is separate from this fork's MCP testing.
 
 ## Originals, privacy and local state
 
@@ -117,9 +121,9 @@ Exports go under the MCP workspace's `exports` directory; replacing an existing 
 | [Local masks and detail enhancement](docs/local-enhancement.md) | Native learned masks, experimental deblur, 2× enlargement and hardware profiles |
 | [AI editing workflows](docs/ai-editing-workflows.md)            | Choose a use-case workflow, write a precise prompt and inspect generative edits |
 | [Execution skill](skills/rapidraw-mcp/SKILL.md)                 | Agent editing, mask review, comparisons and delivery                            |
-| [Portable sessions and presets](mcp/PORTABLE-SESSIONS.md)       | Independent alternatives, reusable looks and moving edits                       |
-| [Geometry and review](mcp/GEOMETRY-REVIEW.md)                   | Coordinate mapping, native detail and diagnostic previews                       |
-| [Testing and evidence](mcp/testing-matrix.md)                   | Reproducing protocol, native and photographic checks                            |
+| [Portable sessions and presets](docs/mcp/portable-sessions.md)  | Independent alternatives, reusable looks and moving edits                       |
+| [Geometry and review](docs/mcp/geometry-review.md)              | Coordinate mapping, native detail and diagnostic previews                       |
+| [Testing and evidence](docs/mcp/testing.md)                     | Reproducing protocol, native and photographic checks                            |
 | [Contribution guide](CONTRIBUTING.md)                           | Reporting issues and proposing changes                                          |
 | [Native integration guide](MCP.md)                              | Developing the optional bridge and merging upstream changes                     |
 | [Fork changelog](CHANGELOG.md)                                  | Additions and fixes, with unreleased changes identified                         |

@@ -20,6 +20,7 @@ import { calculateCenteredCrop } from '../utils/cropUtils';
 import { Invokes, ImageMetadata } from '../components/ui/AppProperties';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { syncMarigoldOrientation } from '../utils/marigoldGeometry';
+import { surfaceLayoutError } from '../utils/surfaceGeometry';
 
 export const debouncedSetHistory = debounce((newAdj: Adjustments) => {
   useEditorStore.getState().pushHistory(newAdj);
@@ -42,6 +43,15 @@ export function useEditorActions() {
         const newAdjustments = syncMarigoldOrientation(
           typeof value === 'function' ? value(prev) : { ...prev, ...value },
         );
+        const surfaceError = surfaceLayoutError(newAdjustments);
+        if (surfaceError) {
+          toast.error(
+            surfaceError === 'multiple'
+              ? 'Use one normals or albedo component per adjustment mask.'
+              : 'Maximum 32 render slots. Each directional light mask uses two slots. Remove a mask before adding another.',
+          );
+          return {};
+        }
         debouncedSetHistory(newAdjustments);
         return {
           adjustments: newAdjustments,

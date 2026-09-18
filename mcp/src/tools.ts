@@ -409,8 +409,13 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'start_denoise',
-    'Start a background native AI or BM3D denoise job after capturing the source and current edits. Returns job_id; use get_job for progress and result_session_id. One worker per workspace; editing remains available during computation. Requires installed AI assets. Result is a separate session retaining RAW interpretation.',
-    { ...mutation, intensity: percent.optional(), method: z.enum(['ai', 'bm3d']).optional() },
+    'Start background denoise with captured source and edits. ai (default) is lightweight NIND; bm3d is native CPU; nonlocal is Bayer RAW-to-RAW using the provider-selected installed bundle (RAPIDRAW_NONLOCAL_BUNDLE override when set) with native ONNX on CPU or Linux CUDA, or direct CoreML.framework on macOS. Use install_model kind=nonlocal first when the bundle is absent; start_denoise never downloads. Nonlocal creates a float Bayer DNG developed by the normal RAW pipeline; quality balanced uses one pass, maximum four rotations. Intensity defaults to 100 for nonlocal, 50 otherwise. Returns job_id; get_job yields result_session_id. One worker per workspace; editing remains available. Original session is preserved.',
+    {
+      ...mutation,
+      intensity: percent.optional(),
+      method: z.enum(['ai', 'bm3d', 'nonlocal']).optional(),
+      quality: z.enum(['balanced', 'maximum']).optional(),
+    },
   ),
   tool(
     'get_job',
@@ -426,7 +431,7 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'cancel_job',
-    'Request cooperative cancellation between BM3D patches or AI tiles without stopping the editing engine. Poll until cancelled. If completion already won the race, returns the completed result.',
+    'Cancel a denoise job without stopping the editing engine. BM3D, NIND and Nonlocal stop between patches or tiles. Poll until cancelled. If completion already won the race, returns the completed result.',
     job,
     false,
     { idempotent: true },
@@ -566,10 +571,10 @@ export const toolDefinitions: ToolDefinition[] = [
   }),
   tool(
     'mask_generate',
-    'Generate an AI mask. Depth defaults to the built-in model; depth_provider=marigold explicitly sends analysis pixels to the separately enabled depth service and saves a reusable 16-bit map. Subject include/exclude points use the full mask canvas before crop. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
+    'Generate an AI mask. Normals/albedo explicitly use the separately enabled shared AI connector and save RGB16 maps. Normals parameters: normalAngle (degrees), normalAmount (signed exposure stops, -1.5..1.5). Albedo parameters: surfacePointX/Y (0..1 on the unrotated map), surfaceTolerance (.005..1), surfaceColor (RGB 0..255), surfaceAmount (0..1). Saved maps work offline; intersect with regional masks to confine edits. Depth defaults to the built-in model; depth_provider=marigold explicitly sends analysis pixels to the separately enabled depth service and saves a reusable 16-bit map. Subject include/exclude points use the full mask canvas before crop. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
     {
       ...mutation,
-      kind: z.enum(['subject', 'foreground', 'sky', 'depth']),
+      kind: z.enum(['subject', 'foreground', 'sky', 'depth', 'normals', 'albedo']),
       depth_provider: z.enum(['builtin', 'marigold']).optional(),
       name: z.string().max(200).optional(),
       region: region.optional(),
@@ -673,8 +678,8 @@ export const toolDefinitions: ToolDefinition[] = [
   ),
   tool(
     'install_model',
-    'Download and install RapidRAW local model assets for masks, inpainting or denoise. This makes network requests and may download large files.',
-    { kind: z.enum(['masks', 'inpaint', 'denoise']) },
+    'Download and install RapidRAW local model assets for masks, inpainting, denoise or nonlocal (Bayer RAW denoise runtime bundle selected by RAPIDRAW_NONLOCAL_PROVIDER). This makes network requests and may download large files.',
+    { kind: z.enum(['masks', 'inpaint', 'denoise', 'nonlocal']) },
     false,
     { network: true, idempotent: true, timeoutMs: 1_800_000 },
   ),

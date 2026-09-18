@@ -124,6 +124,60 @@
       "repository": "QuantStack/Qwen-Image-Edit-2509-GGUF",
       "revision": "84a3006979126011422eeeefe0c9485ddf431ef5",
       "source_url": "https://huggingface.co/QuantStack/Qwen-Image-Edit-2509-GGUF/tree/84a3006979126011422eeeefe0c9485ddf431ef5"
+    },
+    {
+      "filename": "marigold_v2_albedo_conditioning.safetensors",
+      "bytes": 2573432,
+      "sha256": "f3d70cc7d4d37743e3f4da197b97a2d2847a8a172a50f86112642ecfa99834fd",
+      "source_url": "https://huggingface.co/Comfy-Org/marigold-v2-0/resolve/70e2127d026c8f6b62d8049b73f5392e1e81ebfa/split_files/embeddings/marigold_v2_albedo_conditioning.safetensors",
+      "repository": "Comfy-Org/marigold-v2-0",
+      "revision": "70e2127d026c8f6b62d8049b73f5392e1e81ebfa",
+      "checksum_basis": "download_verified_sha256_and_size"
+    },
+    {
+      "filename": "marigold_v2_normals_conditioning.safetensors",
+      "bytes": 2537592,
+      "sha256": "a0f82526b471482dfb2c2403aa63582f7732241d706f1f5b0daeda88762eeb5f",
+      "source_url": "https://huggingface.co/Comfy-Org/marigold-v2-0/resolve/70e2127d026c8f6b62d8049b73f5392e1e81ebfa/split_files/embeddings/marigold_v2_normals_conditioning.safetensors",
+      "repository": "Comfy-Org/marigold-v2-0",
+      "revision": "70e2127d026c8f6b62d8049b73f5392e1e81ebfa",
+      "checksum_basis": "download_verified_sha256_and_size"
+    },
+    {
+      "filename": "marigold_v2_albedo.safetensors",
+      "bytes": 1703764632,
+      "sha256": "263ec11bb29625c5ec7b145ea2fbc9e8e7854ad4a229031e020e55d614e8e919",
+      "source_url": "https://huggingface.co/Comfy-Org/marigold-v2-0/resolve/70e2127d026c8f6b62d8049b73f5392e1e81ebfa/split_files/loras/marigold_v2_albedo.safetensors",
+      "repository": "Comfy-Org/marigold-v2-0",
+      "revision": "70e2127d026c8f6b62d8049b73f5392e1e81ebfa",
+      "checksum_basis": "download_verified_sha256_and_size"
+    },
+    {
+      "filename": "marigold_v2_normals.safetensors",
+      "bytes": 1703764632,
+      "sha256": "94a96e203f47797b23a21c6fe0bf169db178342698871f6a95d944537a680135",
+      "source_url": "https://huggingface.co/Comfy-Org/marigold-v2-0/resolve/70e2127d026c8f6b62d8049b73f5392e1e81ebfa/split_files/loras/marigold_v2_normals.safetensors",
+      "repository": "Comfy-Org/marigold-v2-0",
+      "revision": "70e2127d026c8f6b62d8049b73f5392e1e81ebfa",
+      "checksum_basis": "download_verified_sha256_and_size"
+    },
+    {
+      "filename": "marigold_v2_albedo_vae.safetensors",
+      "bytes": 253806278,
+      "sha256": "91524d3ecafcbb25ceea3d7a76b09581eb27664fb1ba09996db3da2b1f91563f",
+      "source_url": "https://huggingface.co/Comfy-Org/marigold-v2-0/resolve/70e2127d026c8f6b62d8049b73f5392e1e81ebfa/split_files/vae/marigold_v2_albedo_vae.safetensors",
+      "repository": "Comfy-Org/marigold-v2-0",
+      "revision": "70e2127d026c8f6b62d8049b73f5392e1e81ebfa",
+      "checksum_basis": "download_verified_sha256_and_size"
+    },
+    {
+      "filename": "marigold_v2_normals_vae.safetensors",
+      "bytes": 253806278,
+      "sha256": "66db6213a47b53e8835df48c9977f06cd74c9a973c6f0ac4d65a725de03add71",
+      "source_url": "https://huggingface.co/Comfy-Org/marigold-v2-0/resolve/70e2127d026c8f6b62d8049b73f5392e1e81ebfa/split_files/vae/marigold_v2_normals_vae.safetensors",
+      "repository": "Comfy-Org/marigold-v2-0",
+      "revision": "70e2127d026c8f6b62d8049b73f5392e1e81ebfa",
+      "checksum_basis": "download_verified_sha256_and_size"
     }
   ]
 }

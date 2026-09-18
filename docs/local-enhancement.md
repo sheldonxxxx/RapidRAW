@@ -37,7 +37,7 @@ Larger restoration tiles offer more context and use more memory. They do not gua
 
 **Mac mini, 16 GB:** start with Auto and Balanced for masks; Auto selects CPU, capped at four inference threads. Start restoration on a small area in Fast, and use the NVIDIA server for larger enlargement jobs. Reserve Quality for inspected detail. CoreML is available only for validated ViTMatte inference. Face parsing is blocked on CoreML because the tested runtime can abort inside MPSGraph; restoration models also remain on CPU.
 
-**Linux NVIDIA server:** Auto attempts CUDA with initialization fallback to CPU. Explicit CUDA reports an error if the runtime cannot initialize. Install the compatible runtime following the [Linux ONNX guide](../mcp/ONNX-CUDA.md). A 4 GiB CUDA arena limit bounds that allocator, not total GPU memory. Existing denoise/masking provider defaults remain unchanged; this Auto policy applies to the new enhancement operations.
+**Linux NVIDIA server:** Auto attempts CUDA with initialization fallback to CPU. Explicit CUDA reports an error if the runtime cannot initialize. Install the compatible runtime following the [Linux ONNX guide](mcp/onnx-cuda.md). A 4 GiB CUDA arena limit bounds that allocator, not total GPU memory. Existing denoise/masking provider defaults remain unchanged; this Auto policy applies to the new enhancement operations.
 
 Only one enhancement model session is cached at a time. Repeated work with the same model reuses it; switching models releases the previous session. This keeps memory use more predictable on a 16 GB computer. Provider receipts identify the registered provider and any initialization fallback; unsupported operators may still execute on CPU.
 
@@ -163,7 +163,7 @@ The manifest contains `models: [{"id": "matting", "path": "/path/to/model.onnx"}
 
 Use [benchmark_onnx.py](../bench/enhance/benchmark_onnx.py) for model/provider microbenchmarks and the native runner for application behavior. Keep cold initialization, warm inference, whole-photo time and photographic quality as separate measurements.
 
-For existing subject, foreground, sky, depth, inpainting and denoise models, use the native [ONNX provider regression runner](../mcp/scripts/onnx-provider-e2e.mjs) with the setup in the [regression guide](../mcp/ONNX-CUDA.md). It supports comparing runtimes through `ORT_DYLIB_PATH` and saved baseline reports. Preserve failed comparisons when evaluating numerical changes; operation success and photographic usability are separate checks.
+For existing subject, foreground, sky, depth, inpainting and denoise models, use the native [ONNX provider regression runner](../mcp/scripts/onnx-provider-e2e.mjs) with the setup in the [regression guide](mcp/onnx-cuda.md). It supports comparing runtimes through `ORT_DYLIB_PATH` and saved baseline reports. Preserve failed comparisons when evaluating numerical changes; operation success and photographic usability are separate checks.
 
 The desktop CLIP tagging path has an opt-in native regression test. From the repository root, supply the application's pinned CLIP model, its tokenizer and a photograph; paths below are placeholders:
 

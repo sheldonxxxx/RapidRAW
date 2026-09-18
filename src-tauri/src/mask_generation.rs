@@ -1359,6 +1359,29 @@ fn generate_sub_mask_bitmap(
             generate_ai_foreground_bitmap(&sub_mask.parameters, width, height, scale, crop_offset)
         }
         "ai-sky" => generate_ai_sky_bitmap(&sub_mask.parameters, width, height, scale, crop_offset),
+        "ai-normals" | "ai-albedo" => {
+            let p = &sub_mask.parameters;
+            let full = crate::marigold_surface::selection(p)?;
+            let tf = TransformParams {
+                rotation: p["rotation"].as_f64().unwrap_or(0.0) as f32,
+                flip_horizontal: p["flipHorizontal"].as_bool().unwrap_or(false),
+                flip_vertical: p["flipVertical"].as_bool().unwrap_or(false),
+                orientation_steps: p["orientationSteps"].as_u64().unwrap_or(0) as u8,
+                width,
+                height,
+                scale,
+                crop_offset,
+            };
+            let mut mask = generate_ai_bitmap_from_full_mask(&full, &tf);
+            apply_grow_and_feather(
+                &mut mask,
+                p["grow"].as_f64().unwrap_or(0.0) as f32,
+                p["feather"].as_f64().unwrap_or(0.0) as f32,
+                width,
+                height,
+            );
+            Some(mask)
+        }
         "ai-depth" => {
             generate_ai_depth_bitmap(&sub_mask.parameters, width, height, scale, crop_offset)
         }

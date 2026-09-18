@@ -101,13 +101,7 @@ impl Bridge {
         // Native cropping rounds source pixels; masks use the same sampled origin.
         let crop_offset = (crop_offset.0.round(), crop_offset.1.round());
         let image = image.into_owned();
-        let masks: Vec<MaskDefinition> = serde_json::from_value(
-            adjustments
-                .get("masks")
-                .cloned()
-                .unwrap_or_else(|| json!([])),
-        )
-        .map_err(|e| format!("INVALID_MASK: {e}"))?;
+        let masks = crate::marigold_surface::render_masks(&adjustments);
         let masks: Vec<_> = masks.into_iter().filter(|m| m.visible).collect();
         // The native cache resolves the active original and geometry. Propagate
         // failures instead of silently omitting color/luminance masks.

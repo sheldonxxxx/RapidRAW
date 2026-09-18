@@ -23,10 +23,13 @@ const minimumFreeGiB = Number(process.env.RAPIDRAW_MIN_FREE_GIB ?? 20);
 await requireFreeSpace(workspace, minimumFreeGiB);
 const manifest = JSON.parse(await readFile(resolve(process.env.RAPIDRAW_ENHANCEMENT_MANIFEST), 'utf8'));
 const bridge = new NativeBridge({
-  binary: resolve(process.env.RAPIDRAW_BINARY), workspace, timeoutMs: 1_800_000,
+  binary: resolve(process.env.RAPIDRAW_BINARY),
+  workspace,
+  timeoutMs: 1_800_000,
   env: {
     ...process.env,
-    RAPIDRAW_MODEL_CACHE: process.env.RAPIDRAW_MODEL_CACHE ?? fileURLToPath(new URL('../../mcp/.cache/verified-models', import.meta.url)),
+    RAPIDRAW_MODEL_CACHE:
+      process.env.RAPIDRAW_MODEL_CACHE ?? fileURLToPath(new URL('../../mcp/.cache/verified-models', import.meta.url)),
   },
 });
 const call = (method, args = {}) => bridge.request(method, args);

@@ -1,0 +1,905 @@
+{
+  "dataset": "RawNIND",
+  "doi": "10.14428/DVN/DEQCIM",
+  "license": "CC-BY-SA-4.0 per source metadata; retain per-file provenance",
+  "selection": "12 validation and 12 held-out test scenes; 16 new training scenes. Scene names chosen for content and camera/file diversity before inference. Unknown upstream pretraining overlap. Old development scenes excluded. No threshold tuning on test outputs.",
+  "metadata_sha256": "370f2b58b2d8f321a51c181239c09469c1620b7cde71972749c56d7e7fd065bc",
+  "files": [
+    {
+      "scene": "bananapi",
+      "split": "validation",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_bananapi_GT_ISO50_sha1=b51647bb06fe46798561086f3d7d37169c4f6361.nef",
+      "id": 29287,
+      "bytes": 29801543,
+      "checksum": {
+        "type": "MD5",
+        "value": "6b40131d20e68da76182ece48359bd04"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29287"
+    },
+    {
+      "scene": "bananapi",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 3200,
+      "filename": "Bayer_bananapi_ISO3200_sha1=d32e5fc3e05312522b2e766315ee14672627f323.nef",
+      "id": 28428,
+      "bytes": 31553830,
+      "checksum": {
+        "type": "MD5",
+        "value": "68720f9192f4981bb03d5065b8607d07"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28428"
+    },
+    {
+      "scene": "couch",
+      "split": "validation",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_couch_GT_ISO50_sha1=a3fb0611a4848be6998f465beb0489406cd718c0.nef",
+      "id": 28463,
+      "bytes": 35226881,
+      "checksum": {
+        "type": "MD5",
+        "value": "e527d84597a398261fca0d4360705fc3"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28463"
+    },
+    {
+      "scene": "couch",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 16000,
+      "filename": "Bayer_couch_ISO16000_sha1=85d1180bf9f087dbb71ecfb7a6e2468be57d5d46.nef",
+      "id": 29138,
+      "bytes": 37564952,
+      "checksum": {
+        "type": "MD5",
+        "value": "aa704ed0532cb8e90e4e61d50cf7f021"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29138"
+    },
+    {
+      "scene": "Bark",
+      "split": "validation",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_Bark_GT_ISO100_sha1=f15da1140d949ee30c15ce7b251839a7b7a41de7.cr2",
+      "id": 29023,
+      "bytes": 30222296,
+      "checksum": {
+        "type": "MD5",
+        "value": "68079c03f3039c2ad9e86d695bc7b2cf"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29023"
+    },
+    {
+      "scene": "Bark",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 25600,
+      "filename": "Bayer_Bark_ISO25600_sha1=ba3f6ea87665d32bd75999757b9f6406dafe9142.cr2",
+      "id": 29051,
+      "bytes": 36160394,
+      "checksum": {
+        "type": "MD5",
+        "value": "661760dc9b56b20035431198387afd0b"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29051"
+    },
+    {
+      "scene": "Elplint",
+      "split": "validation",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_Elplint_GT_ISO100_sha1=ab8c7bc5ab9bb309a787845ff271409d362d3782.cr2",
+      "id": 29116,
+      "bytes": 23464585,
+      "checksum": {
+        "type": "MD5",
+        "value": "da511a1a1450b389b3d19521a570c5b6"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29116"
+    },
+    {
+      "scene": "Elplint",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 3200,
+      "filename": "Bayer_Elplint_ISO3200_sha1=157600c2ff16ac5f05e3832f4783b54239ac4a94.cr2",
+      "id": 28991,
+      "bytes": 28123353,
+      "checksum": {
+        "type": "MD5",
+        "value": "23ff98e7f6efc7a2c29d95c972d3bfd1"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28991"
+    },
+    {
+      "scene": "MuseeL-feathers-A7C",
+      "split": "validation",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_MuseeL-feathers-A7C_GT_ISO50_sha1=eb2e6bcb4c0a0c3d4cb1d0a98c1287fa0f87792a.arw",
+      "id": 30032,
+      "bytes": 49640960,
+      "checksum": {
+        "type": "MD5",
+        "value": "f7d061e0175f584a68b1344fe07bb08d"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30032"
+    },
+    {
+      "scene": "MuseeL-feathers-A7C",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 16000,
+      "filename": "Bayer_MuseeL-feathers-A7C_ISO16000_sha1=9c2db465a48d9ddbe5d1b543e926495e3ead27c7.arw",
+      "id": 30486,
+      "bytes": 49530368,
+      "checksum": {
+        "type": "MD5",
+        "value": "e5cd4f57440b2f1f5a726732d50b1721"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30486"
+    },
+    {
+      "scene": "MuseeL-portrait-C500D",
+      "split": "validation",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_MuseeL-portrait-C500D_GT_ISO100_sha1=622792c7bda6c3b6130e4ccd172eb3ee0ef49e15.cr2",
+      "id": 30181,
+      "bytes": 20851106,
+      "checksum": {
+        "type": "MD5",
+        "value": "7dab331cdbc355898a9a74022a748fac"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30181"
+    },
+    {
+      "scene": "MuseeL-portrait-C500D",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 3200,
+      "filename": "Bayer_MuseeL-portrait-C500D_ISO3200_sha1=ea3e7eba8f95bce91b0a33e1663d8b7c508a48ae.cr2",
+      "id": 30817,
+      "bytes": 22110901,
+      "checksum": {
+        "type": "MD5",
+        "value": "ff96a1e9d441e961cdad54b75dc6230e"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30817"
+    },
+    {
+      "scene": "white_cat",
+      "split": "validation",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_white_cat_GT_ISO50_sha1=748d37b3ff1664421ed509cb3d259884ce5cd13d.arw",
+      "id": 29888,
+      "bytes": 49051136,
+      "checksum": {
+        "type": "MD5",
+        "value": "552ec5aabb4fb11a9ced14d9e7ce6fc3"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29888"
+    },
+    {
+      "scene": "white_cat",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 6400,
+      "filename": "Bayer_white_cat_ISO6400_sha1=3df880fc906aba49fabdd64cca2283b2e51793b8.arw",
+      "id": 30427,
+      "bytes": 49104384,
+      "checksum": {
+        "type": "MD5",
+        "value": "a638d653e0679c6c9062bec686eeba4c"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30427"
+    },
+    {
+      "scene": "wool_basket",
+      "split": "validation",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_wool_basket_GT_ISO50_sha1=c197240b99523b4ad44a3bcfdc585cdf2f34d785.arw",
+      "id": 30221,
+      "bytes": 49247744,
+      "checksum": {
+        "type": "MD5",
+        "value": "e78e60ecf961cbbba3fd88b70a11dc18"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30221"
+    },
+    {
+      "scene": "wool_basket",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 10000,
+      "filename": "Bayer_wool_basket_ISO10000_sha1=6a8f054fdaac46e8eabbc754b6a045a895f1f052.arw",
+      "id": 29527,
+      "bytes": 49247744,
+      "checksum": {
+        "type": "MD5",
+        "value": "d23e6ab789e12a4b11c3a34f8cb9d23e"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29527"
+    },
+    {
+      "scene": "ads",
+      "split": "validation",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_ads_GT_ISO50_sha1=7c1a27e4c8f7f72937e47cd899e07adcb18b00aa.arw",
+      "id": 28635,
+      "bytes": 49628672,
+      "checksum": {
+        "type": "MD5",
+        "value": "5447baba1c208e0d34a12cea42966dc8"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28635"
+    },
+    {
+      "scene": "ads",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 20000,
+      "filename": "Bayer_ads_ISO20000_sha1=8bb8dce125ebdf896164e269c94ed3bcfcae3532.arw",
+      "id": 29132,
+      "bytes": 49505792,
+      "checksum": {
+        "type": "MD5",
+        "value": "0b0709a936e1b63b2f7d0be0c037dbe6"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29132"
+    },
+    {
+      "scene": "in_piano_dark",
+      "split": "validation",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_in_piano_dark_GT_ISO50_sha1=37d2e32e4cd5214d9203d630055c28c483b14abb.arw",
+      "id": 28613,
+      "bytes": 49624576,
+      "checksum": {
+        "type": "MD5",
+        "value": "4b68f90d748ad458c623b290b8443fdf"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28613"
+    },
+    {
+      "scene": "in_piano_dark",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 3200,
+      "filename": "Bayer_in_piano_dark_ISO3200_sha1=ad267d300dca4cfd579a3e919ee884295ff125a0.arw",
+      "id": 29121,
+      "bytes": 49665536,
+      "checksum": {
+        "type": "MD5",
+        "value": "bc60ba113c9e6da8dbbaec8a2a75ff7a"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29121"
+    },
+    {
+      "scene": "Leslie_colorful_herbs",
+      "split": "validation",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_Leslie_colorful_herbs_GT_ISO50_sha1=c6a9c926788e3bc80c9770bfbaa01269c1ce8d91.arw",
+      "id": 28806,
+      "bytes": 49366528,
+      "checksum": {
+        "type": "MD5",
+        "value": "233cf4e187ef03408488d48ad73e1dff"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28806"
+    },
+    {
+      "scene": "Leslie_colorful_herbs",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 8000,
+      "filename": "Bayer_Leslie_colorful_herbs_ISO8000_sha1=c444e344911c8420d660ac240c28e984e024b9dd.arw",
+      "id": 29019,
+      "bytes": 49292800,
+      "checksum": {
+        "type": "MD5",
+        "value": "e602451a3898e995cd284257375e1da4"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29019"
+    },
+    {
+      "scene": "Spydercheckr",
+      "split": "validation",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_Spydercheckr_GT_ISO100_sha1=a07e59263242abfc13f8244da8bb390b02ecb209.cr2",
+      "id": 30240,
+      "bytes": 24320926,
+      "checksum": {
+        "type": "MD5",
+        "value": "b05a666d4a46539e54a0ec4e424f521a"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30240"
+    },
+    {
+      "scene": "Spydercheckr",
+      "split": "validation",
+      "role": "noisy",
+      "iso": 25600,
+      "filename": "Bayer_Spydercheckr_ISO25600_sha1=21f38099dd747b7b0b8d2ba650a3f1b721324090.cr2",
+      "id": 30065,
+      "bytes": 33406276,
+      "checksum": {
+        "type": "MD5",
+        "value": "4ab8dc1e5e05742fa012fd687fd648a4"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30065"
+    },
+    {
+      "scene": "sewingmachine",
+      "split": "test",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_sewingmachine_GT_ISO50_sha1=cb50539e17b224ef55bef5c0d4b90b26b75d57bd.nef",
+      "id": 30593,
+      "bytes": 29139306,
+      "checksum": {
+        "type": "MD5",
+        "value": "ff79079216dbb852938c42cb2aef065f"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30593"
+    },
+    {
+      "scene": "sewingmachine",
+      "split": "test",
+      "role": "noisy",
+      "iso": 3200,
+      "filename": "Bayer_sewingmachine_ISO3200_sha1=48afeb0f5dedc8ac587f39f99604c535ec34afa3.nef",
+      "id": 30259,
+      "bytes": 31629597,
+      "checksum": {
+        "type": "MD5",
+        "value": "0ff51e5b8110916731fb1e679a6c032d"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30259"
+    },
+    {
+      "scene": "D60-2",
+      "split": "test",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_D60-2_GT_ISO100_sha1=29f5b93638b1cf60d4afbd83fb2c1caca5c1ac38.crw",
+      "id": 28646,
+      "bytes": 6224462,
+      "checksum": {
+        "type": "MD5",
+        "value": "c57ac6fafc7d0c46c9455571b9409ba4"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28646"
+    },
+    {
+      "scene": "D60-2",
+      "split": "test",
+      "role": "noisy",
+      "iso": 1037,
+      "filename": "Bayer_D60-2_ISO1037_sha1=aaa5a0772e45a487b03bd39beec503f2dc439c87.crw",
+      "id": 29262,
+      "bytes": 7380842,
+      "checksum": {
+        "type": "MD5",
+        "value": "d90abe9211fd473773e0aad1894d9c5f"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29262"
+    },
+    {
+      "scene": "TEST_Pen-pile",
+      "split": "test",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_TEST_Pen-pile_GT_ISO100_sha1=dead5469f750d32cd50f8673f1ae3608bdb9a99d.dng",
+      "id": 29815,
+      "bytes": 11275642,
+      "checksum": {
+        "type": "MD5",
+        "value": "3d198aead74703f02ef0ea4450d68b46"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29815"
+    },
+    {
+      "scene": "TEST_Pen-pile",
+      "split": "test",
+      "role": "noisy",
+      "iso": 3200,
+      "filename": "Bayer_TEST_Pen-pile_ISO3200_sha1=a3221270fde0f61f690b4b4619d74ec32dce6e31.dng",
+      "id": 30458,
+      "bytes": 15034648,
+      "checksum": {
+        "type": "MD5",
+        "value": "1290b5e4fd4e8a38d09c3fee26759b70"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30458"
+    },
+    {
+      "scene": "TEST_Vaxt-i-trad",
+      "split": "test",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_TEST_Vaxt-i-trad_GT_ISO100_sha1=ca77ec885c0198357c413895c343b965c1ebcafb.cr2",
+      "id": 30145,
+      "bytes": 23922581,
+      "checksum": {
+        "type": "MD5",
+        "value": "ee8e05c6c701956cf981551b0f0ddb98"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30145"
+    },
+    {
+      "scene": "TEST_Vaxt-i-trad",
+      "split": "test",
+      "role": "noisy",
+      "iso": 3200,
+      "filename": "Bayer_TEST_Vaxt-i-trad_ISO3200_sha1=27cfa8ba31cd13c59d4813199a94f68826a5285f.cr2",
+      "id": 30627,
+      "bytes": 28043590,
+      "checksum": {
+        "type": "MD5",
+        "value": "29e659d81ae48e3f17db96c4153a5255"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30627"
+    },
+    {
+      "scene": "TEST_MuseeL-bluebirds-A7C",
+      "split": "test",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_TEST_MuseeL-bluebirds-A7C_GT_ISO50_sha1=3156b462861d9e67f6e0305d8d55ad695a4d937c.arw",
+      "id": 30090,
+      "bytes": 49047040,
+      "checksum": {
+        "type": "MD5",
+        "value": "3ce5f83c25d593408f39b53b88a49966"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30090"
+    },
+    {
+      "scene": "TEST_MuseeL-bluebirds-A7C",
+      "split": "test",
+      "role": "noisy",
+      "iso": 16000,
+      "filename": "Bayer_TEST_MuseeL-bluebirds-A7C_ISO16000_sha1=e4031d1853423a4f294807864845d60da22eecdd.arw",
+      "id": 29716,
+      "bytes": 49088000,
+      "checksum": {
+        "type": "MD5",
+        "value": "9b9f59108c808ecc5ca106760631e91b"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29716"
+    },
+    {
+      "scene": "TEST_MuseeL-Saint-Pierre-C500D",
+      "split": "test",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_TEST_MuseeL-Saint-Pierre-C500D_GT_ISO100_sha1=f71bff2d267cefbf243971b98beb973daeee84db.cr2",
+      "id": 30031,
+      "bytes": 20369667,
+      "checksum": {
+        "type": "MD5",
+        "value": "c0a886ff301eb74cf62f6e4f8b2f264d"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30031"
+    },
+    {
+      "scene": "TEST_MuseeL-Saint-Pierre-C500D",
+      "split": "test",
+      "role": "noisy",
+      "iso": 3200,
+      "filename": "Bayer_TEST_MuseeL-Saint-Pierre-C500D_ISO3200_sha1=4b71ad313b4fb8d70ba3c5d8cf5a5b9839f8ed80.cr2",
+      "id": 29518,
+      "bytes": 23927690,
+      "checksum": {
+        "type": "MD5",
+        "value": "82125452c127cc6198b6a0f950f8428b"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29518"
+    },
+    {
+      "scene": "TEST_TitusToys",
+      "split": "test",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_TEST_TitusToys_GT_ISO50_sha1=daecb17e3525d230e7e3441d1335f00ca9446405.arw",
+      "id": 31147,
+      "bytes": 49337856,
+      "checksum": {
+        "type": "MD5",
+        "value": "12d3c9ae6cf879696ba3e0479d357cad"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/31147"
+    },
+    {
+      "scene": "TEST_TitusToys",
+      "split": "test",
+      "role": "noisy",
+      "iso": 3200,
+      "filename": "Bayer_TEST_TitusToys_ISO3200_sha1=407af1bec1d611c18e6acc5fd35cdf4c58fb2687.arw",
+      "id": 29947,
+      "bytes": 49305088,
+      "checksum": {
+        "type": "MD5",
+        "value": "fc4e780b47848b4d8d47f3fea836a94c"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29947"
+    },
+    {
+      "scene": "UNK_TEST_LucieB_painted_wallpaper",
+      "split": "test",
+      "role": "clean",
+      "iso": 100,
+      "filename": "Bayer_UNK_TEST_LucieB_painted_wallpaper_GT_ISO100_sha1=4602545744cd1d2942b45aa5e6ebe81bfa1be39b.cr2",
+      "id": 30011,
+      "bytes": 32136160,
+      "checksum": {
+        "type": "MD5",
+        "value": "381c010bace446759506dd4c533b4cde"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30011"
+    },
+    {
+      "scene": "UNK_TEST_LucieB_painted_wallpaper",
+      "split": "test",
+      "role": "noisy",
+      "iso": 12800,
+      "filename": "Bayer_UNK_TEST_LucieB_painted_wallpaper_ISO12800_sha1=aec37400187b027cf98f7de376e13a9ed05c73fa.cr2",
+      "id": 29981,
+      "bytes": 43419653,
+      "checksum": {
+        "type": "MD5",
+        "value": "6c0e9bd93678e66fde728edd0cf17e19"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29981"
+    },
+    {
+      "scene": "wet_charred_wood",
+      "split": "test",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_wet_charred_wood_GT_ISO50_sha1=a63cd46a89d2a512983643d3d3c700a68050d5ec.arw",
+      "id": 29467,
+      "bytes": 49559040,
+      "checksum": {
+        "type": "MD5",
+        "value": "f4dbafa9572993df4ba593c4267e09a3"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29467"
+    },
+    {
+      "scene": "wet_charred_wood",
+      "split": "test",
+      "role": "noisy",
+      "iso": 32000,
+      "filename": "Bayer_wet_charred_wood_ISO32000_sha1=70e576d0cdea2d87f4bdd318388a5e1edd9cf6ed.arw",
+      "id": 30392,
+      "bytes": 49468928,
+      "checksum": {
+        "type": "MD5",
+        "value": "eda5406530b4f0dfcc78e543abbba258"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30392"
+    },
+    {
+      "scene": "LeslieMountains",
+      "split": "test",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_LeslieMountains_GT_ISO50_sha1=0605c040144373d51fc35faeec79cd7ca175e7ae.arw",
+      "id": 28439,
+      "bytes": 49235456,
+      "checksum": {
+        "type": "MD5",
+        "value": "dc47f36e9cf7a8063964e11981255616"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28439"
+    },
+    {
+      "scene": "LeslieMountains",
+      "split": "test",
+      "role": "noisy",
+      "iso": 4000,
+      "filename": "Bayer_LeslieMountains_ISO4000_sha1=33e81ab0fc7647cac9334eb33cc33106e67d4002.arw",
+      "id": 28697,
+      "bytes": 49182208,
+      "checksum": {
+        "type": "MD5",
+        "value": "1accce58cae3f7d8ec41dbea8743ca46"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28697"
+    },
+    {
+      "scene": "dirtymug",
+      "split": "test",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_dirtymug_GT_ISO50_sha1=c12ca8da422963b6a34a5bc8c9ebb3e550c2f8a8.arw",
+      "id": 28706,
+      "bytes": 49284608,
+      "checksum": {
+        "type": "MD5",
+        "value": "748766cf408515e3dfbec36e504b6210"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28706"
+    },
+    {
+      "scene": "dirtymug",
+      "split": "test",
+      "role": "noisy",
+      "iso": 10000,
+      "filename": "Bayer_dirtymug_ISO10000_sha1=1bf45dda861c47f0031394faa3ded7ff92c83523.arw",
+      "id": 28459,
+      "bytes": 49276416,
+      "checksum": {
+        "type": "MD5",
+        "value": "9dddf7e98644ff2feecf99cf4122605e"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28459"
+    },
+    {
+      "scene": "fireplace",
+      "split": "test",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_fireplace_GT_ISO50_sha1=48199fd961f59e6ba163da5165e1320d7dd6ba05.arw",
+      "id": 29321,
+      "bytes": 49042944,
+      "checksum": {
+        "type": "MD5",
+        "value": "f2ccdde64d780e7df118b000462a08fa"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29321"
+    },
+    {
+      "scene": "fireplace",
+      "split": "test",
+      "role": "noisy",
+      "iso": 16000,
+      "filename": "Bayer_fireplace_ISO16000_sha1=0ea27b82be5bcc4f4436086d9b80ccf655b0fc57.arw",
+      "id": 28381,
+      "bytes": 49305088,
+      "checksum": {
+        "type": "MD5",
+        "value": "f6c645bcac04a6107a34a3bbac258b00"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28381"
+    },
+    {
+      "scene": "big_bookshelf_1",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_big_bookshelf_1_GT_ISO50_sha1=f457c19aacb068dcf9fdd3fd007a19fda5fd2676.arw",
+      "id": 28917,
+      "bytes": 49440256,
+      "checksum": {
+        "type": "MD5",
+        "value": "71a8b408a9d6ec55b2bf8b39b053105f"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28917"
+    },
+    {
+      "scene": "bits",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_bits_GT_ISO50_sha1=11ab2b238f6de0c7ca0d30ebd0c51690aa971010.arw",
+      "id": 28919,
+      "bytes": 49350144,
+      "checksum": {
+        "type": "MD5",
+        "value": "2a20fdcd9e543b059567533ddc3f54df"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28919"
+    },
+    {
+      "scene": "blood_oranges",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_blood_oranges_GT_ISO50_sha1=0e67180e3f650d31ad820b7802da50c6d2356d0e.arw",
+      "id": 28843,
+      "bytes": 49362432,
+      "checksum": {
+        "type": "MD5",
+        "value": "56da8f56f580f30361b6c53cacc5c4c2"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28843"
+    },
+    {
+      "scene": "foodstuff2",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_foodstuff2_GT_ISO50_sha1=d180ec555fa010abf1b2f010e16208897355dd5b.arw",
+      "id": 28983,
+      "bytes": 49698304,
+      "checksum": {
+        "type": "MD5",
+        "value": "17b4ae1490cd36e0f2c2f62624a4938f"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28983"
+    },
+    {
+      "scene": "damaged_root",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_damaged_root_GT_ISO50_sha1=02cc8ebbc30072a6e9ebb9b71191b05f645989ee.arw",
+      "id": 28512,
+      "bytes": 49616384,
+      "checksum": {
+        "type": "MD5",
+        "value": "70e7777988512e10c631515bb864ac77"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28512"
+    },
+    {
+      "scene": "drying_apple_seeds",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_drying_apple_seeds_GT_ISO50_sha1=c0f9f009cba49a0a7fdb1660abedf4629cb37b36.arw",
+      "id": 28610,
+      "bytes": 49214976,
+      "checksum": {
+        "type": "MD5",
+        "value": "89c69a4c7abee53aaa58c509f3daefe9"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28610"
+    },
+    {
+      "scene": "European_hornbeam_bark",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_European_hornbeam_bark_GT_ISO50_sha1=0a4390ebc39e2ce2920d3585890ee3855e3bc207.arw",
+      "id": 28369,
+      "bytes": 49665536,
+      "checksum": {
+        "type": "MD5",
+        "value": "04a7cf2cb39d8708dd2dcb838d83a460"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28369"
+    },
+    {
+      "scene": "icing",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_icing_GT_ISO50_sha1=b9a1e2dc98020877970455e6d07f6f058d2e0942.arw",
+      "id": 28832,
+      "bytes": 49292800,
+      "checksum": {
+        "type": "MD5",
+        "value": "d3a59603a22f584dd291b4792d085ac2"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28832"
+    },
+    {
+      "scene": "helmet",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_helmet_GT_ISO50_sha1=1af44605568fad3353cbf9c4fe4912b4816cedcf.arw",
+      "id": 28937,
+      "bytes": 49116672,
+      "checksum": {
+        "type": "MD5",
+        "value": "ea3b58455350dabc6d0fbc293b15840f"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28937"
+    },
+    {
+      "scene": "Matthias_salt",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_Matthias_salt_GT_ISO50_sha1=377177930ca63141ec612bcd2b529ff1990c0550.arw",
+      "id": 28495,
+      "bytes": 49366528,
+      "checksum": {
+        "type": "MD5",
+        "value": "081c865bbd8abb9aa88347b75fa1fab0"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28495"
+    },
+    {
+      "scene": "multiprise",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_multiprise_GT_ISO50_sha1=529020482a1fd97c7946628735505b65d1351013.arw",
+      "id": 28506,
+      "bytes": 49120768,
+      "checksum": {
+        "type": "MD5",
+        "value": "133254308d3e38c441407175f430ef57"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28506"
+    },
+    {
+      "scene": "penne",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_penne_GT_ISO50_sha1=4d113a940e1c209090659c7593b333ae5cadfc07.arw",
+      "id": 30162,
+      "bytes": 49243648,
+      "checksum": {
+        "type": "MD5",
+        "value": "b21726c588b196cd9359a39244b7ed2d"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30162"
+    },
+    {
+      "scene": "sprouting_garlic",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_sprouting_garlic_GT_ISO50_sha1=cc6473fdccf97a1692f1ad6cf0b07e519874956a.arw",
+      "id": 30078,
+      "bytes": 49100288,
+      "checksum": {
+        "type": "MD5",
+        "value": "30dbbc368c63cc055ac4db5fc627914b"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/30078"
+    },
+    {
+      "scene": "target",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_target_GT_ISO50_sha1=2ce7f4bf4426001e1901fd48b9b375edb2221fe9.arw",
+      "id": 29819,
+      "bytes": 49350144,
+      "checksum": {
+        "type": "MD5",
+        "value": "c5f92fccc7853fcfd9531e07bd2216db"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29819"
+    },
+    {
+      "scene": "thermostat4",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_thermostat4_GT_ISO50_sha1=9c5fbc17acb0f5a5f2b0a57cbd0d4e862b11b1dd.arw",
+      "id": 29760,
+      "bytes": 49296896,
+      "checksum": {
+        "type": "MD5",
+        "value": "971db99a188ee7406b3e48a022b835e7"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29760"
+    },
+    {
+      "scene": "redbox",
+      "split": "train",
+      "role": "clean",
+      "iso": 50,
+      "filename": "Bayer_redbox_GT_ISO50_sha1=3bc21e44940abac6c9f1eb768ccff9938ce6f742.arw",
+      "id": 29410,
+      "bytes": 49161728,
+      "checksum": {
+        "type": "MD5",
+        "value": "55de0ff7741eee45102370de4276752e"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29410"
+    }
+  ]
+}

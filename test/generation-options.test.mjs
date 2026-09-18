@@ -227,3 +227,82 @@ test('late Marigold results cannot overwrite switched photos, changed geometry, 
     assert.equal(env.state.isGeneratingAiMask, false);
   }
 });
+
+test('surface generation reuses the shared connector command and merges controls changed in flight', async () => {
+  const env = environment();
+  env.state.adjustments.masks = [
+    { id: 'm', subMasks: [{ id: 's', type: 'ai-albedo', parameters: { surfaceAmount: 0 } }] },
+  ];
+  let finish;
+  env.invoke = (name, args) => {
+    env.calls.push({ name, args });
+    return new Promise((resolve) => {
+      finish = resolve;
+    });
+  };
+  const pending = hook.useAiMasking().handleGenerateSurfaceMask('s', 'albedo');
+  env.state.adjustments.masks[0].subMasks[0].parameters.surfaceAmount = 0.7;
+  finish({ maskDataBase64: 'rgb16', surfaceArtifact: { kind: 'albedo' } });
+  await pending;
+  assert.equal(env.calls[0].name, 'generate_marigold_surface_mask');
+  assert.equal(env.calls[0].args.kind, 'albedo');
+  assert.deepEqual(env.calls[0].args.jsAdjustments.aiPatches, env.state.adjustments.aiPatches);
+  assert.equal(env.state.adjustments.masks[0].subMasks[0].parameters.surfaceAmount, 0.7);
+  assert.equal(env.state.adjustments.masks[0].subMasks[0].parameters.maskDataBase64, 'rgb16');
+});
+
+test('surface results cannot overwrite replaced photos, warp, retouch, crop, cancelled or deleted masks', async () => {
+  for (const change of ['photo', 'geometry', 'retouch', 'crop', 'cancel', 'delete']) {
+    const env = environment();
+    const part = { id: 's', type: 'ai-normals', parameters: { maskDataBase64: 'original' } };
+    env.state.adjustments.masks = [{ id: 'm', subMasks: [part] }];
+    let finish;
+    env.invoke = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    const pending = hook.useAiMasking().handleGenerateSurfaceMask('s', 'normals');
+    if (change === 'photo') env.state.selectedImage = { path: '/fixture/photo.raw' };
+    if (change === 'geometry') env.state.adjustments.guidedPerspective = { enabled: true };
+    if (change === 'retouch') env.state.adjustments.aiPatches = [];
+    if (change === 'crop') env.state.adjustments.crop = { x: 20 };
+    if (change === 'cancel') hook.discardMarigoldResult('s');
+    if (change === 'delete') env.state.adjustments.masks = [];
+    finish({ maskDataBase64: 'late' });
+    await pending;
+    assert.equal(part.parameters.maskDataBase64, 'original', change);
+    assert.equal(env.state.isGeneratingAiMask, false);
+  }
+});
+
+const surface = await bundled('src/utils/surfaceGeometry.ts', 'surface-geometry');
+test('surface signatures ignore display transforms, include warp and retouch, and sort nested keys', async () => {
+  const a = { transformRotate: 0, guidedPerspective: { z: 1, a: 2.5 } };
+  const b = { transformRotate: 0, guidedPerspective: { a: 2.5, z: 1 }, rotation: 30, crop: { x: 2 } };
+  assert.equal(surface.surfaceGeometrySnapshot(a), surface.surfaceGeometrySnapshot(b));
+  assert.notEqual(surface.surfaceRequestSnapshot(a), surface.surfaceRequestSnapshot(b));
+  assert.notEqual(surface.surfaceGeometrySnapshot(a), surface.surfaceGeometrySnapshot({ ...a, aiPatches: [] }));
+  assert.equal((await surface.surfaceGeometryHash(surface.surfaceGeometrySnapshot(a))).length, 64);
+  const normals = { type: 'ai-normals', parameters: { maskDataBase64: 'rgb16', normalAngle: 30 } };
+  const adjusted = syncMarigoldOrientation({
+    rotation: 10,
+    orientationSteps: 1,
+    flipHorizontal: true,
+    flipVertical: false,
+    masks: [{ subMasks: [normals] }],
+  });
+  assert.equal(adjusted.masks[0].subMasks[0].parameters.normalAngle, 30);
+  assert.equal(adjusted.masks[0].subMasks[0].parameters.maskDataBase64, 'rgb16');
+  assert.equal(adjusted.masks[0].subMasks[0].parameters.orientationSteps, 1);
+});
+
+test('surface layout protects render capacity and rejects mixed surface components without restricting legacy masks', () => {
+  const normal = { type: 'ai-normals', parameters: {} };
+  const albedo = { type: 'ai-albedo', parameters: {} };
+  const legacy = Array.from({ length: 32 }, () => ({ subMasks: [{ type: 'brush' }] }));
+  assert.equal(surface.surfaceLayoutError({ masks: legacy }), null);
+  assert.equal(surface.surfaceLayoutError({ masks: [...legacy.slice(1), { subMasks: [normal] }] }), 'slots');
+  assert.equal(surface.surfaceLayoutError({ masks: [...legacy.slice(2), { subMasks: [normal] }] }), null);
+  assert.equal(surface.surfaceLayoutError({ masks: [{ subMasks: [normal, albedo] }] }), 'multiple');
+  assert.equal(surface.surfaceLayoutError({ masks: [], aiPatches: [{ subMasks: [albedo] }] }), 'multiple');
+});

@@ -133,6 +133,9 @@
       "vignette": "Vinyetatge"
     }
   },
+  "common": {
+    "close": "Close"
+  },
   "contextMenus": {
     "album": {
       "emptyGroup": "(Grup buit)"
@@ -647,6 +650,21 @@
         "size": "Mida del pinzell"
       },
       "comingSoon": "Aviat disponible",
+      "depthPreview": {
+        "alt": "Full depth map: nearer areas are brighter, farther areas are darker",
+        "builtin": "Built-in depth",
+        "close": "Close",
+        "description": "Full image before rotation and crop. Shows relative depth, independent of your selected range.",
+        "error": "The saved depth map could not be displayed.",
+        "far": "Far",
+        "fit": "Fit",
+        "missing": "Generate a depth map to preview it.",
+        "near": "Near",
+        "open": "Visualize depth",
+        "title": "Depth map",
+        "zoomIn": "Zoom in",
+        "zoomOut": "Zoom out"
+      },
       "depthRange": {
         "far": "Lluny",
         "near": "A prop",
@@ -654,6 +672,18 @@
         "title": "Rang de profunditat"
       },
       "dropzoneText": "Deixeu anar aquí per crear una màscara nova",
+      "marigold": {
+        "builtin": "Depth source: built-in",
+        "cancel": "Discard result",
+        "cancelHint": "The GPU job may finish; discarding keeps the current mask.",
+        "empty": "Marigold · depth not generated",
+        "generate": "Generate with Marigold",
+        "generateHint": "Generate a depth map to select a range. Depth is relative, with nearer areas brighter.",
+        "newMask": "Marigold Depth",
+        "progress": "Waiting for the GPU or generating depth…",
+        "range": "Adjust the depth range below without running the model again. Depth is relative, with nearer areas brighter.",
+        "saved": "Marigold · saved 16-bit depth"
+      },
       "maskAdjustmentsTitle": "Ajustaments de màscara",
       "maskingTitle": "Emmascarament",
       "masksTitle": "Màscares",
@@ -802,6 +832,31 @@
         "style": "Estil",
         "tool": "Eina"
       }
+    },
+    "surface": {
+      "albedo": "Colour selection · albedo",
+      "amount": "Recolour amount",
+      "colourHint": "Pick a colour on the albedo map, then increase the recolour amount. Brightness and texture are retained; very bright areas may be less saturated. At zero, use this as a selection for ordinary local adjustments.",
+      "direction": "Light direction (°)",
+      "empty": "Generate a map to begin.",
+      "enableHint": "Enable Marigold directional light and colour in Settings to generate maps.",
+      "generate": "Generate map",
+      "lightAmount": "Dodge / burn strength (EV)",
+      "lightHint": "0° lights from the right; 90° from above. Positive strength brightens facing surfaces and darkens opposing surfaces; negative strength reverses this. The overlay shows the facing selection. This is a tonal effect, not a physically accurate light simulation.",
+      "mapAlbedo": "Albedo map · click a colour to select it",
+      "mapHint": "Analysis map before display rotation and crop. Your photo and edit retain their original resolution.",
+      "mapNormals": "Normals map",
+      "multiple": "This mask is inactive. Keep one normals or albedo component per mask; move the other to a separate mask.",
+      "normals": "Directional light · normals",
+      "pick": "Choose colour on albedo map",
+      "regenerate": "Regenerate map",
+      "region": "Intersect with a brush or subject mask to confine the edit. Use separate masks for normals and albedo.",
+      "saved": "Saved 16-bit map · controls work offline",
+      "stale": "Geometry or retouch changed. This mask is inactive until you regenerate its map or undo that change.",
+      "target": "Recolour to",
+      "tolerance": "Colour range",
+      "view": "View normals map",
+      "wait": "Waiting for the GPU or generating a surface map…"
     },
     "switcher": {
       "tooltips": {
@@ -1171,6 +1226,7 @@
   },
   "masks": {
     "types": {
+      "albedo": "Marigold Colour",
       "all": "Tota la imatge",
       "brush": "Pinzell",
       "clone": "Clonar",
@@ -1182,6 +1238,7 @@
       "linear": "Lineal",
       "liquify": "Liquar",
       "luminance": "Luminància",
+      "normals": "Marigold Directional Light",
       "others": "Altres",
       "quickErase": "Esborrat ràpid",
       "quickEraser": "Goma d'esborrar ràpida",
@@ -1724,6 +1781,16 @@
       "saved": "Objectius desats",
       "title": "Els meus objectius"
     },
+    "marigold": {
+      "address": "AI connector address (shared)",
+      "check": "Check Marigold setup",
+      "checking": "Checking models…",
+      "description": "Create depth selections with Marigold. Uses your AI connector and ComfyUI; the connector queues model workflows on your GPU. Saved masks work offline.",
+      "enable": "Optional Marigold depth",
+      "notConfigured": "not configured",
+      "ready": "Marigold is ready.",
+      "sharedAddress": "Uses the AI connector address below:"
+    },
     "processing": {
       "ai": {
         "cloud": {
@@ -1868,6 +1935,15 @@
       "wgpuLabel": "Activar la renderització directa WGPU",
       "workerThreads": "Fils de treball per a les miniatures",
       "workerThreadsDesc": "Nombre de fils paral·lels utilitzats per generar miniatures. Valors més alts acceleren la càrrega de la biblioteca, però fan servir més CPU i RAM."
+    },
+    "surface": {
+      "check": "Check normals and albedo setup",
+      "description": "Use surface normals for directional dodge and burn, and albedo for colour selections and recolouring. Uses the same AI connector and ComfyUI as your other AI tools. Saved maps work offline.",
+      "enable": "Optional Marigold directional light and colour",
+      "sharedAddress": "Uses your shared AI connector address:",
+      "taskMissing": "not ready — check server models and nodes",
+      "taskReady": "ready",
+      "taskStatus": "Normals: {{normals}}. Albedo: {{albedo}}."
     },
     "tagging": {
       "addCustomPlaceholder": "Afegir etiquetes d'IA personalitzades (separades per comes)...",

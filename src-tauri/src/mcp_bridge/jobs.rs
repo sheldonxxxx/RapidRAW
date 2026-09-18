@@ -47,18 +47,51 @@ struct Job {
     stage: String,
     method: String,
     intensity: f32,
+    #[serde(default = "balanced_quality")]
+    quality: String,
+    /// Backend generation that owns unfinished work. Absent on manifests
+    /// written before the native ONNX switch; serde default keeps those
+    /// manifests listable, and resume rejects them explicitly below.
+    #[serde(default = "legacy_backend_generation")]
+    backend: String,
     input: Session,
     result_session_id: String,
     error: Option<String>,
     attempt: u32,
 }
+fn balanced_quality() -> String {
+    "balanced".into()
+}
+fn legacy_backend_generation() -> String {
+    String::new()
+}
+/// Native runtime generations that own resumable Nonlocal work. Both the
+/// user-visible info and the resume guards classify backends through this
+/// predicate so ONNX and CoreML cannot be treated inconsistently.
+fn is_native_nonlocal_backend(backend: &str) -> bool {
+    backend == crate::nonlocal_onnx::BACKEND_GENERATION
+        || backend == crate::nonlocal_coreml::COREML_BACKEND_GENERATION
+}
+fn is_legacy_nonlocal(job: &Job) -> bool {
+    job.method == "nonlocal" && !is_native_nonlocal_backend(&job.backend)
+}
 impl Job {
     fn info(&self) -> Value {
+        let legacy = is_legacy_nonlocal(self);
+        let recoverable = matches!(
+            self.status,
+            Status::Interrupted | Status::Failed | Status::Cancelled
+        ) && !legacy;
+        let recovery = if legacy {
+            "This Nonlocal job predates the native Nonlocal runtimes and cannot resume; start a new denoise job."
+        } else {
+            "Completed results persist without polling. After process interruption, resume_job restarts computation from the captured input; partial tiles are not checkpoints."
+        };
         json!({"job_id":self.job_id,"status":self.status,"progress_percent":self.progress_percent,"stage":self.stage,
-            "method":self.method,"intensity":self.intensity,"parent_session_id":self.input.id,"parent_revision":self.input.revision,
+            "method":self.method,"intensity":self.intensity,"quality":self.quality,"backend":self.backend,"parent_session_id":self.input.id,"parent_revision":self.input.revision,
             "result_session_id":if self.status==Status::Succeeded { Some(&self.result_session_id) } else { None },
-            "error":self.error,"attempt":self.attempt,"recoverable":matches!(self.status,Status::Interrupted|Status::Failed|Status::Cancelled),
-            "recovery":"Completed results persist without polling. After process interruption, resume_job restarts computation from the captured input; partial tiles are not checkpoints."})
+            "error":self.error,"attempt":self.attempt,"recoverable":recoverable,
+            "recovery":recovery})
     }
 }
 struct Entry {
@@ -76,6 +109,46 @@ fn uuid_id(value: &str) -> Result<String> {
     Ok(uuid::Uuid::parse_str(value)
         .map_err(|_| "INVALID_ARGUMENT: Expected UUID")?
         .to_string())
+}
+
+/// Unfinished Nonlocal jobs from before the native runtimes must not
+/// silently resume under a new runtime; succeeded jobs stay readable.
+fn legacy_nonlocal_resume_rejected(previous: &Job) -> Option<&'static str> {
+    if is_legacy_nonlocal(previous) {
+        Some(
+            "JOB_NOT_RESUMABLE: This Nonlocal job predates the native Nonlocal runtimes and cannot resume; start a new denoise job",
+        )
+    } else {
+        None
+    }
+}
+
+/// Backend generation newly requested for Nonlocal jobs. Falls back to the
+/// ONNX generation when the provider itself is unparseable; job startup
+/// still fails closed at full configuration validation when inference is
+/// actually required.
+fn nonlocal_generation_for_new_job() -> String {
+    crate::nonlocal_onnx::provider_from_env()
+        .map(|provider| provider.generation().to_owned())
+        .unwrap_or_else(|_| crate::nonlocal_onnx::BACKEND_GENERATION.to_owned())
+}
+
+/// An unfinished ONNX job must not resume as CoreML and a CoreML job must
+/// not resume as ONNX merely because environment configuration changed.
+/// Pre-provider native ONNX jobs keep their cpu/cuda behavior within the
+/// shared `native-onnx-v1` generation.
+fn cross_family_resume_rejected(previous: &Job, current_generation: &str) -> Option<String> {
+    if previous.method == "nonlocal"
+        && is_native_nonlocal_backend(&previous.backend)
+        && previous.backend != current_generation
+    {
+        Some(format!(
+            "JOB_NOT_RESUMABLE: This Nonlocal job used backend {} and cannot resume as {current_generation}; start a new denoise job",
+            previous.backend
+        ))
+    } else {
+        None
+    }
 }
 fn save(root: &Path, job: &Job) -> Result<()> {
     atomic_write(
@@ -108,7 +181,9 @@ impl Jobs {
             }
             job.input
                 .validate_restored(&root.join("sessions").join(&job.input.id))?;
-            if !["ai", "bm3d"].contains(&job.method.as_str())
+            if !["ai", "bm3d", "nonlocal"].contains(&job.method.as_str())
+                || !["balanced", "maximum"].contains(&job.quality.as_str())
+                || (job.method != "nonlocal" && job.quality != "balanced")
                 || !job.intensity.is_finite()
                 || !(0.0..=100.0).contains(&job.intensity)
             {
@@ -317,6 +392,65 @@ impl Jobs {
         save(&self.root, &entry.job)?;
         Ok(())
     }
+
+    fn publish_raw(
+        &self,
+        job: &Job,
+        output: crate::raw_denoise::Output,
+        control: &DenoiseControl,
+    ) -> Result<()> {
+        control.check()?;
+        self.progress(&job.job_id, 1.0, "publishing Bayer DNG");
+        let derived = self
+            .root
+            .join("exports")
+            .join(format!("denoise-{}.dng", job.result_session_id));
+        crate::storage_copy::copy_new(&output.path(), &derived).map_err(|e| e.to_string())?;
+        control.check()?;
+        let directory = self.root.join("sessions").join(&job.result_session_id);
+        fs::create_dir(&directory).map_err(|e| e.to_string())?;
+        let working = directory.join("source.dng");
+        crate::storage_copy::copy_new(&derived, &working).map_err(|e| e.to_string())?;
+        let mut metadata = job.input.current().metadata.clone();
+        if let Some(object) = metadata.as_object_mut() {
+            object.remove("mcpSourceDomain");
+        }
+        metadata["derivedFrom"] = json!({"session_id":job.input.id,"revision":job.input.revision,"job_id":job.job_id,
+            "operation":"denoise","method":"nonlocal","intensity":job.intensity,"quality":job.quality,
+            "source_domain_preserved":true,"nonlocal":output.provenance});
+        let source_sha256 = crate::raw_denoise::hash_file(&derived).map_err(|e| e.to_string())?;
+        let result = Session {
+            id: job.result_session_id.clone(),
+            source_path: derived.to_string_lossy().into_owned(),
+            source_sha256,
+            working_path: working.to_string_lossy().into_owned(),
+            dimensions: job.input.dimensions,
+            is_raw: true,
+            revision: 0,
+            cursor: 0,
+            history: vec![Snapshot {
+                label: "Nonlocal Bayer denoise with captured edits".into(),
+                adjustments: job.input.current().adjustments.clone(),
+                metadata,
+            }],
+        };
+        result.validate_restored(&directory)?;
+        let mut entries = self.entries.lock().map_err(|e| e.to_string())?;
+        let entry = entries
+            .get_mut(&job.job_id)
+            .ok_or("JOB_NOT_FOUND: Unknown job")?;
+        control.check()?;
+        atomic_write(
+            &directory.join("session.json"),
+            &serde_json::to_vec_pretty(&result).map_err(|e| e.to_string())?,
+            false,
+        )?;
+        entry.job.status = Status::Succeeded;
+        entry.job.progress_percent = 100;
+        entry.job.stage = "complete".into();
+        entry.job.error = None;
+        save(&self.root, &entry.job)
+    }
 }
 
 impl Bridge {
@@ -353,6 +487,17 @@ impl Bridge {
                         .into(),
                 );
             }
+            if previous.method == "nonlocal" {
+                if let Some(rejection) = legacy_nonlocal_resume_rejected(&previous) {
+                    return Err(rejection.into());
+                }
+                let current = crate::nonlocal_onnx::provider_from_env()
+                    .map(|provider| provider.generation().to_owned())
+                    .map_err(|e| e.to_string())?;
+                if let Some(rejection) = cross_family_resume_rejected(&previous, &current) {
+                    return Err(rejection);
+                }
+            }
             Job {
                 status: Status::Running,
                 progress_percent: 0,
@@ -375,8 +520,24 @@ impl Bridge {
                 })
                 .transpose()?
                 .unwrap_or("ai");
-            if !["ai", "bm3d"].contains(&method) {
-                return Err("INVALID_ARGUMENT: method must be ai or bm3d".into());
+            if !["ai", "bm3d", "nonlocal"].contains(&method) {
+                return Err("INVALID_ARGUMENT: method must be ai, bm3d or nonlocal".into());
+            }
+            let quality = params
+                .get("quality")
+                .map(|v| {
+                    v.as_str()
+                        .ok_or("INVALID_ARGUMENT: quality must be a string")
+                })
+                .transpose()?
+                .unwrap_or("balanced");
+            if !["balanced", "maximum"].contains(&quality)
+                || (method != "nonlocal" && params.get("quality").is_some())
+            {
+                return Err(
+                    "INVALID_ARGUMENT: quality is balanced or maximum and applies only to nonlocal"
+                        .into(),
+                );
             }
             Job {
                 job_id: uuid::Uuid::new_v4().to_string(),
@@ -384,7 +545,19 @@ impl Bridge {
                 progress_percent: 0,
                 stage: "starting".into(),
                 method: method.into(),
-                intensity: number(params, "intensity", 50.0, 0.0, 100.0)? as f32,
+                intensity: number(
+                    params,
+                    "intensity",
+                    if method == "nonlocal" { 100.0 } else { 50.0 },
+                    0.0,
+                    100.0,
+                )? as f32,
+                quality: quality.into(),
+                backend: if method == "nonlocal" {
+                    nonlocal_generation_for_new_job()
+                } else {
+                    String::new()
+                },
                 input,
                 result_session_id: uuid::Uuid::new_v4().to_string(),
                 error: None,
@@ -400,6 +573,16 @@ impl Bridge {
             return Err("SOURCE_CHANGED: Captured job source no longer matches its hash".into());
         }
         drop(bytes);
+        if job.method == "nonlocal" {
+            if !job.input.is_raw || !crate::formats::is_raw_file(Path::new(&job.input.working_path))
+            {
+                return Err("NONLOCAL_UNSUPPORTED: Nonlocal requires a Bayer RAW source".into());
+            }
+            if job.intensity > 0.0 {
+                crate::raw_denoise::configuration_with_models(Some(&self.paths.models))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
         if job.method == "ai" && job.intensity > 0.0 {
             self.ensure_models("denoise", false).await?;
         }
@@ -407,16 +590,21 @@ impl Bridge {
             let current = restore_session(&self.paths.root.join("sessions").join(&job.input.id))?;
             self.sessions.insert(current.id.clone(), current);
         }
-        self.activate(&job.input.id).await?;
-        let state = self.handle.state::<AppState>();
-        let source = state
-            .original_image
-            .lock()
-            .map_err(|e| e.to_string())?
-            .as_ref()
-            .ok_or("IMAGE_NOT_LOADED: Missing job source")?
-            .image
-            .clone();
+        let source = if job.method == "nonlocal" {
+            None
+        } else {
+            self.activate(&job.input.id).await?;
+            let state = self.handle.state::<AppState>();
+            let image = state
+                .original_image
+                .lock()
+                .map_err(|e| e.to_string())?
+                .as_ref()
+                .ok_or("IMAGE_NOT_LOADED: Missing job source")?
+                .image
+                .clone();
+            Some(image)
+        };
         job.stage = "queued for worker".into();
         let cancel = Arc::new(AtomicBool::new(false));
         save(&self.paths.root, &job)?;
@@ -447,6 +635,18 @@ impl Bridge {
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
                         control.check()?;
                         control.report(0.0, "initializing");
+                        if job.method == "nonlocal" {
+                            let output = crate::raw_denoise::denoise(
+                                Path::new(&job.input.working_path),
+                                &job.input.source_sha256,
+                                &jobs.root,
+                                job.intensity / 100.,
+                                &job.quality,
+                                &control,
+                            )
+                            .map_err(|e| format!("{e:#}"))?;
+                            return jobs.publish_raw(&job, output, &control);
+                        }
                         let ai_session = if job.method == "ai" && job.intensity > 0.0 {
                             let state = handle.state::<AppState>();
                             Some(
@@ -464,7 +664,9 @@ impl Bridge {
                         };
                         control.check()?;
                         let (image, range) = denoise_source_image_controlled(
-                            &source,
+                            source
+                                .as_ref()
+                                .ok_or("IMAGE_NOT_LOADED: Missing job source")?,
                             job.intensity / 100.0,
                             &job.method,
                             &handle,
@@ -480,11 +682,17 @@ impl Bridge {
                     let directory = jobs.root.join("sessions").join(&job.result_session_id);
                     if !directory.join("session.json").exists() {
                         let _ = fs::remove_file(directory.join("source.tiff"));
+                        let _ = fs::remove_file(directory.join("source.dng"));
                         let _ = fs::remove_dir(&directory);
                         let _ = fs::remove_file(
                             jobs.root
                                 .join("exports")
                                 .join(format!("denoise-{}.tiff", job.result_session_id)),
+                        );
+                        let _ = fs::remove_file(
+                            jobs.root
+                                .join("exports")
+                                .join(format!("denoise-{}.dng", job.result_session_id)),
                         );
                     }
                     jobs.finish_error(&job.job_id, error);
@@ -535,6 +743,8 @@ mod tests {
             stage: "AI tiles".into(),
             method: "bm3d".into(),
             intensity: 50.0,
+            quality: balanced_quality(),
+            backend: String::new(),
             input,
             result_session_id: uuid::Uuid::new_v4().to_string(),
             error: None,
@@ -614,5 +824,127 @@ mod tests {
         job.result_session_id = "../../elsewhere".into();
         save(root.path(), &job).unwrap();
         assert!(Jobs::load(root.path()).is_err());
+    }
+    #[test]
+    fn legacy_worker_manifests_stay_readable_but_refuse_resume() {
+        let (root, mut job) = fixture();
+        job.method = "nonlocal".into();
+        // A manifest written before the backend field existed.
+        let mut raw = serde_json::to_vec_pretty(&job).unwrap();
+        let mut value: Value = serde_json::from_slice(&raw).unwrap();
+        value.as_object_mut().unwrap().remove("backend");
+        raw = serde_json::to_vec_pretty(&value).unwrap();
+        std::fs::write(
+            root.path()
+                .join("jobs")
+                .join(format!("{}.json", job.job_id)),
+            raw,
+        )
+        .unwrap();
+        let jobs = Jobs::load(root.path()).unwrap();
+        let recovered = jobs.record(&job.job_id).unwrap();
+        assert_eq!(recovered.backend, "");
+        assert_eq!(recovered.status, Status::Interrupted);
+        let err = legacy_nonlocal_resume_rejected(&recovered).unwrap();
+        assert!(err.starts_with("JOB_NOT_RESUMABLE"), "{err}");
+        // User-visible info must agree with the resume guard.
+        let info = recovered.info();
+        assert_eq!(info["recoverable"], json!(false));
+        assert!(
+            info["recovery"]
+                .as_str()
+                .unwrap()
+                .contains("start a new denoise job"),
+            "{}",
+            info["recovery"]
+        );
+        // Native-generation jobs and unrelated methods are unaffected.
+        let mut native = recovered.clone();
+        native.backend = crate::nonlocal_onnx::BACKEND_GENERATION.into();
+        assert!(legacy_nonlocal_resume_rejected(&native).is_none());
+        let native_info = native.info();
+        assert_eq!(native_info["recoverable"], json!(true));
+        assert!(
+            native_info["recovery"]
+                .as_str()
+                .unwrap()
+                .contains("resume_job restarts"),
+            "{}",
+            native_info["recovery"]
+        );
+        let mut bm3d = recovered;
+        bm3d.method = "bm3d".into();
+        bm3d.backend = String::new();
+        assert!(legacy_nonlocal_resume_rejected(&bm3d).is_none());
+        assert_eq!(bm3d.info()["recoverable"], json!(true));
+    }
+
+    #[test]
+    fn nonlocal_backends_reject_cross_family_resume() {
+        let onnx = crate::nonlocal_onnx::BACKEND_GENERATION;
+        let coreml = crate::nonlocal_coreml::COREML_BACKEND_GENERATION;
+        let (_, job) = fixture();
+        // Same-generation resume is allowed and user-visible recoverability
+        // agrees with the resume guard for both native families.
+        for backend in [onnx, coreml] {
+            assert!(is_native_nonlocal_backend(backend));
+            let mut same = job.clone();
+            same.method = "nonlocal".into();
+            same.backend = backend.into();
+            assert!(!is_legacy_nonlocal(&same));
+            for status in [Status::Interrupted, Status::Failed, Status::Cancelled] {
+                let mut unfinished = same.clone();
+                unfinished.status = status;
+                let info = unfinished.info();
+                assert_eq!(info["recoverable"], json!(true), "{backend} {status:?}");
+                assert!(
+                    info["recovery"]
+                        .as_str()
+                        .unwrap()
+                        .contains("resume_job restarts"),
+                    "{backend} {status:?}: {}",
+                    info["recovery"]
+                );
+            }
+            assert!(legacy_nonlocal_resume_rejected(&same).is_none());
+            assert!(cross_family_resume_rejected(&same, backend).is_none());
+            assert_eq!(same.info()["backend"], json!(backend));
+        }
+        // Cross-family resume is rejected in both directions.
+        let mut from_onnx = job.clone();
+        from_onnx.method = "nonlocal".into();
+        from_onnx.backend = onnx.into();
+        let err = cross_family_resume_rejected(&from_onnx, coreml).unwrap();
+        assert!(err.starts_with("JOB_NOT_RESUMABLE"), "{err}");
+        assert!(err.contains(coreml), "{err}");
+        let mut from_coreml = job.clone();
+        from_coreml.method = "nonlocal".into();
+        from_coreml.backend = coreml.into();
+        let err = cross_family_resume_rejected(&from_coreml, onnx).unwrap();
+        assert!(err.starts_with("JOB_NOT_RESUMABLE"), "{err}");
+        assert!(err.contains(onnx), "{err}");
+        // Legacy worker jobs keep their own rejection and never claim
+        // recoverability; unrelated methods are never affected by the
+        // family guard.
+        let mut legacy = job.clone();
+        legacy.method = "nonlocal".into();
+        legacy.backend = String::new();
+        legacy.status = Status::Interrupted;
+        assert!(is_legacy_nonlocal(&legacy));
+        assert!(legacy_nonlocal_resume_rejected(&legacy).is_some());
+        let legacy_info = legacy.info();
+        assert_eq!(legacy_info["recoverable"], json!(false));
+        assert!(
+            legacy_info["recovery"]
+                .as_str()
+                .unwrap()
+                .contains("start a new denoise job"),
+            "{}",
+            legacy_info["recovery"]
+        );
+        let mut bm3d = job;
+        bm3d.method = "bm3d".into();
+        bm3d.backend = String::new();
+        assert!(cross_family_resume_rejected(&bm3d, coreml).is_none());
     }
 }

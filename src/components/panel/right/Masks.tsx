@@ -25,6 +25,8 @@ import type { LucideIcon } from 'lucide-react';
 import type { Coord } from '../../../utils/adjustments';
 
 export enum Mask {
+  AiNormals = 'ai-normals',
+  AiAlbedo = 'ai-albedo',
   AiDepth = 'ai-depth',
   AiForeground = 'ai-foreground',
   AiSky = 'ai-sky',
@@ -74,6 +76,24 @@ export interface MaskLine {
 }
 
 export interface MaskParameters {
+  surfaceArtifact?: {
+    version: number;
+    kind: 'normals' | 'albedo';
+    sourceWidth: number;
+    sourceHeight: number;
+    sourceHash: string;
+    geometryHash: string;
+    workflowHash: string;
+    mapHash: string;
+    profile: string;
+  };
+  normalAngle?: number;
+  normalAmount?: number;
+  surfacePointX?: number;
+  surfacePointY?: number;
+  surfaceTolerance?: number;
+  surfaceColor?: number[];
+  surfaceAmount?: number;
   depthProvider?: 'builtin' | 'marigold';
   depthArtifact?: {
     version: number;
@@ -149,6 +169,8 @@ export interface SubMask {
 }
 
 export function formatMaskTypeName(type: string) {
+  if (type === Mask.AiNormals) return i18n.t('masks.types.normals', { defaultValue: 'Marigold Directional Light' });
+  if (type === Mask.AiAlbedo) return i18n.t('masks.types.albedo', { defaultValue: 'Marigold Colour' });
   if (type === Mask.AiDepth) return i18n.t('masks.types.depth');
   if (type === Mask.AiSubject) return i18n.t('masks.types.subject');
   if (type === Mask.AiForeground) return i18n.t('masks.types.foreground');
@@ -181,6 +203,8 @@ export function getSubMaskName(subMask: Pick<SubMask, 'name' | 'type'>) {
 }
 
 export const MASK_ICON_MAP: Record<Mask, LucideIcon> = {
+  [Mask.AiNormals]: Sun,
+  [Mask.AiAlbedo]: Droplet,
   [Mask.AiDepth]: BringToFront,
   [Mask.AiForeground]: User,
   [Mask.AiSky]: Cloud,

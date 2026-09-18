@@ -310,7 +310,8 @@ export async function createNativeHarness({
         stderr: 'inherit',
         env: {
           ...process.env,
-          RAPIDRAW_MODEL_CACHE: process.env.RAPIDRAW_MODEL_CACHE ?? join(repository, 'mcp', '.cache', 'verified-models'),
+          RAPIDRAW_MODEL_CACHE:
+            process.env.RAPIDRAW_MODEL_CACHE ?? join(repository, 'mcp', '.cache', 'verified-models'),
           ...env,
         },
       }),
@@ -334,7 +335,30 @@ export async function createNativeHarness({
     const started = performance.now();
     let response;
     try {
-      if (['open_photo', 'render', 'render_compare', 'mask_generate', 'generate_depth', 'denoise', 'start_denoise', 'resume_job', 'export', 'batch_export', 'install_model', 'install_enhancement_model', 'enhance', 'merge', 'retouch', 'negative_convert', 'fork_session', 'export_session_bundle', 'import_session_bundle', 'start_operation'].includes(method)) {
+      if (
+        [
+          'open_photo',
+          'render',
+          'render_compare',
+          'mask_generate',
+          'generate_depth',
+          'denoise',
+          'start_denoise',
+          'resume_job',
+          'export',
+          'batch_export',
+          'install_model',
+          'install_enhancement_model',
+          'enhance',
+          'merge',
+          'retouch',
+          'negative_convert',
+          'fork_session',
+          'export_session_bundle',
+          'import_session_bundle',
+          'start_operation',
+        ].includes(method)
+      ) {
         await requireFreeSpace(workspace, minimumFreeGiB);
       }
       response = await client.callTool({ name: `rapidraw_${method}`, arguments: args }, { timeout });

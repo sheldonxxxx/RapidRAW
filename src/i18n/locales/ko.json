@@ -133,6 +133,9 @@
       "vignette": "비네트"
     }
   },
+  "common": {
+    "close": "Close"
+  },
   "contextMenus": {
     "album": {
       "emptyGroup": "(빈 그룹)"
@@ -621,6 +624,21 @@
         "size": "브러시 크기"
       },
       "comingSoon": "출시 예정",
+      "depthPreview": {
+        "alt": "Full depth map: nearer areas are brighter, farther areas are darker",
+        "builtin": "Built-in depth",
+        "close": "Close",
+        "description": "Full image before rotation and crop. Shows relative depth, independent of your selected range.",
+        "error": "The saved depth map could not be displayed.",
+        "far": "Far",
+        "fit": "Fit",
+        "missing": "Generate a depth map to preview it.",
+        "near": "Near",
+        "open": "Visualize depth",
+        "title": "Depth map",
+        "zoomIn": "Zoom in",
+        "zoomOut": "Zoom out"
+      },
       "depthRange": {
         "far": "멀리",
         "near": "가까이",
@@ -628,6 +646,18 @@
         "title": "심도 범위"
       },
       "dropzoneText": "여기에 놓아 새 마스크를 만드세요",
+      "marigold": {
+        "builtin": "Depth source: built-in",
+        "cancel": "Discard result",
+        "cancelHint": "The GPU job may finish; discarding keeps the current mask.",
+        "empty": "Marigold · depth not generated",
+        "generate": "Generate with Marigold",
+        "generateHint": "Generate a depth map to select a range. Depth is relative, with nearer areas brighter.",
+        "newMask": "Marigold Depth",
+        "progress": "Waiting for the GPU or generating depth…",
+        "range": "Adjust the depth range below without running the model again. Depth is relative, with nearer areas brighter.",
+        "saved": "Marigold · saved 16-bit depth"
+      },
       "maskAdjustmentsTitle": "마스크 조정",
       "maskingTitle": "마스킹",
       "masksTitle": "마스크",
@@ -775,6 +805,31 @@
         "style": "스타일",
         "tool": "도구"
       }
+    },
+    "surface": {
+      "albedo": "Colour selection · albedo",
+      "amount": "Recolour amount",
+      "colourHint": "Pick a colour on the albedo map, then increase the recolour amount. Brightness and texture are retained; very bright areas may be less saturated. At zero, use this as a selection for ordinary local adjustments.",
+      "direction": "Light direction (°)",
+      "empty": "Generate a map to begin.",
+      "enableHint": "Enable Marigold directional light and colour in Settings to generate maps.",
+      "generate": "Generate map",
+      "lightAmount": "Dodge / burn strength (EV)",
+      "lightHint": "0° lights from the right; 90° from above. Positive strength brightens facing surfaces and darkens opposing surfaces; negative strength reverses this. The overlay shows the facing selection. This is a tonal effect, not a physically accurate light simulation.",
+      "mapAlbedo": "Albedo map · click a colour to select it",
+      "mapHint": "Analysis map before display rotation and crop. Your photo and edit retain their original resolution.",
+      "mapNormals": "Normals map",
+      "multiple": "This mask is inactive. Keep one normals or albedo component per mask; move the other to a separate mask.",
+      "normals": "Directional light · normals",
+      "pick": "Choose colour on albedo map",
+      "regenerate": "Regenerate map",
+      "region": "Intersect with a brush or subject mask to confine the edit. Use separate masks for normals and albedo.",
+      "saved": "Saved 16-bit map · controls work offline",
+      "stale": "Geometry or retouch changed. This mask is inactive until you regenerate its map or undo that change.",
+      "target": "Recolour to",
+      "tolerance": "Colour range",
+      "view": "View normals map",
+      "wait": "Waiting for the GPU or generating a surface map…"
     },
     "switcher": {
       "tooltips": {
@@ -1141,6 +1196,7 @@
   },
   "masks": {
     "types": {
+      "albedo": "Marigold Colour",
       "all": "전체 이미지",
       "brush": "브러시",
       "clone": "복제",
@@ -1152,6 +1208,7 @@
       "linear": "선형",
       "liquify": "픽셀 유동화",
       "luminance": "휘도",
+      "normals": "Marigold Directional Light",
       "others": "기타",
       "quickErase": "빠른 지우기",
       "quickEraser": "빠른 지우개",
@@ -1684,6 +1741,16 @@
       "saved": "저장된 렌즈",
       "title": "내 렌즈"
     },
+    "marigold": {
+      "address": "AI connector address (shared)",
+      "check": "Check Marigold setup",
+      "checking": "Checking models…",
+      "description": "Create depth selections with Marigold. Uses your AI connector and ComfyUI; the connector queues model workflows on your GPU. Saved masks work offline.",
+      "enable": "Optional Marigold depth",
+      "notConfigured": "not configured",
+      "ready": "Marigold is ready.",
+      "sharedAddress": "Uses the AI connector address below:"
+    },
     "processing": {
       "ai": {
         "cloud": {
@@ -1828,6 +1895,15 @@
       "wgpuLabel": "직접 WGPU 렌더링 활성화",
       "workerThreads": "썸네일 워커 스레드",
       "workerThreadsDesc": "썸네일을 생성하는 데 사용되는 병렬 스레드 수입니다. 값이 높을수록 라이브러리 로딩 속도가 빨라지지만 CPU와 RAM을 더 많이 사용합니다."
+    },
+    "surface": {
+      "check": "Check normals and albedo setup",
+      "description": "Use surface normals for directional dodge and burn, and albedo for colour selections and recolouring. Uses the same AI connector and ComfyUI as your other AI tools. Saved maps work offline.",
+      "enable": "Optional Marigold directional light and colour",
+      "sharedAddress": "Uses your shared AI connector address:",
+      "taskMissing": "not ready — check server models and nodes",
+      "taskReady": "ready",
+      "taskStatus": "Normals: {{normals}}. Albedo: {{albedo}}."
     },
     "tagging": {
       "addCustomPlaceholder": "사용자 지정 AI 태그 추가 (쉼표로 구분)...",

@@ -62,9 +62,12 @@ test('acceptance retries cannot overwrite prior evidence', async () => {
     await writeFile(binary, Buffer.from('7f454c46', 'hex'));
     const prior = '{"status":"failed","error":"first attempt"}\n';
     await writeFile(join(workspace, 'evidence.jsonl'), prior);
-    await assert.rejects(createNativeHarness({ suite: 'unit-no-native-execution', workspace, binary, minimumFreeGiB: 0.001 }), {
-      code: 'EEXIST',
-    });
+    await assert.rejects(
+      createNativeHarness({ suite: 'unit-no-native-execution', workspace, binary, minimumFreeGiB: 0.001 }),
+      {
+        code: 'EEXIST',
+      },
+    );
     assert.equal(await readFile(join(workspace, 'evidence.jsonl'), 'utf8'), prior);
   } finally {
     await rm(workspace, { recursive: true, force: true });
@@ -80,7 +83,7 @@ test('runtime provenance includes actual engine/server code but separates suite 
   ])
     assert.equal(isRuntimeSource(path), true, path);
   for (const path of [
-    'mcp/VERIFICATION.md',
+    'docs/mcp/history/verification-2026-09.md',
     'mcp/scripts/coverage-e2e.mjs',
     'mcp/test/coverage-evidence.test.mjs',
     'test-output/evidence.jsonl',
@@ -92,7 +95,10 @@ test('low-space preflight rejects a native run before creating evidence or start
   try {
     const binary = join(workspace, 'never-executed-header-fixture');
     await writeFile(binary, Buffer.from('7f454c46', 'hex'));
-    await assert.rejects(createNativeHarness({ suite: 'low-space', workspace, binary, minimumFreeGiB: 1e9 }), /STORAGE_LOW/);
+    await assert.rejects(
+      createNativeHarness({ suite: 'low-space', workspace, binary, minimumFreeGiB: 1e9 }),
+      /STORAGE_LOW/,
+    );
     await assert.rejects(readFile(join(workspace, 'evidence.jsonl')), { code: 'ENOENT' });
   } finally {
     await rm(workspace, { recursive: true, force: true });

@@ -435,6 +435,8 @@ pub struct AppSettings {
     pub ai_connector_address: Option<String>,
     #[serde(default)]
     pub marigold_depth_enabled: bool,
+    #[serde(default)]
+    pub marigold_surface_enabled: bool,
     pub last_folder_state: Option<LastFolderState>,
     pub ui_visibility: Option<Value>,
     pub enable_ai_tagging: Option<bool>,
@@ -563,6 +565,7 @@ impl Default for AppSettings {
             decorations: Some(false),
             ai_connector_address: None,
             marigold_depth_enabled: false,
+            marigold_surface_enabled: false,
             last_folder_state: None,
             ui_visibility: None,
             enable_ai_tagging: Some(false),

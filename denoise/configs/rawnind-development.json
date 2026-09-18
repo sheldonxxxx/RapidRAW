@@ -1,0 +1,190 @@
+{
+  "dataset": "RawNIND",
+  "doi": "10.14428/DVN/DEQCIM",
+  "license": "CC-BY-SA-4.0 per current Dataverse metadata; retain per-file provenance",
+  "split_note": "Scene-disjoint for this adaptation only; upstream pretraining overlap is not ruled out. Not a commercial or official benchmark.",
+  "files": [
+    {
+      "scene": "apples_butternut",
+      "split": "train",
+      "role": "clean",
+      "filename": "Bayer_apples_butternut_GT_ISO50_sha1=ef55edd29306f313e49b98e5b363e80a5e6070aa.arw",
+      "bytes": 49268224,
+      "id": 28470,
+      "checksum": {
+        "type": "MD5",
+        "value": "eefaa898e814132ce62c23a582a9d6ee"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28470"
+    },
+    {
+      "scene": "back_of_green_rug_daylight",
+      "split": "train",
+      "role": "clean",
+      "filename": "Bayer_back_of_green_rug_daylight_GT_ISO50_sha1=77bf883f0ce89cab7e33f76ad842819ad7fad590.arw",
+      "bytes": 49706496,
+      "id": 28579,
+      "checksum": {
+        "type": "MD5",
+        "value": "ac8a644803ab84cfc5b19b0b13ba8601"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28579"
+    },
+    {
+      "scene": "bark_beetled_log",
+      "split": "train",
+      "role": "clean",
+      "filename": "Bayer_bark_beetled_log_GT_ISO50_sha1=3b6aad6a46b58bc4cde3e38601abcadb803dcc0d.arw",
+      "bytes": 49571328,
+      "id": 28951,
+      "checksum": {
+        "type": "MD5",
+        "value": "2b2b6c88c2d54a0ae960bfa0a11f26fb"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28951"
+    },
+    {
+      "scene": "boardgames_bot",
+      "split": "train",
+      "role": "clean",
+      "filename": "Bayer_boardgames_bot_GT_ISO50_sha1=5cc492a3015f13a8cf125b36fb0eb8e1689aac28.arw",
+      "bytes": 49182208,
+      "id": 28955,
+      "checksum": {
+        "type": "MD5",
+        "value": "754b86f7a17360ea4d0bd295d503f0c7"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28955"
+    },
+    {
+      "scene": "clothes",
+      "split": "train",
+      "role": "clean",
+      "filename": "Bayer_clothes_GT_ISO50_sha1=1125f92ba31963647e1161afc077a01459b0e497.arw",
+      "bytes": 49264128,
+      "id": 28554,
+      "checksum": {
+        "type": "MD5",
+        "value": "ea60cd2fd15b15a3486f8aa6273c4938"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28554"
+    },
+    {
+      "scene": "Blombukett",
+      "split": "train",
+      "role": "clean",
+      "filename": "Bayer_Blombukett_GT_ISO100_sha1=d5bfd59f3b549fc79af1381e65f72922c05fec55.cr2",
+      "bytes": 23157157,
+      "id": 29101,
+      "checksum": {
+        "type": "MD5",
+        "value": "9452869a9e6ef57479a574625be93fcd"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29101"
+    },
+    {
+      "scene": "7D-1",
+      "split": "validation",
+      "role": "clean",
+      "filename": "Bayer_7D-1_GT_ISO100_sha1=22aef4a5b4038e241082741117827f364ce6a5ac.cr2",
+      "bytes": 23170147,
+      "id": 28815,
+      "checksum": {
+        "type": "MD5",
+        "value": "2bb12d6d5fa67af285a736b8f5dfea90"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28815"
+    },
+    {
+      "scene": "7D-1",
+      "split": "validation",
+      "role": "noisy",
+      "filename": "Bayer_7D-1_ISO12800_sha1=5322313f9650a7b94028d69567c1f6c66bac8765.cr2",
+      "bytes": 33639891,
+      "id": 28663,
+      "checksum": {
+        "type": "MD5",
+        "value": "47b2c25f22f44c1d26fd2a55ffd87931"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28663"
+    },
+    {
+      "scene": "cactus",
+      "split": "validation",
+      "role": "clean",
+      "filename": "Bayer_cactus_GT_ISO50_sha1=e56b7c27ce8d42e215003639abc0a185e314c39d.arw",
+      "bytes": 49165824,
+      "id": 29352,
+      "checksum": {
+        "type": "MD5",
+        "value": "5a06e6ca0b3c0319805e7db2789e2f22"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29352"
+    },
+    {
+      "scene": "cactus",
+      "split": "validation",
+      "role": "noisy",
+      "filename": "Bayer_cactus_ISO6400_sha1=6e9c6b8ad159a8fcd51b6f3a7a9e7542231435a2.arw",
+      "bytes": 49194496,
+      "id": 28716,
+      "checksum": {
+        "type": "MD5",
+        "value": "9c0ef4c593a88d28990b9f350df45f13"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28716"
+    },
+    {
+      "scene": "Iain01",
+      "split": "test",
+      "role": "clean",
+      "filename": "Bayer_Iain01_GT_ISO200_sha1=4dd7a49d600fb1d1d60c741be0e89911f7e05308.nef",
+      "bytes": 5575611,
+      "id": 28770,
+      "checksum": {
+        "type": "MD5",
+        "value": "d8b7e98a8c21fe692949282b74cae82c"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28770"
+    },
+    {
+      "scene": "Iain01",
+      "split": "test",
+      "role": "noisy",
+      "filename": "Bayer_Iain01_ISO1600_sha1=e6747c75607d311078c660bff37499a1878e6d07.nef",
+      "bytes": 6270130,
+      "id": 28719,
+      "checksum": {
+        "type": "MD5",
+        "value": "f8c2acfc569450ab6cb05ae8b1bb3fc5"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28719"
+    },
+    {
+      "scene": "2pilesofplates",
+      "split": "test",
+      "role": "clean",
+      "filename": "Bayer_2pilesofplates_GT_ISO100_sha1=854554a34b339413462eb1538d4cb0fa95d468b5.arw",
+      "bytes": 49088000,
+      "id": 28771,
+      "checksum": {
+        "type": "MD5",
+        "value": "80090898c84784262a9e59fd1a41f05d"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/28771"
+    },
+    {
+      "scene": "2pilesofplates",
+      "split": "test",
+      "role": "noisy",
+      "filename": "Bayer_2pilesofplates_ISO12800_sha1=7c5f212c12b86bd8c4ecde91ba37de415b3744de.arw",
+      "bytes": 49157632,
+      "id": 29266,
+      "checksum": {
+        "type": "MD5",
+        "value": "c4382cd2273e3d97377ee89d676af338"
+      },
+      "url": "https://dataverse.uclouvain.be/api/access/datafile/29266"
+    }
+  ]
+}

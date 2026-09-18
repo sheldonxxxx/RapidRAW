@@ -1,6 +1,6 @@
 # ComfyUI with RapidRAW
 
-Run generative photo edits and optional Marigold depth masks on your own GPU server. RapidRAW uses **one AI connector address and one ComfyUI instance**, with explicit workflow choices and saved results that remain editable.
+Run generative photo edits and optional Marigold depth, directional light and colour masks on your own GPU server. RapidRAW uses **one AI connector address and one ComfyUI instance**, with explicit workflow choices and saved results that remain editable.
 
 **Start here:** [Install the connector](../ai-connector/README.md#start-the-connector) · [Choose an editing profile](ai-editing-workflows.md) · [Enable Marigold depth](../ai-connector/MARIGOLD.md) · [Download chosen workflows](../ai-connector/workflows/README.md)
 
@@ -17,6 +17,8 @@ These fork features require a [current source build](desktop-guide.md#build-this
 
 Configuring the AI connector does not remove local depth. Enable **Optional Marigold depth** separately, then choose **Add New Mask → Marigold Depth**. Existing components also offer **Generate with Marigold**. See the [depth guide](../ai-connector/MARIGOLD.md#use-it) for setup, MCP arguments and saved-map behavior.
 
+Enable **Optional Marigold directional light and colour** separately for [normals dodge/burn and albedo colour masks](../ai-connector/SURFACES.md#use-in-rapidraw). They reuse this connector and ComfyUI, with saved RGB16 maps, desktop/MCP controls and native exports.
+
 ## Tested versions
 
 These are reproducibility pins, not a claim that all workflows were tested on every later ComfyUI release.
@@ -26,6 +28,7 @@ These are reproducibility pins, not a claim that all workflows were tested on ev
 | Generative profile, alternative inpainting and super-resolution evaluation                                                           | [`c75d8c966c29cb0392259af791f43373315b72db`](https://github.com/Comfy-Org/ComfyUI/tree/c75d8c966c29cb0392259af791f43373315b72db) — reported version 0.35.0 | 13–14 September 2026 |
 | Marigold INT8/Q4, export, offloading and depth-mask integration                                                                      | [`36da3ff763687eab86a35e1019995dd1fb369b0d`](https://github.com/Comfy-Org/ComfyUI/tree/36da3ff763687eab86a35e1019995dd1fb369b0d)                           | 15 September 2026    |
 | Shared-server regression: fixed-seed generative edit before/after depth, concurrent connector requests and RapidRAW CUDA coexistence | Same `36da3ff76368` revision                                                                                                                               | 15 September 2026    |
+| Normals/albedo Q4 maps, desktop controls, native rendering, offline persistence and portable sessions                                | Same `36da3ff76368` revision                                                                                                                               | 16 September 2026    |
 
 The shared-server regression does not requalify every generative profile on the newer revision. The [catalog](../ai-connector/workflows/catalog.json) identifies the tested revision for each chosen workflow.
 
@@ -39,33 +42,37 @@ For reproducible validation, record `git rev-parse HEAD` in ComfyUI and each req
 
 Follow the [connector installation guide](../ai-connector/README.md) for model locations, Python requirements and startup commands. The connector runs on the ComfyUI host, under the same operating-system user, because it writes inference inputs into ComfyUI's input directory.
 
-| Setting                         | Purpose                                                           |
-| ------------------------------- | ----------------------------------------------------------------- |
-| `COMFY_ROOT`                    | Existing ComfyUI directory                                        |
-| `COMFY_URL`                     | Existing ComfyUI API, default `http://127.0.0.1:8188`             |
-| `PROFILE_DIR`                   | Enabled generative profile catalog and configurations             |
-| `STATE_DIR`                     | Private generation receipts, outside source control               |
-| `MARIGOLD_DEPTH_CONFIG`         | Optional depth configuration; omit to leave depth routes disabled |
-| RapidRAW `aiConnectorAddress`   | The same connector address for generation and depth               |
-| RapidRAW `marigoldDepthEnabled` | Explicit opt-in to new Marigold requests                          |
+| Setting                           | Purpose                                                               |
+| --------------------------------- | --------------------------------------------------------------------- |
+| `COMFY_ROOT`                      | Existing ComfyUI directory                                            |
+| `COMFY_URL`                       | Existing ComfyUI API, default `http://127.0.0.1:8188`                 |
+| `PROFILE_DIR`                     | Enabled generative profile catalog and configurations                 |
+| `STATE_DIR`                       | Private generation receipts, outside source control                   |
+| `MARIGOLD_DEPTH_CONFIG`           | Optional depth configuration; omit to leave depth routes disabled     |
+| `MARIGOLD_MATERIALS_CONFIG`       | Optional normals/albedo configuration; omit to disable surface routes |
+| RapidRAW `marigoldSurfaceEnabled` | Explicit opt-in to new normals/albedo requests                        |
+| RapidRAW `aiConnectorAddress`     | The same connector address for generation, depth, normals and albedo  |
+| RapidRAW `marigoldDepthEnabled`   | Explicit opt-in to new Marigold requests                              |
 
-Run one connector worker. Its generative and depth jobs share a lock. On a workflow change, it checks ComfyUI's queue, unloads the previous models and waits briefly before submitting the new graph. It does not interrupt work submitted directly by other Comfy clients. A busy external queue can temporarily prevent switching; wait for it to finish before retrying.
+Run one connector worker. Its generation, depth, normals and albedo jobs share a lock. On a workflow change, it checks ComfyUI's queue, unloads the previous models and waits briefly before submitting the new graph. It does not interrupt work submitted directly by other Comfy clients. A busy external queue can temporarily prevent switching; wait for it to finish before retrying.
 
-The health endpoint checks connectivity; `/capabilities` advertises generative profiles. `/depth/capabilities` separately checks Marigold nodes, compatible memory settings and pinned model files. An invalid optional Marigold setup leaves generation endpoints available.
+`/materials/capabilities` reports optional normals and albedo readiness. The health endpoint checks connectivity; `/capabilities` advertises generative profiles. `/depth/capabilities` separately checks Marigold nodes, compatible memory settings and pinned model files. An invalid optional Marigold setup leaves generation endpoints available.
 
 The connector has no authentication or TLS. Keep its loopback binding and use the [SSH tunnel example](../ai-connector/README.md#start-the-connector) for another computer. Receipts, Comfy input/output and history contain photo pixels and prompts; the [retention guidance](../ai-connector/README.md#request-protocol-and-private-receipts) explains their locations and safe cleanup conditions.
 
 ## Workflow and model inventory
 
-The repository includes the five chosen connector workflows:
+The repository includes seven chosen connector workflows:
 
-| Workflow                  | Public graph                                                                                       | Runtime configuration                                                            |
-| ------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Klein 4B                  | [API example](../ai-connector/workflows/klein4-v1.api.json)                                        | [1 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-v1.json)       |
-| Klein 4B closer context   | [API example](../ai-connector/workflows/klein4-tight2mp.api.json)                                  | [2 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-tight2mp.json) |
-| Klein 9B KV               | [API example](../ai-connector/workflows/klein9-kv.api.json)                                        | [1 MP](../ai-connector/profiles/configs/klein9-kv.json)                          |
-| Boogu Edit Turbo          | [API example](../ai-connector/workflows/boogu-turbo4-context.api.json)                             | [1 MP](../ai-connector/profiles/configs/boogu-turbo4-context.json)               |
-| Marigold V2 Q4 shared GPU | [Actual connector template](../ai-connector/rapidraw_connector/depth_profiles/marigold-v2-q4.json) | [Optional depth setup](../ai-connector/MARIGOLD.md)                              |
+| Workflow                  | Public graph                                                                                                 | Runtime configuration                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| Klein 4B                  | [API example](../ai-connector/workflows/klein4-v1.api.json)                                                  | [1 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-v1.json)       |
+| Klein 4B closer context   | [API example](../ai-connector/workflows/klein4-tight2mp.api.json)                                            | [2 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-tight2mp.json) |
+| Klein 9B KV               | [API example](../ai-connector/workflows/klein9-kv.api.json)                                                  | [1 MP](../ai-connector/profiles/configs/klein9-kv.json)                          |
+| Boogu Edit Turbo          | [API example](../ai-connector/workflows/boogu-turbo4-context.api.json)                                       | [1 MP](../ai-connector/profiles/configs/boogu-turbo4-context.json)               |
+| Marigold V2 Q4 shared GPU | [Actual connector template](../ai-connector/rapidraw_connector/depth_profiles/marigold-v2-q4.json)           | [Optional depth setup](../ai-connector/MARIGOLD.md)                              |
+| Marigold V2 normals Q4    | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json) | [Optional surface setup](../ai-connector/SURFACES.md)                            |
+| Marigold V2 albedo Q4     | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json)  | [Optional surface setup](../ai-connector/SURFACES.md)                            |
 
 The [download guide](../ai-connector/workflows/README.md) explains API format, input/mask conventions and the difference between a standalone crop output and RapidRAW's native composite. The four generative examples are exported from the tested runtime graph builder with neutral input names, a replacement prompt and example geometry. The Marigold link points directly to the template used by the connector.
 
@@ -78,6 +85,7 @@ The integrated Marigold Q4 profile uses batch one, one step and about 0.70 milli
 | Measured workload on the 16 GB test GPU | Observation                                                                                                                  |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Integrated Marigold depth masks         | Comfy process peak 7,384 MiB (7.21 GiB)                                                                                      |
+| Normals/albedo five-scene map batch     | Comfy process peak 7,482 MiB (7.31 GiB); RapidRAW remained resident at about 1,530 MiB                                       |
 | Later six-scene lens-blur comparison    | Comfy process peak 7,290 MiB (7.12 GiB)                                                                                      |
 | Actual RapidRAW CUDA coexistence check  | Four renders completed while depth ran; sampled allocations during depth were 3,386 MiB for Comfy and 4,484 MiB for RapidRAW |
 
@@ -104,6 +112,6 @@ Built-in CPU depth took 0.88–1.11 seconds on the six 1024-pixel inputs; four f
 3. Save a fixed-seed generative result, run a fresh Marigold request, then repeat the identical generative request. Inspect native boundaries and compare returned RGB, mask and placement.
 4. Submit depth and generation through the same connector. Verify serialization, switch behavior and failure recovery without interrupting unrelated Comfy jobs.
 5. Sample process and total-device VRAM while RapidRAW is active. Report cold model loads, fresh inference and cached completions separately; Comfy can return a fully cached graph without inference.
-6. Save/reopen a depth mask with the connector unavailable. Inspect rotation, flips and crop, range changes, the saved-map viewer and a portable-bundle render. Regenerate Marigold after changing lens distortion or perspective.
+6. Save/reopen a depth, normals or albedo mask with the connector unavailable. Inspect rotation, flips and crop, range changes, the saved-map viewer and a portable-bundle render. Regenerate Marigold after changing lens distortion or perspective.
 
 Keep test images, raw receipts and GPU traces in your own workspace. Public graph templates contain replacement input names and prompts, so new photographs require their own visual acceptance.

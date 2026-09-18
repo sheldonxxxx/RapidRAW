@@ -54,7 +54,11 @@ fn model_assets(kind: &str) -> Result<Vec<(&'static str, &'static str)>> {
         ],
         "inpaint" => vec![(ai::LAMA_FILENAME, ai::LAMA_SHA256)],
         "denoise" => vec![(ai::DENOISE_FILENAME, ai::DENOISE_SHA256)],
-        _ => return Err("INVALID_ARGUMENT: model kind must be masks, inpaint or denoise".into()),
+        _ => {
+            return Err(
+                "INVALID_ARGUMENT: model kind must be masks, inpaint, denoise or nonlocal".into(),
+            );
+        }
     })
 }
 
@@ -165,6 +169,47 @@ impl Bridge {
         }
     }
 
+    /// Nonlocal bundle verification/installation. Explicit
+    /// `install_model` (allow_download) downloads the pinned provider
+    /// bundle; every other call only verifies what is already installed.
+    /// Never requires ORT, even for the ONNX variant: installation is
+    /// hash/validation-gated file delivery, not inference.
+    pub(super) async fn ensure_nonlocal_models(&self, allow_download: bool) -> Result<()> {
+        let model_directory = self
+            .paths
+            .models
+            .canonicalize()
+            .map_err(|e| format!("INVALID_PATH: Cannot resolve model workspace: {e}"))?;
+        if model_directory != self.paths.models || !model_directory.starts_with(&self.paths.root) {
+            return Err(
+                "INVALID_PATH: Model directory must be a real directory inside the workspace"
+                    .into(),
+            );
+        }
+        let provider = crate::nonlocal_onnx::provider_from_env().map_err(|e| e.to_string())?;
+        if std::env::var_os("RAPIDRAW_NONLOCAL_BUNDLE").is_some() {
+            // Explicit developer override: verify only, never download.
+            let (bundle, _) =
+                crate::nonlocal_install::resolve_bundle(Some(&model_directory), provider)
+                    .map_err(|e| e.to_string())?;
+            return crate::nonlocal_install::validate_resolved_bundle(provider, &bundle)
+                .map_err(|e| e.to_string());
+        }
+        let installed = crate::nonlocal_install::install_dir(&model_directory, provider);
+        if installed.is_dir()
+            && crate::nonlocal_install::validate_resolved_bundle(provider, &installed).is_ok()
+        {
+            return Ok(());
+        }
+        if !allow_download {
+            return Err("MODEL_NOT_INSTALLED: No verified Nonlocal bundle is installed. Call install_model with kind='nonlocal'.".into());
+        }
+        crate::nonlocal_install::install(&model_directory, provider)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub(super) fn models_status(&self) -> Result<Value> {
         let installed = self
             .handle
@@ -173,6 +218,10 @@ impl Bridge {
             .map_err(|e| e.to_string())?
             .join("models");
         let mut groups = serde_json::Map::new();
+        groups.insert(
+            "nonlocal".into(),
+            crate::nonlocal_install::status(&self.paths.models),
+        );
         for kind in ["masks", "inpaint", "denoise"] {
             let mut assets = Vec::new();
             let mut ready = true;
@@ -212,6 +261,12 @@ impl Bridge {
     }
 
     pub(super) async fn ensure_models(&self, kind: &str, allow_download: bool) -> Result<()> {
+        // Nonlocal bundles install from the pinned Hub distribution without
+        // any ONNX Runtime requirement, so this branch runs before the ORT
+        // check below. Other kinds are unchanged.
+        if kind == "nonlocal" {
+            return self.ensure_nonlocal_models(allow_download).await;
+        }
         let model_directory = self
             .paths
             .models
@@ -293,7 +348,7 @@ impl Bridge {
         let session = self.session(params)?.clone();
         session.check_revision(params)?;
         let kind = required(params, "kind")?;
-        if !["subject", "foreground", "sky", "depth"].contains(&kind) {
+        if !["subject", "foreground", "sky", "depth", "normals", "albedo"].contains(&kind) {
             return Err("INVALID_ARGUMENT: unknown AI mask kind".into());
         }
         let provider = params
@@ -318,13 +373,30 @@ impl Bridge {
             .ok_or("INVALID_ARGUMENT: parameters must be an object")?;
         for key in controls_map.keys() {
             if ![
-                "grow", "feather", "minDepth", "maxDepth", "minFade", "maxFade",
+                "grow",
+                "feather",
+                "minDepth",
+                "maxDepth",
+                "minFade",
+                "maxFade",
+                "normalAngle",
+                "normalAmount",
+                "surfacePointX",
+                "surfacePointY",
+                "surfaceTolerance",
+                "surfaceAmount",
+                "surfaceColor",
             ]
             .contains(&key.as_str())
             {
                 return Err(format!(
                     "INVALID_ARGUMENT: unsupported AI mask parameter {key}"
                 ));
+            }
+            if (key.starts_with("normal") && kind != "normals")
+                || (key.starts_with("surface") && kind != "albedo")
+            {
+                return Err(format!("INVALID_ARGUMENT: {key} does not apply to {kind}"));
             }
             if kind != "depth"
                 && ["minDepth", "maxDepth", "minFade", "maxFade"].contains(&key.as_str())
@@ -338,7 +410,30 @@ impl Bridge {
         let subject_request = subject_refinement::prepare(params, &session)?;
         number(&controls, "grow", 0.0, -100.0, 100.0)?;
         number(&controls, "feather", 0.0, 0.0, 100.0)?;
-        if provider == "builtin" {
+        if matches!(kind, "normals" | "albedo") && params.get("region").is_some() {
+            return Err("INVALID_ARGUMENT: intersect surface masks with a brush or subject mask to limit the region".into());
+        }
+        if kind == "normals" {
+            number(&controls, "normalAngle", 0.0, -180.0, 180.0)?;
+            number(&controls, "normalAmount", 0.5, -1.5, 1.5)?;
+        }
+        if kind == "albedo" {
+            number(&controls, "surfacePointX", 0.5, 0.0, 1.0)?;
+            number(&controls, "surfacePointY", 0.5, 0.0, 1.0)?;
+            number(&controls, "surfaceTolerance", 0.13, 0.005, 1.0)?;
+            number(&controls, "surfaceAmount", 0.0, 0.0, 1.0)?;
+            if let Some(color) = controls.get("surfaceColor")
+                && color.as_array().is_none_or(|a| {
+                    a.len() != 3 || a.iter().any(|v| v.as_u64().is_none_or(|v| v > 255))
+                })
+            {
+                return Err(
+                    "INVALID_ARGUMENT: surfaceColor must contain three integers from 0 to 255"
+                        .into(),
+                );
+            }
+        }
+        if provider == "builtin" && !matches!(kind, "normals" | "albedo") {
             self.ensure_models("masks", false).await?;
         }
         self.activate(&session.id).await?;
@@ -394,6 +489,27 @@ impl Bridge {
                     )
                     .await?,
                 ),
+                "normals" | "albedo" => {
+                    let mut generated = crate::marigold_surface::generate_marigold_surface_mask(
+                        kind.into(),
+                        adjustments.clone(),
+                        session.working_path.clone(),
+                        state.clone(),
+                        self.handle.clone(),
+                    )
+                    .await?;
+                    if kind == "normals" {
+                        generated["normalAngle"] = json!(0);
+                        generated["normalAmount"] = json!(0.5);
+                    } else {
+                        generated["surfacePointX"] = json!(0.5);
+                        generated["surfacePointY"] = json!(0.5);
+                        generated["surfaceTolerance"] = json!(0.13);
+                        generated["surfaceAmount"] = json!(0);
+                        generated["surfaceColor"] = json!([90, 160, 220]);
+                    }
+                    Ok(generated)
+                }
                 "depth" if provider == "marigold" => {
                     let mut generated = crate::marigold_depth::generate_marigold_depth_mask(
                         adjustments.clone(),
@@ -489,7 +605,8 @@ impl Bridge {
             bitmap.ok_or("MASK_GENERATION_FAILED: Generated mask could not be rasterized")?
         };
         let statistics = mask_statistics(&bitmap);
-        if target.is_none() && statistics["empty"] == true {
+        if target.is_none() && !matches!(kind, "normals" | "albedo") && statistics["empty"] == true
+        {
             return Err("EMPTY_MASK: Model selected no pixels. Adjust the subject region or mask parameters and retry.".into());
         }
         let mut next = adjustments.clone();

@@ -8,7 +8,8 @@ import { copyIndependent, requireFreeSpace } from '../dist/storage.js';
 test('captured copies remain independent and never overwrite existing paths', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'rapidraw-storage-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const source = join(root, 'source'), target = join(root, 'target');
+  const source = join(root, 'source'),
+    target = join(root, 'target');
   await writeFile(source, Buffer.alloc(2 * 1024 * 1024, 71));
   await copyIndependent(source, target);
   assert.deepEqual(await readFile(target), await readFile(source));

@@ -1,0 +1,113 @@
+name: 'Release: Publish npm MCP host'
+
+on:
+  push:
+    tags:
+      - 'mcp-v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Install trusted-publishing-compatible npm 11.19.1
+        run: |
+          npm install -g npm@11.19.1
+          npm --version
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          const version = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim();
+          assert.equal(version, '11.19.1', `expected exactly npm 11.19.1, got ${version}`);
+          JS
+
+      - name: Validate release tag and package metadata (fail closed)
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const tag = process.env.RELEASE_TAG;
+          const tagMatch = /^mcp-v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/.exec(tag);
+          assert.ok(tagMatch, `tag must be exactly mcp-v<semver>, got ${tag}`);
+          const tagVersion = tagMatch[1];
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          assert.equal(pkg.version, tagVersion, 'tag version must equal mcp/package.json version');
+          assert.equal(pkg.name, '@sheldonxxxx/rapidraw-mcp');
+          assert.equal(pkg.repository?.url, 'git+https://github.com/sheldonxxxx/RapidRAW.git');
+          assert.equal(pkg.publishConfig?.access, 'public');
+          assert.equal(pkg.license, 'AGPL-3.0-only');
+          const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+          assert.equal(lock.name, pkg.name, 'lockfile root name must equal package name');
+          assert.equal(lock.version, pkg.version, 'lockfile root version must equal package version');
+          assert.equal(lock.packages?.['']?.name, pkg.name);
+          assert.equal(lock.packages?.['']?.version, pkg.version);
+          const server = readFileSync('src/server.ts', 'utf8');
+          const serverMatch = /name:\s*'rapidraw-mcp-server',\s*version:\s*'([^']+)'/.exec(server);
+          assert.ok(serverMatch, 'MCP protocol metadata must report rapidraw-mcp-server version');
+          assert.equal(serverMatch[1], pkg.version, 'protocol host version must equal package version');
+          assert.ok(!process.env.NODE_AUTH_TOKEN, 'NODE_AUTH_TOKEN must not be set for Trusted Publishing');
+          assert.ok(!process.env.NPM_TOKEN, 'NPM_TOKEN must not be set for Trusted Publishing');
+          console.log(`validated ${pkg.name}@${pkg.version} for tag ${tag}`);
+          JS
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor HEAD origin/main
+
+      - name: Install, test, and dry-run pack
+        run: |
+          npm ci
+          npm test
+          npm pack --dry-run --json
+
+      - name: Refuse an already-published version (never overwrite)
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          import { execFile } from 'node:child_process';
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          const spec = `${pkg.name}@${pkg.version}`;
+          execFile('npm', ['view', spec, 'version', '--json'], (error, stdout, stderr) => {
+            const output = `${stdout}\n${stderr}`;
+            if (!error) {
+              console.error(`${spec} already exists on the registry; refusing to overwrite (npm versions are immutable)`);
+              process.exit(1);
+            }
+            if (/npm error code E404/.test(output) && /No match found for version/i.test(output)) {
+              console.log(`${spec} is not on the registry; proceeding`);
+              return;
+            }
+            const code = /npm error code (\S+)/.exec(output)?.[1] ?? 'unknown error';
+            console.error(`registry probe for ${spec} failed (${code}); refusing to publish`);
+            process.exit(2);
+          });
+          JS
+
+      - name: Publish via npm Trusted Publishing (OIDC)
+        run: npm publish --access public
+
+      - name: Verify publication and fresh install
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          npm view "@sheldonxxxx/rapidraw-mcp@${VERSION}" version dist.tarball
+          npx -y "@sheldonxxxx/rapidraw-mcp@${VERSION}" --help

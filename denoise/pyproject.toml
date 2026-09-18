@@ -1,0 +1,23 @@
+[project]
+name = "rapidraw-denoise"
+version = "0.1.0"
+description = "Experimental GPU RAW denoising and reproducible camera-noise research"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2.0", "scipy>=1.13", "rawpy>=0.24", "tifffile>=2024.9", "pillow>=11", "torch>=2.8", "einops>=0.8"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "scikit-image>=0.25"]
+download = ["omegaconf>=2.3"]
+
+[project.scripts]
+rapidraw-denoise = "rapidraw_denoise.cli:main"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["rapidraw_denoise*"]
+
+[tool.setuptools.package-data]
+"rapidraw_denoise.vendor.nonlocalmf" = ["LICENSE", "NOTICE"]

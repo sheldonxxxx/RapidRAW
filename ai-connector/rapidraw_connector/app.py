@@ -202,6 +202,19 @@ def create_app(settings=None):
                 raise HTTPException(503, 'Marigold setup is unavailable: '+depth_error)
 
 
+    if settings.materials_config is not None:
+        from .materials import add_material_routes
+        from .workflow_switch import WorkflowSwitch
+        try:
+            material_config = json.loads(settings.materials_config.read_text())
+            material_switch = switch or WorkflowSwitch([settings.comfy_url])
+            add_material_routes(app, settings, material_config, lock, material_switch)
+            switch = material_switch
+        except Exception:
+            @app.get('/materials/capabilities')
+            async def unavailable_materials():
+                raise HTTPException(503, 'Experimental surface analysis setup is unavailable')
+
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, exc):
         # Validation details must not echo an uploaded mask, prompt or source ID.

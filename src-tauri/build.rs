@@ -159,9 +159,26 @@ fn install_apple_silicon_runtime(manifest_dir: &Path) -> Result<(), Box<dyn std:
     Ok(())
 }
 
+/// Compile the macOS-only direct CoreML bridge and link the required
+/// system frameworks. Called for macOS targets only; other platforms skip
+/// it entirely (the Rust side gates all CoreML FFI on `target_os = "macos"`).
+fn build_coreml_bridge() {
+    cc::Build::new()
+        .file("src/nonlocal_coreml_bridge.m")
+        .flag("-fobjc-arc")
+        .compile("nlx_coreml_bridge");
+    println!("cargo:rustc-link-lib=framework=CoreML");
+    println!("cargo:rustc-link-lib=framework=Foundation");
+    println!("cargo:rerun-if-changed=src/nonlocal_coreml_bridge.m");
+}
+
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+
+    if target_os == "macos" {
+        build_coreml_bridge();
+    }
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 

@@ -34,7 +34,7 @@ use crate::image_processing::{
 use crate::lut_processing::{
     convert_image_to_cube_lut, generate_identity_lut_image, get_or_load_lut,
 };
-use crate::mask_generation::{MaskDefinition, generate_mask_bitmap};
+use crate::mask_generation::generate_mask_bitmap;
 
 use crate::cache_utils::{calculate_full_job_hash, calculate_transform_hash};
 use crate::{
@@ -425,10 +425,7 @@ fn process_image_for_export_pipeline(
         apply_all_transformations(Cow::Borrowed(base_image), js_adjustments);
     let (img_w, img_h) = transformed_image.dimensions();
 
-    let mask_definitions: Vec<MaskDefinition> = js_adjustments
-        .get("masks")
-        .and_then(|m| serde_json::from_value(m.clone()).ok())
-        .unwrap_or_default();
+    let mask_definitions = crate::marigold_surface::render_masks(js_adjustments);
 
     let warped_image = resolve_warped_image_for_masks(state, js_adjustments, &mask_definitions);
     let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
@@ -731,10 +728,7 @@ fn export_masks_for_image(
         apply_all_transformations(Cow::Borrowed(base_image), js_adjustments);
     ensure_export_not_cancelled(cancellation_token)?;
     let (img_w, img_h) = transformed_image.dimensions();
-    let mask_definitions: Vec<MaskDefinition> = js_adjustments
-        .get("masks")
-        .and_then(|m| serde_json::from_value(m.clone()).ok())
-        .unwrap_or_default();
+    let mask_definitions = crate::marigold_surface::render_masks(js_adjustments);
 
     let warped_image = resolve_warped_image_for_masks(state, js_adjustments, &mask_definitions);
     let mut mask_bitmaps = Vec::with_capacity(mask_definitions.len());
@@ -1642,10 +1636,7 @@ pub async fn estimate_export_sizes(
         };
 
         let (img_w, img_h) = preview_image.dimensions();
-        let mask_definitions: Vec<MaskDefinition> = adjustments_clone
-            .get("masks")
-            .and_then(|m| serde_json::from_value(m.clone()).ok())
-            .unwrap_or_default();
+        let mask_definitions = crate::marigold_surface::render_masks(&adjustments_clone);
 
         let scaled_crop_offset = (
             unscaled_crop_offset.0 * scale,
@@ -1781,10 +1772,7 @@ pub async fn estimate_export_sizes(
         };
         let total_scale = gpu_scale * raw_scale_factor;
 
-        let mask_definitions: Vec<MaskDefinition> = js_adjustments
-            .get("masks")
-            .and_then(|m| serde_json::from_value(m.clone()).ok())
-            .unwrap_or_default();
+        let mask_definitions = crate::marigold_surface::render_masks(&js_adjustments);
         let scaled_crop_offset = (
             unscaled_crop_offset.0 * gpu_scale,
             unscaled_crop_offset.1 * gpu_scale,

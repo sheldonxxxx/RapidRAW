@@ -1,6 +1,6 @@
 [package]
 name = "RapidRAW"
-version = "0.1.0-beta.1"
+version = "0.2.0"
 description = "A blazingly-fast, non-destructive, and GPU-accelerated RAW image editor built with performance in mind."
 authors = ["Timon Käch"]
 edition = "2024"
@@ -105,6 +105,10 @@ reqwest = { version = "0.13", default-features = false, features = ["blocking", 
 hex = "0.4"
 flate2 = "1.1"
 tar = "0.4"
+# Unconditional: build.rs references `cc` on every platform (the CoreML
+# bridge itself is still compiled and linked on macOS only). A macOS-only
+# gate here breaks Linux/Windows builds with E0433.
+cc = "1"
 
 [profile.dev]
 opt-level = 2

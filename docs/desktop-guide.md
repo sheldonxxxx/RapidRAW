@@ -6,7 +6,7 @@ RapidRAW is a GPU-accelerated photo editor created by [Timon Käch](https://gith
 
 Use the [upstream releases page](https://github.com/CyberTimon/RapidRAW/releases) for the original application's available installers and bundles. Linux packaging also includes [Flathub](https://flathub.org/apps/io.github.CyberTimon.RapidRAW) and the community [AUR package](https://aur.archlinux.org/packages/rapidraw-bin). Follow the selected package's platform and dependency requirements.
 
-Those upstream packages do not include this fork's MCP bridge. Use [this fork's beta packages](https://github.com/sheldonxxxx/RapidRAW/releases) or build this fork for fork-specific fixes or MCP. The fork installs as **RapidRAW MCP** with separate preferences and model storage; existing upstream settings are not automatically migrated. To connect an agent, also set up the [Node MCP host](../mcp/README.md#connect-a-beta-package). Its tested MCP configurations are listed separately in the [repository overview](../README.md#tested-configurations-and-current-limits).
+Those upstream packages do not include this fork's MCP bridge. Use [this fork's beta packages](https://github.com/sheldonxxxx/RapidRAW/releases) or build this fork for fork-specific fixes or MCP. The fork installs as **RapidRAW MCP** with separate preferences and model storage; existing upstream settings are not automatically migrated. To connect an agent, also set up the [Node MCP host](../AGENT_SETUP.md). Its tested MCP configurations are listed separately in the [repository overview](../README.md#tested-configurations-and-current-limits).
 
 For interface tutorials and the original editor's example photographs, visit the [upstream documentation](https://www.getrapidraw.com/docs/) and [showcase](https://github.com/CyberTimon/RapidRAW#showcase--edits).
 
@@ -133,12 +133,12 @@ RAPIDRAW_APP=/absolute/RapidRAW/src-tauri/target/release/RapidRAW
 | `--keep-metadata`      | Retain capture metadata                                 | Off                   |
 | `--adjustments <path>` | Native adjustment JSON overriding sidecars              | Use adjacent sidecars |
 
-Use a separate output location and inspect exported dimensions, metadata and pixels. MCP-only parameters such as `expected_revision`, `long_edge`, `resize` and `color_profile` are not flags of this CLI. For agent-managed originals protection, portable state and structured per-item results, use the [MCP workflow](../mcp/README.md#example-editing-loop).
+Use a separate output location and inspect exported dimensions, metadata and pixels. MCP-only parameters such as `expected_revision`, `long_edge`, `resize` and `color_profile` are not flags of this CLI. For agent-managed originals protection, portable state and structured per-item results, use the [execution skill](../skills/rapidraw-mcp/SKILL.md).
 
 ## Troubleshooting
 
 If opening a photograph fails or the editor crashes, check the actual GPU/backend in **Settings → Processing**. Select a supported backend and restart. High-resolution inputs, masks and undo history can require substantial memory; reduce competing workloads and retain the original file when diagnosing a failure.
 
-On Linux, WebKit/Wayland and GPU driver combinations may need different launch settings. The upstream [Wayland issue](https://github.com/CyberTimon/RapidRAW/issues/306) documents reported failures. For a tested server configuration, use the fork's [SSH/Xvfb guide](../mcp/REMOTE-SSH.md).
+On Linux, WebKit/Wayland and GPU driver combinations may need different launch settings. The upstream [Wayland issue](https://github.com/CyberTimon/RapidRAW/issues/306) documents reported failures. For a tested server configuration, use the fork's [SSH/Xvfb guide](mcp/remote-ssh.md).
 
 Report issues with the exact build, OS, GPU, affected entry point and a minimal reproduction using the [contribution guide](../CONTRIBUTING.md). A desktop release, an MCP debug build and a headless export can have different dependency and test boundaries.

@@ -274,6 +274,17 @@ fn submask_parameter_schema(kind: &str) -> Value {
             if matches!(kind, "clone" | "heal") {
                 props.extend(fields("sourceX sourceY", number(0.0, 100000.0)));
             }
+            if kind == "heal" {
+                props.insert("textureOnly".into(), boolean());
+                props.insert("textureRadius".into(), number(1.0, 32.0));
+                props.insert("textureTileSize".into(), json!({"type":"integer","minimum":64,"maximum":2048,"description":"Optional square donor area centred at source_point. Repeat reflected fine detail only, without repeating donor colour. Inspect for repeated structures; omit for full-footprint sampling."}));
+                props.get_mut("textureOnly").unwrap()["description"] = json!(
+                    "A visible heal submask enables texture transfer for the whole combined patch, retaining destination broad colour and light. Use only on a clean repair; default false."
+                );
+                props.get_mut("textureRadius").unwrap()["description"] = json!(
+                    "Gaussian separation scale (sigma) in source pixels for textureOnly healing; default 8. All visible texture-only submasks must agree."
+                );
+            }
             if kind == "liquify" {
                 props.insert("pressure".into(), number(1.0, 100.0));
                 props.insert(
@@ -294,6 +305,50 @@ fn submask_parameter_schema(kind: &str) -> Value {
         "ai-subject" | "quick-eraser" => {
             props.extend(fields("startX startY endX endY", number(0.0, 100000.0)));
             required.extend(["startX", "startY", "endX", "endY"]);
+        }
+        "ai-normals" | "ai-albedo" => {
+            let kind_name = if kind == "ai-normals" {
+                "normals"
+            } else {
+                "albedo"
+            };
+            props.insert(
+                "surfaceArtifact".into(),
+                object(
+                    json!({
+                        "version":{"type":"integer","const":1}, "kind":{"const":kind_name},
+                        "profile":{"const":format!("marigold-v2-{kind_name}-q4-v1")},
+                        "sourceWidth":integer(1,100000),"sourceHeight":integer(1,100000),
+                        "sourceHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64},
+                        "geometryHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64},
+                        "workflowHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64},
+                        "mapHash":{"type":"string","pattern":"^[a-f0-9]{64}$","maxLength":64}
+                    }),
+                    &[
+                        "version",
+                        "kind",
+                        "profile",
+                        "sourceWidth",
+                        "sourceHeight",
+                        "sourceHash",
+                        "geometryHash",
+                        "workflowHash",
+                        "mapHash",
+                    ],
+                ),
+            );
+            required.push("surfaceArtifact");
+            if kind == "ai-normals" {
+                props.insert("normalAngle".into(), number(-360.0, 360.0));
+                props.insert("normalAmount".into(), number(-1.5, 1.5));
+            } else {
+                props.extend(fields(
+                    "surfacePointX surfacePointY surfaceAmount",
+                    number(0.0, 1.0),
+                ));
+                props.insert("surfaceTolerance".into(), number(0.005, 1.0));
+                props.insert("surfaceColor".into(), array(integer(0, 255), 3, 3));
+            }
         }
         "ai-depth" => {
             props.insert(
@@ -387,6 +442,8 @@ fn submask_schema() -> Value {
         "ai-foreground",
         "ai-sky",
         "ai-depth",
+        "ai-normals",
+        "ai-albedo",
         "quick-eraser",
         "all",
         "clone",
@@ -730,6 +787,14 @@ fn validate_submask(value: &Value, path: &str, ids: &mut HashSet<String>) -> Res
             &format!("{path}.parameters.maskDataBase64"),
         )?;
     }
+    if crate::marigold_surface::is_surface(kind) {
+        let artifact = serde_json::from_value(params["surfaceArtifact"].clone())
+            .map_err(|_| format!("{path}: missing surface artifact"))?;
+        crate::marigold_surface::validate_artifact(
+            params["maskDataBase64"].as_str().unwrap(),
+            &artifact,
+        )?;
+    }
     if kind == "ai-depth" {
         if params["depthProvider"] == "marigold" {
             let artifact = serde_json::from_value(params["depthArtifact"].clone())
@@ -869,6 +934,21 @@ pub fn validate_adjustments(value: &Value, dimensions: (u32, u32)) -> Result<(),
         return Err("adjustments.lutPath: use null to remove a LUT, not an empty path".into());
     }
     let mut ids = HashSet::new();
+    if let Some(masks) = value["masks"].as_array() {
+        let slots: usize = masks
+            .iter()
+            .map(|m| {
+                1 + usize::from(
+                    m["subMasks"]
+                        .as_array()
+                        .is_some_and(|parts| parts.iter().any(|p| p["type"] == "ai-normals")),
+                )
+            })
+            .sum();
+        if slots > crate::image_processing::MAX_MASKS {
+            return Err("adjustments.masks: maximum 32 render slots; each directional light mask uses two slots".into());
+        }
+    }
     for collection in ["masks", "aiPatches"] {
         if let Some(containers) = value[collection].as_array() {
             for (index, container) in containers.iter().enumerate() {
@@ -881,6 +961,17 @@ pub fn validate_adjustments(value: &Value, dimensions: (u32, u32)) -> Result<(),
                     validate_curves(&container["adjustments"], &format!("{path}.adjustments"))?;
                 }
                 let submasks = container["subMasks"].as_array().unwrap();
+                let surface_count = submasks
+                    .iter()
+                    .filter(|sm| {
+                        crate::marigold_surface::is_surface(sm["type"].as_str().unwrap_or(""))
+                    })
+                    .count();
+                if surface_count > 1 || (collection == "aiPatches" && surface_count > 0) {
+                    return Err(format!(
+                        "{path}: use one normals or albedo component per adjustment mask"
+                    ));
+                }
                 if container["visible"] == true && !submasks.iter().any(|sm| sm["visible"] == true)
                 {
                     return Err(format!("{path}: visible container has no visible submask"));
@@ -1121,6 +1212,23 @@ mod tests {
 
     fn mask() -> Value {
         json!({"id":"mask-1","name":"Subject","visible":true,"invert":false,"adjustments":{"exposure":0.5},"subMasks":[{"id":"shape-1","type":"radial","visible":true,"mode":"additive","parameters":{"centerX":50,"centerY":50,"radiusX":20,"radiusY":30,"rotation":0,"feather":0.5}}]})
+    }
+
+    #[test]
+    fn texture_healing_parameters_are_opt_in_and_bounded() {
+        let mut definition = mask();
+        definition["subMasks"][0]["type"] = json!("heal");
+        definition["subMasks"][0]["parameters"] = json!({
+            "lines":[{"tool":"brush","brushSize":100,"points":[{"x":100,"y":100}]}],
+            "textureOnly":true,"textureRadius":8
+        });
+        validate_adjustments(&json!({"masks":[definition.clone()]}), (400, 300)).unwrap();
+        for radius in [0.0, 33.0] {
+            definition["subMasks"][0]["parameters"]["textureRadius"] = json!(radius);
+            assert!(
+                validate_adjustments(&json!({"masks":[definition.clone()]}), (400, 300)).is_err()
+            );
+        }
     }
 
     #[test]

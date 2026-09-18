@@ -35,14 +35,23 @@ mod lens_blur;
 mod lens_correction;
 mod lut_processing;
 mod marigold_depth;
+mod marigold_surface;
 mod mask_generation;
 #[cfg(feature = "mcp")]
 mod mcp_bridge;
 mod multi_exposure;
 mod negative_conversion;
+#[cfg(feature = "mcp")]
+mod nonlocal_coreml;
+#[cfg(feature = "mcp")]
+mod nonlocal_install;
+#[cfg(feature = "mcp")]
+mod nonlocal_onnx;
 mod panorama_stitching;
 mod panorama_utils;
 mod preset_converter;
+#[cfg(feature = "mcp")]
+mod raw_denoise;
 mod raw_processing;
 #[cfg(test)]
 mod runtime_regression_tests;
@@ -93,8 +102,7 @@ use crate::image_processing::{
     resolve_tonemapper_override_from_handle, warp_image_geometry,
 };
 use crate::mask_generation::{
-    MaskDefinition, generate_mask_bitmap, get_cached_or_generate_mask,
-    resolve_warped_image_for_masks,
+    generate_mask_bitmap, get_cached_or_generate_mask, resolve_warped_image_for_masks,
 };
 use crate::window_customizer::PinchZoomDisablePlugin;
 pub use adjustment_utils::*;
@@ -519,10 +527,7 @@ fn process_preview_job(
         None
     };
 
-    let mask_definitions: Vec<MaskDefinition> = adjustments_clone
-        .get("masks")
-        .and_then(|m| serde_json::from_value(m.clone()).ok())
-        .unwrap_or_default();
+    let mask_definitions = crate::marigold_surface::render_masks(&adjustments_clone);
 
     let scaled_crop_offset = (
         unscaled_crop_offset.0 * effective_scale,
@@ -870,10 +875,7 @@ async fn generate_uncropped_preview(
 
         let (preview_width, preview_height) = flipped_image.dimensions();
 
-        let mask_definitions: Vec<MaskDefinition> = adjustments_clone
-            .get("masks")
-            .and_then(|m| serde_json::from_value(m.clone()).ok())
-            .unwrap_or_default();
+        let mask_definitions = crate::marigold_surface::render_masks(&adjustments_clone);
 
         let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
             .iter()
@@ -968,10 +970,7 @@ fn generate_preset_preview(
 
     let (img_w, img_h) = preview_image.dimensions();
 
-    let mask_definitions: Vec<MaskDefinition> = js_adjustments
-        .get("masks")
-        .and_then(|m| serde_json::from_value(m.clone()).ok())
-        .unwrap_or_default();
+    let mask_definitions = crate::marigold_surface::render_masks(&js_adjustments);
 
     let scaled_crop_offset = (
         unscaled_crop_offset.0 * scale_for_gpu,
@@ -1114,10 +1113,7 @@ async fn generate_all_community_previews(
                 crate::apply_all_transformations(Cow::Borrowed(base_image), &scaled_adjustments);
             let (img_w, img_h) = transformed_image.dimensions();
 
-            let mask_definitions: Vec<MaskDefinition> = scaled_adjustments
-                .get("masks")
-                .and_then(|m| serde_json::from_value(m.clone()).ok())
-                .unwrap_or_else(Vec::new);
+            let mask_definitions = crate::marigold_surface::render_masks(&scaled_adjustments);
 
             let unscaled_crop_offset = js_adjustments
                 .get("crop")
@@ -1405,10 +1401,7 @@ async fn generate_preview_for_path(
         let (transformed_image, unscaled_crop_offset) =
             apply_all_transformations(Cow::Borrowed(&base_image), &js_adjustments);
         let (img_w, img_h) = transformed_image.dimensions();
-        let mask_definitions: Vec<MaskDefinition> = js_adjustments
-            .get("masks")
-            .and_then(|m| serde_json::from_value(m.clone()).ok())
-            .unwrap_or_default();
+        let mask_definitions = crate::marigold_surface::render_masks(&js_adjustments);
 
         let warped_image =
             resolve_warped_image_for_masks(&state, &js_adjustments, &mask_definitions);
@@ -2146,6 +2139,8 @@ pub fn run() {
             ai_commands::generate_ai_depth_mask,
             marigold_depth::generate_marigold_depth_mask,
             marigold_depth::test_marigold_depth_connection,
+            marigold_surface::test_marigold_surface_connection,
+            marigold_surface::generate_marigold_surface_mask,
             ai_commands::check_ai_connector_status,
             ai_commands::test_ai_connector_connection,
             ai_commands::get_ai_connector_capabilities,

@@ -14,11 +14,11 @@ use std::borrow::Cow;
 use std::f32::consts::PI;
 use std::sync::Arc;
 
+use crate::AppState;
 pub use crate::gpu_processing::{
     RenderRequest, get_or_init_gpu_context, process_and_get_dynamic_image,
     process_and_get_dynamic_image_with_analytics,
 };
-use crate::{AppState, mask_generation::MaskDefinition};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 pub trait IntoCowImage<'a> {
@@ -1664,12 +1664,13 @@ pub struct MaskAdjustments {
     pub red_curve_count: u32,
     pub green_curve_count: u32,
     pub blue_curve_count: u32,
-    _pad_end4: f32,
-    _pad_end5: f32,
-    _pad_end6: f32,
-    _pad_end7: f32,
+    pub surface_recolor_r: f32,
+    pub surface_recolor_g: f32,
+    pub surface_recolor_b: f32,
+    pub surface_recolor_amount: f32,
 }
 
+// Signed surface lighting occupies two of the existing native mask slots.
 pub const MAX_MASKS: usize = 32;
 
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -2570,10 +2571,13 @@ pub(crate) fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdj
         red_curve_count: red_points.len() as u32,
         green_curve_count: green_points.len() as u32,
         blue_curve_count: blue_points.len() as u32,
-        _pad_end4: 0.0,
-        _pad_end5: 0.0,
-        _pad_end6: 0.0,
-        _pad_end7: 0.0,
+        surface_recolor_r: adj["surfaceRecolor"][0].as_f64().unwrap_or(0.0) as f32 / 255.0,
+        surface_recolor_g: adj["surfaceRecolor"][1].as_f64().unwrap_or(0.0) as f32 / 255.0,
+        surface_recolor_b: adj["surfaceRecolor"][2].as_f64().unwrap_or(0.0) as f32 / 255.0,
+        surface_recolor_amount: adj["surfaceRecolorAmount"]
+            .as_f64()
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0) as f32,
     }
 }
 
@@ -2586,10 +2590,7 @@ pub fn get_all_adjustments_from_json(
     let mut mask_adjustments = [MaskAdjustments::default(); MAX_MASKS];
     let mut mask_count = 0;
 
-    let mask_definitions: Vec<MaskDefinition> = js_adjustments
-        .get("masks")
-        .and_then(|m| serde_json::from_value(m.clone()).ok())
-        .unwrap_or_default();
+    let mask_definitions = crate::marigold_surface::render_masks(js_adjustments);
 
     for (i, mask_def) in mask_definitions
         .iter()

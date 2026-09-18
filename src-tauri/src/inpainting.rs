@@ -14,6 +14,8 @@ use crate::image_processing::apply_linear_to_srgb;
 use crate::mask_generation::{AiPatchDefinition, MaskDefinition, generate_mask_bitmap};
 use crate::resolve_warped_image_for_masks;
 
+mod texture_cleanup;
+
 fn prepare_source_image(
     patch_id: &str,
     current_adjustments: &Value,
@@ -237,6 +239,65 @@ pub async fn generate_manual_cleanup_patch(
     }
     if !is_heal && patch_definition.name.to_lowercase().contains("heal") {
         is_heal = true;
+    }
+
+    let texture_parameters = patch_definition.sub_masks.iter().find_map(|sm| {
+        let value = serde_json::to_value(sm).ok()?;
+        (value["visible"] != false
+            && value["type"] == "heal"
+            && value["parameters"]["textureOnly"] == true)
+            .then(|| value["parameters"].clone())
+    });
+    if let Some(parameters) = texture_parameters {
+        let radius = parameters["textureRadius"].as_f64().unwrap_or(8.0);
+        if !radius.is_finite() || !(1.0..=32.0).contains(&radius) {
+            return Err("Texture radius must be between 1 and 32 source pixels".into());
+        }
+        let tile_size = match parameters.get("textureTileSize") {
+            None => None,
+            Some(value) => Some(
+                value
+                    .as_u64()
+                    .filter(|size| (64..=2048).contains(size))
+                    .ok_or("Texture tile size must be an integer between 64 and 2048")?
+                    as u32,
+            ),
+        };
+        for sm in &patch_definition.sub_masks {
+            let value = serde_json::to_value(sm).map_err(|error| error.to_string())?;
+            if value["visible"] != false
+                && value["type"] == "heal"
+                && value["parameters"]["textureOnly"] == true
+                && (value["parameters"]["textureRadius"].as_f64().unwrap_or(8.0) != radius
+                    || value["parameters"].get("textureTileSize")
+                        != parameters.get("textureTileSize"))
+            {
+                return Err(
+                    "Visible texture-only heal submasks must use the same texture settings".into(),
+                );
+            }
+        }
+        let color_image = texture_cleanup::transfer_texture(
+            &source_image.to_rgb8(),
+            (min_x_u32, min_y_u32, crop_w, crop_h),
+            (offset_x, offset_y),
+            radius as f32,
+            tile_size,
+        );
+        let output_mask =
+            image::imageops::crop_imm(&mask_bitmap, min_x_u32, min_y_u32, crop_w, crop_h)
+                .to_image();
+        return encode_patch_result(
+            &color_image,
+            &output_mask,
+            min_x_u32,
+            min_y_u32,
+            crop_w,
+            crop_h,
+            is_raw,
+            100,
+            false,
+        );
     }
 
     let mut color_image = RgbImage::new(crop_w, crop_h);

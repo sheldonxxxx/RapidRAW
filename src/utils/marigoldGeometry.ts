@@ -9,8 +9,11 @@ export function syncMarigoldOrientation<T extends DepthGeometry>(adjustments: T)
     let maskChanged = false;
     const subMasks = mask.subMasks.map((part) => {
       if (
-        part.type !== 'ai-depth' ||
-        part.parameters.depthProvider !== 'marigold' ||
+        !(
+          (part.type === 'ai-depth' && part.parameters.depthProvider === 'marigold') ||
+          part.type === 'ai-normals' ||
+          part.type === 'ai-albedo'
+        ) ||
         keys.every((key) => part.parameters[key] === adjustments[key])
       )
         return part;

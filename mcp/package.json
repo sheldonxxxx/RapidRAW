@@ -1,8 +1,33 @@
 {
-  "name": "rapidraw-mcp-server",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@sheldonxxxx/rapidraw-mcp",
+  "version": "0.1.1",
   "description": "Local MCP interface to RapidRAW's native nondestructive photo engine",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sheldonxxxx/RapidRAW.git",
+    "directory": "mcp"
+  },
+  "homepage": "https://github.com/sheldonxxxx/RapidRAW/tree/main/mcp",
+  "bugs": {
+    "url": "https://github.com/sheldonxxxx/RapidRAW/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "rapidraw",
+    "photo-editing",
+    "raw",
+    "photography"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/**/*.js",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "bin": {
     "rapidraw-mcp": "dist/index.js"
@@ -12,6 +37,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build && npm test",
     "start": "node dist/index.js",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:engine": "npm run build && node scripts/engine-e2e.mjs",
@@ -28,7 +54,8 @@
     "coverage": "node scripts/coverage-report.mjs",
     "test:large": "npm run build && node scripts/large-image-e2e.mjs",
     "test:advanced": "npm run build && node scripts/advanced-e2e.mjs",
-    "test:denoise": "npm run build && node scripts/denoise-e2e.mjs"
+    "test:denoise": "npm run build && node scripts/denoise-e2e.mjs",
+    "test:surfaces": "npm run build && node scripts/marigold-surfaces-e2e.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
