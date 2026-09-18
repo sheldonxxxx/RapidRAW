@@ -31,7 +31,7 @@ For repeated MCP editing and test runs, see [storage and model-cache guidance](m
 | You want to…                                                      | Start here                                                                                                                                                                                   |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Edit photographs directly in a desktop application                | [Desktop guide](docs/desktop-guide.md) and [upstream application downloads](https://github.com/CyberTimon/RapidRAW/releases)                                                                 |
-| Let an AI agent use RapidRAW's native engine                      | Install a fork beta package and connect the pinned npm host with the [agent setup guide](AGENT_SETUP.md) (package-first normal path; source build is the fallback) |
+| Let an AI agent use RapidRAW's native engine                      | Install a fork beta package and connect the pinned npm host with the [agent setup guide](AGENT_SETUP.md) (package-first normal path; source build is the fallback)                           |
 | Give your agent an editing workflow and a place to review results | Start with [Lightweft](https://github.com/sheldonxxxx/lightweft), then add RapidRAW as an optional execution tool                                                                            |
 | Prepare saved Insta360 files before editing                       | Use the independent [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit), then follow the [spherical handoff guide](skills/rapidraw-mcp/references/spherical-photos.md) |
 
@@ -91,12 +91,12 @@ RapidRAW edits the pixels it receives. Camera-native fisheye stitching and spher
 
 ## Tested configurations and current limits
 
-| Configuration                                                 | Evidence and setup                                                                                                                                 |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Configuration                                                 | Evidence and setup                                                                                                                                                                   |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | macOS with Metal, native debug build                          | Native editing, state, rendering and export acceptance in the [historical verification snapshot](docs/mcp/history/verification-2026-09.md); [setup](mcp/README.md#build-and-connect) |
-| Debian 13 x86-64, NVIDIA GPU, SSH and Xvfb                    | Exercised server workflow documented in the [Linux guide](docs/mcp/remote-ssh.md); this is a specific tested configuration                              |
-| Optional Linux ONNX CUDA inference                            | Foreground/sky masks, depth and AI denoise; [model policy and runtime setup](docs/mcp/onnx-cuda.md)                                                     |
-| Windows, packaged MCP releases and fresh-machine installation | No completed native acceptance claim                                                                                                               |
+| Debian 13 x86-64, NVIDIA GPU, SSH and Xvfb                    | Exercised server workflow documented in the [Linux guide](docs/mcp/remote-ssh.md); this is a specific tested configuration                                                           |
+| Optional Linux ONNX CUDA inference                            | Foreground/sky masks, depth and AI denoise; [model policy and runtime setup](docs/mcp/onnx-cuda.md)                                                                                  |
+| Windows, packaged MCP releases and fresh-machine installation | No completed native acceptance claim                                                                                                                                                 |
 
 Existing mask and denoise operations default to CPU on every platform. Their Linux CUDA support is opt-in and separate from GPU photo rendering; subject selection and local inpainting retain CPU compatibility paths.
 
@@ -121,9 +121,9 @@ Exports go under the MCP workspace's `exports` directory; replacing an existing 
 | [Local masks and detail enhancement](docs/local-enhancement.md) | Native learned masks, experimental deblur, 2× enlargement and hardware profiles |
 | [AI editing workflows](docs/ai-editing-workflows.md)            | Choose a use-case workflow, write a precise prompt and inspect generative edits |
 | [Execution skill](skills/rapidraw-mcp/SKILL.md)                 | Agent editing, mask review, comparisons and delivery                            |
-| [Portable sessions and presets](docs/mcp/portable-sessions.md)       | Independent alternatives, reusable looks and moving edits                       |
-| [Geometry and review](docs/mcp/geometry-review.md)                   | Coordinate mapping, native detail and diagnostic previews                       |
-| [Testing and evidence](docs/mcp/testing.md)                   | Reproducing protocol, native and photographic checks                            |
+| [Portable sessions and presets](docs/mcp/portable-sessions.md)  | Independent alternatives, reusable looks and moving edits                       |
+| [Geometry and review](docs/mcp/geometry-review.md)              | Coordinate mapping, native detail and diagnostic previews                       |
+| [Testing and evidence](docs/mcp/testing.md)                     | Reproducing protocol, native and photographic checks                            |
 | [Contribution guide](CONTRIBUTING.md)                           | Reporting issues and proposing changes                                          |
 | [Native integration guide](MCP.md)                              | Developing the optional bridge and merging upstream changes                     |
 | [Fork changelog](CHANGELOG.md)                                  | Additions and fixes, with unreleased changes identified                         |

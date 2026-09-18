@@ -107,10 +107,10 @@ In the completed expanded study, the selected configuration retained the release
 
 Held-out scene-balanced RAW PSNR (dB), compared with a single prediction:
 
-| Conditions | One pass | Four rotations | Change | 95% scene-bootstrap interval |
-| --- | ---: | ---: | ---: | ---: |
-| Synthetic noise | 54.644 | 54.706 | +0.063 | [+0.045, +0.087] |
-| Real pairs | 51.648 | 51.689 | +0.041 | [+0.025, +0.063] |
+| Conditions      | One pass | Four rotations | Change | 95% scene-bootstrap interval |
+| --------------- | -------: | -------------: | -----: | ---------------------------: |
+| Synthetic noise |   54.644 |         54.706 | +0.063 |             [+0.045, +0.087] |
+| Real pairs      |   51.648 |         51.689 | +0.041 |             [+0.025, +0.063] |
 
 Every held-out scene mean improved; individual crops did not all improve. The worst crop changes were -0.130 dB for synthetic noise and -0.041 dB for real pairs. Removing the exact duplicate real-pair crop gives a +0.041 dB scene-balanced change, consistent with the primary result. Edge PSNR also improves on average. These are small gains and do not establish a visibly transformative result or commercial parity.
 

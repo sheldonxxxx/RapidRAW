@@ -27,14 +27,14 @@ The MCP integration exposes RapidRAW's native editing engine through reversible 
 
 Contracts to preserve by editing area:
 
-| Area | Contracts to preserve | Current guidance and checks |
-| --- | --- | --- |
-| Adjustments and native rendering | Executable schemas, visible control effects, high-precision processing, clipping overlays, exact preview caching and bounded large-image rendering | [Geometry and review](docs/mcp/geometry-review.md) |
-| Selective edits | Consistent coordinates, matched mask/photograph views, atomic submask operations and revision-guarded AI refinement | [Subject refinement](docs/mcp/subject-refinement.md) |
-| Sessions and reusable assets | Independent forks, portable dependencies/history/versions, selective copy and owned preset/LUT libraries | [Portable sessions](docs/mcp/portable-sessions.md) |
-| Expensive operations | Captured inputs/settings/models, isolated workers, cancellation, durable results and explicit recovery | [Testing and evidence](docs/mcp/testing.md) |
-| Delivery and setup | Accurate profile/codec reporting, independently decoded exports, verified local models and explicit environment requirements | [Remote SSH](docs/mcp/remote-ssh.md), [ONNX CUDA](docs/mcp/onnx-cuda.md) |
-| Photographic review | Unchanged first attempts, source integrity, stated quality criteria and separate overview/native-detail judgments | [Testing and evidence](docs/mcp/testing.md) |
+| Area                             | Contracts to preserve                                                                                                                              | Current guidance and checks                                              |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Adjustments and native rendering | Executable schemas, visible control effects, high-precision processing, clipping overlays, exact preview caching and bounded large-image rendering | [Geometry and review](docs/mcp/geometry-review.md)                       |
+| Selective edits                  | Consistent coordinates, matched mask/photograph views, atomic submask operations and revision-guarded AI refinement                                | [Subject refinement](docs/mcp/subject-refinement.md)                     |
+| Sessions and reusable assets     | Independent forks, portable dependencies/history/versions, selective copy and owned preset/LUT libraries                                           | [Portable sessions](docs/mcp/portable-sessions.md)                       |
+| Expensive operations             | Captured inputs/settings/models, isolated workers, cancellation, durable results and explicit recovery                                             | [Testing and evidence](docs/mcp/testing.md)                              |
+| Delivery and setup               | Accurate profile/codec reporting, independently decoded exports, verified local models and explicit environment requirements                       | [Remote SSH](docs/mcp/remote-ssh.md), [ONNX CUDA](docs/mcp/onnx-cuda.md) |
+| Photographic review              | Unchanged first attempts, source integrity, stated quality criteria and separate overview/native-detail judgments                                  | [Testing and evidence](docs/mcp/testing.md)                              |
 
 Acceptance distinguishes four evidence levels: schema/protocol tests establish argument handling and transport; actual SDK-to-native calls establish execution; state and decoded-pixel assertions establish their stated contracts; photographic acceptance additionally requires review against explicit image-specific criteria — a successful operation or numeric probe alone does not establish it.
 

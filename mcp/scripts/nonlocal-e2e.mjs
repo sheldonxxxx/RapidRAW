@@ -22,35 +22,61 @@ let client;
 const records = [];
 async function connect() {
   client = new Client({ name: 'nonlocal-native-acceptance', version: '1.0.0' });
-  await client.connect(new StdioClientTransport({
-    command: process.execPath,
-    args: [fileURLToPath(new URL('../dist/index.js', import.meta.url)), '--binary', binary, '--workspace', workspace, '--timeout-ms', '900000'],
-    stderr: 'inherit',
-    env: Object.fromEntries(Object.entries(process.env).filter(([,v]) => v !== undefined)),
-  }));
+  await client.connect(
+    new StdioClientTransport({
+      command: process.execPath,
+      args: [
+        fileURLToPath(new URL('../dist/index.js', import.meta.url)),
+        '--binary',
+        binary,
+        '--workspace',
+        workspace,
+        '--timeout-ms',
+        '900000',
+      ],
+      stderr: 'inherit',
+      env: Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined)),
+    }),
+  );
 }
 async function call(name, args = {}, expectError = false) {
   const started = performance.now();
   const response = await client.callTool({ name: `rapidraw_${name}`, arguments: args }, { timeout: 900000 });
-  records.push({ name, args, elapsed_ms: Math.round(performance.now() - started), result: response.structuredContent, isError: !!response.isError });
+  records.push({
+    name,
+    args,
+    elapsed_ms: Math.round(performance.now() - started),
+    result: response.structuredContent,
+    isError: !!response.isError,
+  });
   assert.equal(!!response.isError, expectError, JSON.stringify(response.structuredContent ?? response.content));
   return response;
 }
-async function data(name, args) { return (await call(name, args)).structuredContent; }
+async function data(name, args) {
+  return (await call(name, args)).structuredContent;
+}
 async function waitJob(id) {
   const start = performance.now();
   let reported = '';
   while (performance.now() - start < 900000) {
     const state = await data('get_job', { job_id: id });
     const report = `${state.status} ${Math.floor(state.progress_percent / 10) * 10}% ${state.stage}`;
-    if (report !== reported) { console.log(report); reported = report; }
+    if (report !== reported) {
+      console.log(report);
+      reported = report;
+    }
     if (!['running', 'cancelling'].includes(state.status)) return state;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   throw new Error('Job did not finish within 15 minutes');
 }
 async function render(session, label, region) {
-  const response = await call('render', { session_id: session, format: 'png', long_edge: region ? 768 : 1600, ...(region ? { region } : {}) });
+  const response = await call('render', {
+    session_id: session,
+    format: 'png',
+    long_edge: region ? 768 : 1600,
+    ...(region ? { region } : {}),
+  });
   const block = response.content.find((c) => c.type === 'image');
   assert.ok(block, 'Native render must return pixels');
   const path = join(review, `${label}.png`);
@@ -68,16 +94,29 @@ try {
   assert.equal(opened.is_raw, true);
   await data('set_adjustments', { session_id: opened.session_id, patch: { exposure: 0.35, temperature: 8 } });
   const parent = await data('get_session', { session_id: opened.session_id, include_adjustments: true });
-  const zero = await data('start_denoise', { session_id: parent.session_id, method: 'nonlocal', intensity: 0, expected_revision: parent.revision });
+  const zero = await data('start_denoise', {
+    session_id: parent.session_id,
+    method: 'nonlocal',
+    intensity: 0,
+    expected_revision: parent.revision,
+  });
   const zeroJob = await waitJob(zero.job_id);
   assert.equal(zeroJob.status, 'succeeded', JSON.stringify(zeroJob));
   const baseline = await render(parent.session_id, 'original');
   await render(zeroJob.result_session_id, 'zero-strength');
-  const rejected = await call('start_denoise', { session_id: parent.session_id, method: 'bm3d', quality: 'maximum' }, true);
+  const rejected = await call(
+    'start_denoise',
+    { session_id: parent.session_id, method: 'bm3d', quality: 'maximum' },
+    true,
+  );
   assert.match(JSON.stringify(rejected), /quality/i);
   // A different quality has a distinct prediction cache. Cancel after CUDA
   // begins, then restart the same immutable snapshot with resume_job.
-  let job = await data('start_denoise', { session_id: parent.session_id, method: 'nonlocal', expected_revision: parent.revision });
+  let job = await data('start_denoise', {
+    session_id: parent.session_id,
+    method: 'nonlocal',
+    expected_revision: parent.revision,
+  });
   for (let i = 0; i < 120; i++) {
     const state = await data('get_job', { job_id: job.job_id });
     if (state.stage.includes('CUDA') || state.status !== 'running') break;
@@ -101,12 +140,14 @@ try {
   // Native provenance carries backend generation instead of the retired
   // Python-worker sampler field. Assert the generation matches the provider
   // under test so CPU and CoreML runs are distinguishable.
-  const expectedBackend = (process.env.RAPIDRAW_NONLOCAL_PROVIDER ?? 'cpu') === 'coreml' ? 'native-coreml-v1' : 'native-onnx-v1';
+  const expectedBackend =
+    (process.env.RAPIDRAW_NONLOCAL_PROVIDER ?? 'cpu') === 'coreml' ? 'native-coreml-v1' : 'native-onnx-v1';
   assert.equal(result.metadata.derivedFrom.nonlocal.backend, expectedBackend);
   assert.equal(result.metadata.derivedFrom.nonlocal.algorithm, 'nonlocal-raw-v1');
   assert.equal(hash(await readFile(source)), originalHash);
   await data('set_adjustments', { session_id: parent.session_id, patch: { exposure: 0.35 } });
-  const width = result.dimensions.width, height = result.dimensions.height;
+  const width = result.dimensions.width,
+    height = result.dimensions.height;
   const region = { x: Math.floor(width / 2 - 384), y: Math.floor(height / 2 - 384), width: 768, height: 768 };
   await render(parent.session_id, 'original-detail', region);
   const denoised = await render(result.session_id, 'nonlocal');
@@ -130,8 +171,17 @@ try {
   const jpeg = await data('open_photo', { path: baseline, inherit_sidecar: false });
   await call('start_denoise', { session_id: jpeg.session_id, method: 'nonlocal' }, true);
   assert.equal(hash(await readFile(source)), originalHash);
-  await writeFile(join(review, 'result.json'), JSON.stringify({ parent, result, half, settings, models, source_sha256: originalHash, completed, cache_job: cachedJob }, null, 2));
-  console.log('PASS: native Bayer DNG, captured edits, standalone reopen, CUDA cancellation/resume, cache blend, persistence, RGB rejection, source identity');
+  await writeFile(
+    join(review, 'result.json'),
+    JSON.stringify(
+      { parent, result, half, settings, models, source_sha256: originalHash, completed, cache_job: cachedJob },
+      null,
+      2,
+    ),
+  );
+  console.log(
+    'PASS: native Bayer DNG, captured edits, standalone reopen, CUDA cancellation/resume, cache blend, persistence, RGB rejection, source identity',
+  );
 } catch (error) {
   failure = String(error.stack ?? error);
   console.error(failure);

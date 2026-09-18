@@ -8,12 +8,12 @@ No repository clone is required for the normal packaged setup below. The npm hos
 
 ## Compatibility / current release
 
-| Component | Current value |
-| --- | --- |
-| Fork application release | `fork-v0.1.0-beta.1` |
-| npm MCP host | `@sheldonxxxx/rapidraw-mcp@0.1.0` |
-| Native MCP bridge (reported by `rapidraw_capabilities`) | `1.2.0` |
-| Node.js | 22.12 or later (package engine: `>=22`) |
+| Component                                               | Current value                           |
+| ------------------------------------------------------- | --------------------------------------- |
+| Fork application release                                | `fork-v0.1.0-beta.1`                    |
+| npm MCP host                                            | `@sheldonxxxx/rapidraw-mcp@0.1.0`       |
+| Native MCP bridge (reported by `rapidraw_capabilities`) | `1.2.0`                                 |
+| Node.js                                                 | 22.12 or later (package engine: `>=22`) |
 
 Component versions are independent: the fork release tag, the npm host version, and the native bridge version do not move together. Use the exact pinned pair above. Do not automatically mix unknown future pairs without checking their release notes and compatibility statements.
 
@@ -37,6 +37,7 @@ Component versions are independent: the fork release tag, the npm host version, 
    ```
 
    This npm package is ONLY the Node stdio MCP host. Source builds remain available as a developer fallback (see below) but are not part of normal packaged setup.
+
 6. **Create an absolute workspace and an optional model cache.** Create one empty directory per MCP connection, for example `/absolute/rapidraw-photo-jobs`, plus an optional shared model-cache directory on the same volume. Keep workspaces, caches, and photographs outside source control. One simultaneous connection owns each workspace through an exclusive native lock; use a separate workspace for each simultaneous agent.
 7. **Resolve the native binary absolute path.** Both `--binary` and `--workspace` must be absolute; the host performs no automatic native-binary discovery.
    - macOS packaged install, for example: `/Applications/RapidRAW MCP.app/Contents/MacOS/rapidraw-mcp` (quote this path in shells).
@@ -91,10 +92,10 @@ The `env` entry is optional and selects a shared model-cache directory. Omit it 
 
 Translate the pinned command, arguments, environment, and timeouts from the generic example above into Codex's TOML form. Choose one configuration scope:
 
-| Scope | File |
-| --- | --- |
-| This photo-work project | `.codex/config.toml` inside the project; Codex loads project configuration only after you trust that project |
-| Your Codex projects on this host | `~/.codex/config.toml` |
+| Scope                            | File                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| This photo-work project          | `.codex/config.toml` inside the project; Codex loads project configuration only after you trust that project |
+| Your Codex projects on this host | `~/.codex/config.toml`                                                                                       |
 
 Create the parent directory if needed. Add the following table to the chosen file, preserving other settings and replacing **every** `/absolute/...` path. Inspect an existing `rapidraw` entry before updating it; do not duplicate the table. Use the absolute `npx` executable path on that machine (run `command -v npx` to find it) and the installed native binary from step 7 — not a repository checkout path.
 

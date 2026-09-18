@@ -31,11 +31,11 @@ The MCP server uses the official TypeScript SDK v2 and stdio. Stdout carries onl
 
 Options (flags or equivalent environment variables):
 
-| Flag | Environment | Meaning |
-| --- | --- | --- |
-| `--binary <absolute path>` | `RAPIDRAW_BINARY` | Native engine executable. Required, absolute, no discovery. |
-| `--workspace <absolute path>` | `RAPIDRAW_WORKSPACE` | Isolated editing authority. Required, absolute. |
-| `--timeout-ms <ms>` | `RAPIDRAW_TIMEOUT_MS` | Default native-operation timeout (300000 ms). |
+| Flag                          | Environment           | Meaning                                                     |
+| ----------------------------- | --------------------- | ----------------------------------------------------------- |
+| `--binary <absolute path>`    | `RAPIDRAW_BINARY`     | Native engine executable. Required, absolute, no discovery. |
+| `--workspace <absolute path>` | `RAPIDRAW_WORKSPACE`  | Isolated editing authority. Required, absolute.             |
+| `--timeout-ms <ms>`           | `RAPIDRAW_TIMEOUT_MS` | Default native-operation timeout (300000 ms).               |
 
 Model installation, merge and batch export have a 30-minute maximum; configure the host's tool timeout accordingly. `RAPIDRAW_MODEL_CACHE` selects an absolute shared model-cache directory; omit it to use the application default. Optional `workspace/engine-settings.json` overrides bridge defaults using the native **camelCase** keys returned by `rapidraw_get_engine_settings`; restart the connection after changing it. The bridge never migrates or writes the installed GUI application's preferences. Generative retouch providers are configured explicitly; image content is sent only when generative mode is selected, and provider tokens never belong in the settings file.
 
@@ -45,19 +45,19 @@ Missing models do not prevent basic adjustments and geometric masks, but AI oper
 
 Every tool starts with `rapidraw_`; the table shows the suffixes. The engine's live `capabilities` response is authoritative for availability and schemas. For interactive editing, begin with `rapidraw_capabilities({"detail":"overview"})`, then request exact schema branches as needed. Unknown schema paths are errors.
 
-| Area | Tools |
-| --- | --- |
-| Discovery and state | `capabilities`, `list_images`, `open_photo`, `list_sessions`, `get_session`, `close_session` |
-| Editing and review | `set_adjustments`, `render`, `render_compare`, `inspect_adjustments`, `analyze`, `auto_adjust`, `map_coordinates`, `preflight`, `sample_region` |
-| Selective edits | `mask_create`, `mask_update`, `mask_remove`, `mask_generate`, `generate_depth` |
-| Background processing | `start_denoise`, `get_job`, `list_jobs`, `cancel_job`, `resume_job`, `start_operation`, `get_operation_job`, `list_operation_jobs`, `cancel_operation_job`, `resume_operation_job` |
-| Local masks and enhancement | `enhancement_models`, `install_enhancement_model`, `enhance` |
-| Detail and corrections | `retouch`, `denoise`, `lens_profile`, `negative_convert` |
-| History and persistence | `history`, `undo`, `redo`, `save_version`, `list_versions`, `restore_version`, `save_session`, `load_recipe`, `save_recipe` |
-| Presets and assets | `list_presets`, `apply_preset`, `list_luts`, `apply_lut`, `manage_presets`, `manage_luts`, `models`, `install_model` |
-| Delivery and composition | `export`, `batch_export`, `merge` |
-| Portable editing | `fork_session`, `export_session_bundle`, `import_session_bundle`, `diff_versions`, `copy_adjustments` |
-| Metadata and configuration | `get_metadata`, `set_metadata`, `get_engine_settings` |
+| Area                        | Tools                                                                                                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Discovery and state         | `capabilities`, `list_images`, `open_photo`, `list_sessions`, `get_session`, `close_session`                                                                                       |
+| Editing and review          | `set_adjustments`, `render`, `render_compare`, `inspect_adjustments`, `analyze`, `auto_adjust`, `map_coordinates`, `preflight`, `sample_region`                                    |
+| Selective edits             | `mask_create`, `mask_update`, `mask_remove`, `mask_generate`, `generate_depth`                                                                                                     |
+| Background processing       | `start_denoise`, `get_job`, `list_jobs`, `cancel_job`, `resume_job`, `start_operation`, `get_operation_job`, `list_operation_jobs`, `cancel_operation_job`, `resume_operation_job` |
+| Local masks and enhancement | `enhancement_models`, `install_enhancement_model`, `enhance`                                                                                                                       |
+| Detail and corrections      | `retouch`, `denoise`, `lens_profile`, `negative_convert`                                                                                                                           |
+| History and persistence     | `history`, `undo`, `redo`, `save_version`, `list_versions`, `restore_version`, `save_session`, `load_recipe`, `save_recipe`                                                        |
+| Presets and assets          | `list_presets`, `apply_preset`, `list_luts`, `apply_lut`, `manage_presets`, `manage_luts`, `models`, `install_model`                                                               |
+| Delivery and composition    | `export`, `batch_export`, `merge`                                                                                                                                                  |
+| Portable editing            | `fork_session`, `export_session_bundle`, `import_session_bundle`, `diff_versions`, `copy_adjustments`                                                                              |
+| Metadata and configuration  | `get_metadata`, `set_metadata`, `get_engine_settings`                                                                                                                              |
 
 Resources: `rapidraw://workflow` (editing/review/delivery workflow), `rapidraw://adjustment-schema` (native schemas and units), `rapidraw://sessions/{session_id}` (current editing state with read-only asset descriptors). The `pro_photo_edit` prompt accepts `path` and optional `intent`; the server does not itself run or pay for a language model.
 
