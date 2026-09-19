@@ -8,7 +8,7 @@
  * absence is reported as a note so a failed capture cannot pass as a
  * successful one.
  */
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 
 export const MAPS_KEYWORDS = [
@@ -25,11 +25,15 @@ export function snapshotCudaMaps(pid) {
   const kept = {};
   let raw;
   try {
-    raw = execSync(`grep -E 'libcudnn|libcublas|libcudart|libcurand|libnvrtc|libnvJitLink' /proc/${pid}/maps || true`, {
+    raw = execFileSync('grep', ['-E', MAPS_KEYWORDS.join('|'), `/proc/${pid}/maps`], {
       encoding: 'utf8',
     });
   } catch (error) {
-    return { note: `maps unavailable for pid ${pid}: ${String(error).split('\n')[0]}` };
+    // grep exits 1 on no match; anything else means maps are unavailable.
+    if (error?.status !== 1) {
+      return { note: `maps unavailable for pid ${pid}: ${String(error).split('\n')[0]}` };
+    }
+    raw = '';
   }
   for (const line of raw.split('\n')) {
     const parts = line.trim().split(/\s+/);
@@ -49,8 +53,11 @@ export function snapshotCudaMaps(pid) {
 }
 
 export function findEnginePids(binaryPath) {
+  // argv-form pgrep (no shell): the pattern never appears in an invoking
+  // shell command line, so pgrep cannot match its own launcher. pgrep
+  // exits 1 on no match, which simply means no engine process.
   try {
-    const out = execSync(`pgrep -f '${binaryPath}' || true`, { encoding: 'utf8' });
+    const out = execFileSync('pgrep', ['-f', binaryPath], { encoding: 'utf8' });
     return out
       .split('\n')
       .map((s) => s.trim())

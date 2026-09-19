@@ -11,7 +11,7 @@
  * This runner never downloads models, uses generative services, or edits a RAW.
  */
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { createNativeHarness, hashBytes, hashFile } from './coverage-evidence.mjs';
@@ -369,10 +369,16 @@ try {
     // mappings are present. The binary path plus our workspace in the
     // cmdline disambiguates our engine from unrelated processes.
     const binary = resolve(process.env.RAPIDRAW_BINARY);
-    const candidates = execSync(`pgrep -f '${binary}' || true`, { encoding: 'utf8' })
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // argv-form pgrep (no shell) so the pattern cannot match its own launcher.
+    let candidates = [];
+    try {
+      candidates = execFileSync('pgrep', ['-f', binary], { encoding: 'utf8' })
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } catch {
+      candidates = [];
+    }
     const ours = candidates.filter((pid) => {
       try {
         const cmdline = execSync(`tr '\\0' ' ' < /proc/${pid}/cmdline`, { encoding: 'utf8' });
