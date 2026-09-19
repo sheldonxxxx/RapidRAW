@@ -77,7 +77,10 @@ async function requireFreshDir(path) {
 function enginePids() {
   try {
     return new Set(
-      execSync(`pgrep -x '${binName}' || true`, { encoding: 'utf8' }).split('\n').map((s) => s.trim()).filter(Boolean),
+      execSync(`pgrep -x '${binName}' || true`, { encoding: 'utf8' })
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean),
     );
   } catch {
     return new Set();

@@ -8,7 +8,15 @@ import { fileURLToPath } from 'node:url';
 import { MAPS_KEYWORDS, findEnginePids, snapshotCudaMaps } from '../scripts/cuda-lib-maps.mjs';
 
 test('maps keywords cover the audited CUDA families', () => {
-  for (const keyword of ['libcudnn', 'libcublas', 'libcublasLt', 'libcudart', 'libcurand', 'libnvrtc', 'libnvJitLink']) {
+  for (const keyword of [
+    'libcudnn',
+    'libcublas',
+    'libcublasLt',
+    'libcudart',
+    'libcurand',
+    'libnvrtc',
+    'libnvJitLink',
+  ]) {
     assert.ok(MAPS_KEYWORDS.includes(keyword), keyword);
   }
 });
@@ -42,10 +50,7 @@ test('provider regression wires maps, LD path and library context', () => {
 test('lib-bench fails closed on an existing run directory', () => {
   const source = readFileSync(new URL('../scripts/nonlocal-lib-bench.mjs', import.meta.url), 'utf8');
   assert.ok(source.includes('requireFreshDir'), 'runner must enforce fresh directories');
-  assert.ok(
-    source.includes('Refusing to reuse existing run directory'),
-    'runner must name the contamination risk',
-  );
+  assert.ok(source.includes('Refusing to reuse existing run directory'), 'runner must name the contamination risk');
   const existing = mkdtempSync(join(tmpdir(), 'nlx-fresh-check-'));
   let failed = null;
   try {

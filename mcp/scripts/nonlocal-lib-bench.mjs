@@ -47,7 +47,12 @@ const binName = binary.split('/').pop();
 function enginePids() {
   try {
     const out = execSync(`pgrep -x '${binName}' || true`, { encoding: 'utf8' });
-    return new Set(out.split('\n').map((s) => s.trim()).filter(Boolean));
+    return new Set(
+      out
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
   } catch {
     return new Set();
   }

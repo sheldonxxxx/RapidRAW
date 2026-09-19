@@ -14,7 +14,7 @@
   "driver_note": "Supported and tested baseline is NVIDIA driver 595.58.03 or newer. Lower driver branches are not claimed as supported until separately tested.",
   "lock_file": "packaging/linux-nvidia-runtime.lock.json",
   "lock_schema": "rapidraw-linux-nvidia-runtime-lock-v1",
-  "lock_sha256": "b825316f7552a805b394a3af68d6b0a35315f8e90032f144f271762fbac85e7e",
+  "lock_sha256": "7ec2af7498ac447a34f74ed1dd0cfe44eabefffacca946305ef51aae1420e94c",
   "components": [
     {
       "name": "onnxruntime-gpu",

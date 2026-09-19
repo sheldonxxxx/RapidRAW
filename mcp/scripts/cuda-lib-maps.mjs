@@ -51,7 +51,10 @@ export function snapshotCudaMaps(pid) {
 export function findEnginePids(binaryPath) {
   try {
     const out = execSync(`pgrep -f '${binaryPath}' || true`, { encoding: 'utf8' });
-    return out.split('\n').map((s) => s.trim()).filter(Boolean);
+    return out
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
   } catch {
     return [];
   }

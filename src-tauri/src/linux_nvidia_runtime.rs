@@ -261,9 +261,13 @@ pub(crate) fn resolve_providers(
     nonlocal: Option<&str>,
     pack_valid: bool,
 ) -> ResolvedProviders {
-    let onnx = onnx
-        .map(str::to_owned)
-        .unwrap_or_else(|| pack_valid.then_some("cuda").unwrap_or("cpu").to_owned());
+    let onnx = onnx.map(str::to_owned).unwrap_or_else(|| {
+        if pack_valid {
+            "cuda".to_owned()
+        } else {
+            "cpu".to_owned()
+        }
+    });
     let nonlocal = nonlocal.map(str::to_owned).unwrap_or_else(|| onnx.clone());
     ResolvedProviders { onnx, nonlocal }
 }

@@ -33,9 +33,7 @@
       "archive_size": 673041224,
       "license_label": "cudnn",
       "license_files": ["LICENSE"],
-      "required_files": [
-        "lib/libcudnn*.so*"
-      ]
+      "required_files": ["lib/libcudnn*.so*"]
     },
     {
       "name": "cuda_cublas",
@@ -45,10 +43,7 @@
       "archive_size": 802589036,
       "license_label": "CUDA Toolkit",
       "license_files": ["LICENSE"],
-      "required_files": [
-        "lib/libcublas.so.13*",
-        "lib/libcublasLt.so.13*"
-      ]
+      "required_files": ["lib/libcublas.so.13*", "lib/libcublasLt.so.13*"]
     },
     {
       "name": "cuda_curand",
@@ -58,9 +53,7 @@
       "archive_size": 86632944,
       "license_label": "CUDA Toolkit",
       "license_files": ["LICENSE"],
-      "required_files": [
-        "lib/libcurand.so.10*"
-      ]
+      "required_files": ["lib/libcurand.so.10*"]
     },
     {
       "name": "cuda_cudart",
@@ -70,9 +63,7 @@
       "archive_size": 1539216,
       "license_label": "CUDA Toolkit",
       "license_files": ["LICENSE"],
-      "required_files": [
-        "lib/libcudart.so.13*"
-      ]
+      "required_files": ["lib/libcudart.so.13*"]
     },
     {
       "name": "cuda_nvrtc",
@@ -82,10 +73,7 @@
       "archive_size": 60925084,
       "license_label": "CUDA Toolkit",
       "license_files": ["LICENSE"],
-      "required_files": [
-        "lib/libnvrtc.so.13*",
-        "lib/libnvrtc-builtins.so.13*"
-      ]
+      "required_files": ["lib/libnvrtc.so.13*", "lib/libnvrtc-builtins.so.13*"]
     }
   ]
 }
