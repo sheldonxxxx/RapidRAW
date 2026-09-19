@@ -50,7 +50,21 @@ EXPECTED_OUTPUT_SHAPE = [1, 4, PRODUCTION_TILE, PRODUCTION_TILE]
 ORT_FLOAT_TENSOR = "tensor(float)"
 # Validated per-provider session options. Unknown keys/values are rejected;
 # effective options are always reported, never assumed active.
-CUDA_OPTION_VALUES = {"use_tf32": ("0", "1")}
+# device_id is free-form but must be a nonnegative integer string.
+CUDA_OPTION_VALUES = {
+    "use_tf32": ("0", "1"),
+    "arena_extend_strategy": ("kNextPowerOfTwo", "kSameAsRequested"),
+    "cudnn_conv_algo_search": ("EXHAUSTIVE", "HEURISTIC", "DEFAULT"),
+    "device_id": None,
+}
+# Exact production Rust CUDA policy (see nonlocal_onnx.rs open_backend):
+# device 0, SameAsRequested arena, Heuristic cuDNN search, TF32 off
+# (TF32 is carried by use_tf32, not this dict).
+PRODUCTION_CUDA_PROVIDER_OPTIONS = {
+    "device_id": "0",
+    "arena_extend_strategy": "kSameAsRequested",
+    "cudnn_conv_algo_search": "HEURISTIC",
+}
 COREML_OPTION_VALUES = {
     "ModelFormat": ("MLProgram",),
     "MLComputeUnits": ("CPUAndGPU", "ALL", "CPUOnly"),
@@ -96,6 +110,11 @@ def validate_provider_options(provider, options):
         if allowed is not None and value not in allowed:
             raise ValueError(
                 f"Provider option {key!r}={value!r} not in {list(allowed)}")
+        if (provider == "cuda" and key == "device_id"
+                and not value.isdigit()):
+            raise ValueError(
+                f"Provider option 'device_id' must be a nonnegative integer "
+                f"string, got {value!r}")
         effective[key] = value
     return effective
 
@@ -115,7 +134,8 @@ def _meta_shape(node):
 class OnnxTilePredictor(TilePredictor):
     def __init__(self, bundle, provider="cpu", use_tf32=False,
                  optimize=False, allow_diagnostic_shape=False,
-                 provider_options=None, io_binding=False):
+                 provider_options=None, io_binding=False,
+                 enable_profiling=False, profile_prefix=None):
         bundle = Path(bundle)
         model_path = bundle / "model.onnx"
         manifest_path = bundle / "manifest.json"
@@ -187,9 +207,22 @@ class OnnxTilePredictor(TilePredictor):
                 f"Requested provider {requested} unavailable (available: {available}); "
                 "refusing silent fallback"
             )
+        if not isinstance(enable_profiling, bool):
+            raise ValueError("enable_profiling must be a bool")
+        if profile_prefix is not None and not enable_profiling:
+            raise ValueError("profile_prefix requires enable_profiling=True")
+        if profile_prefix is not None and not str(profile_prefix):
+            raise ValueError("profile_prefix must be a non-empty path when given")
         options = ort.SessionOptions()
         if not optimize:
             options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        # Benchmark-only ORT profiling: opt-in, off by default. Enabling
+        # profiling must not change inference numerics; it only records a
+        # per-node timing trace retrievable via end_profiling().
+        if enable_profiling:
+            options.enable_profiling = True
+            if profile_prefix is not None:
+                options.profile_file_prefix = str(profile_prefix)
         session_kwargs = {"sess_options": options, "providers": [requested]}
         if effective_options is not None:
             session_kwargs["provider_options"] = [effective_options]
@@ -262,10 +295,36 @@ class OnnxTilePredictor(TilePredictor):
         self._bound_output = None
         if self.io_binding:
             self._bind_buffers(ort)
+        # Profiling state is benchmark-only and off by default; the profile
+        # file is materialized only when end_profiling() is called.
+        self.profiling_enabled = bool(enable_profiling)
+        self.profile_prefix = (str(profile_prefix)
+                               if profile_prefix is not None else None)
+        self._profile_path = None
 
     def _live_providers(self):
         # Never trust a cached list: placement is re-read from the session.
         return list(self.session.get_providers())
+
+    def end_profiling(self):
+        """Materialize the ORT profiling trace for this benchmark session.
+
+        Benchmark-only and opt-in: raises unless the predictor was
+        constructed with enable_profiling=True. Returns the trace path as a
+        string and records it for execution_info(). The trace contains
+        per-node host-observed operator durations with provider tags; it
+        must not be treated as device-only CUDA kernel times (device timing
+        requires CUPTI/Nsight). Do not subtract summed Node durations from
+        wall time as measured overhead.
+        """
+        if not self.profiling_enabled:
+            raise RuntimeError("profiling was not enabled for this session")
+        end = getattr(self.session, "end_profiling", None)
+        if end is None:
+            raise RuntimeError("ORT session lacks end_profiling()")
+        path = str(end())
+        self._profile_path = path
+        return path
 
     def _bind_buffers(self, ort):
         self._bound_input = ort.OrtValue.ortvalue_from_shape_and_type(
@@ -339,6 +398,9 @@ class OnnxTilePredictor(TilePredictor):
                 "provider_options_reported": self.provider_options_reported,
                 "fallback_disabled": self.fallback_disabled,
                 "io_binding": self.io_binding,
+                "profiling_enabled": self.profiling_enabled,
+                "profile_prefix": self.profile_prefix,
+                "profile_path": self._profile_path,
                 "session_input": self.session_input_meta,
                 "session_output": self.session_output_meta,
                 "shape_policy": "diagnostic-labelled"

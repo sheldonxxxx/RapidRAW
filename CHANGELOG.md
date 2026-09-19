@@ -4,6 +4,15 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Optional pinned NVIDIA runtime packaging and activation
+
+- Add an independently versioned Linux x86_64 NVIDIA runtime pack (official ONNX Runtime 1.30.0 CUDA 13, cuDNN 9.20.0, CUDA 13.2/13.3 user-space libraries; supported driver baseline 595.58.03+) with a dedicated `nvidia-runtime-vX.Y.Z` draft-release workflow, pinned release metadata (`packaging/linux-nvidia-runtime.release.json`), and SHA-verified non-root install under the XDG data directory. No runtime release is published by this change.
+- On Linux x86_64 startup, auto-discover the installed pack (`RAPIDRAW_NVIDIA_RUNTIME` explicit path, `off` disable, or the XDG `current` symlink), pin its `runtime.json` identity, re-exec with pack-first libraries before ONNX initialization, and default unset ONNX/Nonlocal providers to CUDA. Explicit provider choices (including `cpu`) are preserved; desktop setup no longer overwrites a caller-supplied `ORT_DYLIB_PATH`. The NIND denoise model keeps its narrow `CuDNNConvAlgorithmSearch::Default` compatibility exception while foreground/sky/depth and Nonlocal remain HEURISTIC, and normal CPU packages embed no NVIDIA payload.
+
+### Nonlocal provider defaults
+
+- Default `RAPIDRAW_NONLOCAL_PROVIDER` to Linux CUDA and macOS CoreML when unset (previously silent CPU) while keeping explicit values strict with no fallback, and update the denoise README, root README, install guidance and skill reference to the new platform-aware default. The Linux production launcher now derives `RAPIDRAW_NONLOCAL_PROVIDER` from `RAPIDRAW_ONNX_PROVIDER` when unset, so the ONNX and Nonlocal providers can no longer diverge in one process.
+
 ### Experimental GPU RAW denoising
 
 - Integrate optional Nonlocal inference with MCP `start_denoise` via an in-process native ONNX Runtime backend (CPU or Linux CUDA, explicit provider, no fallback) and a pinned FP32 bundle. Return a separate float Bayer DNG and retain captured edits, using RapidRAW's existing decoder, demosaic and colour pipeline. Add one-pass/four-rotation modes, runtime-aware reusable verified predictions, tile-boundary cancellation and persistent job results. Keep NIND and BM3D available. Python remains research/export tooling only.

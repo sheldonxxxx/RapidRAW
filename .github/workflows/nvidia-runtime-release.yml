@@ -1,0 +1,116 @@
+name: 'Release: NVIDIA runtime pack'
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing nvidia-runtime-v tag with a draft GitHub release'
+        required: true
+        type: string
+
+concurrency:
+  group: nvidia-runtime-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Verify tag and clean draft runtime release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh release view "$RELEASE_TAG" --json databaseId,isDraft > release.json
+          jq -e '.isDraft == true' release.json
+          rm release.json
+          # The release contract pins the exact runtime tag.
+          test "$RELEASE_TAG" = "$(jq -r '.runtime_tag' packaging/linux-nvidia-runtime.release.json)"
+          # Refuse to overwrite: neither runtime asset may already exist.
+          ASSET="$(jq -r '.asset' packaging/linux-nvidia-runtime.release.json)"
+          if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -Fxq "$ASSET"; then
+            echo "error: draft release already contains $ASSET; refusing overwrite" >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -Fxq "$ASSET.sha256"; then
+            echo "error: draft release already contains $ASSET.sha256; refusing overwrite" >&2
+            exit 1
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Verify release contract pins
+        run: |
+          python3 packaging/check-linux-nvidia-runtime-release.py --self-test
+          python3 packaging/check-linux-nvidia-runtime-release.py \
+            --lock packaging/linux-nvidia-runtime.lock.json \
+            --release packaging/linux-nvidia-runtime.release.json
+      - name: Run runtime-pack unit tests
+        run: python3 packaging/test-linux-nvidia-runtime.py
+      - name: Build pack from pinned official sources
+        run: |
+          python3 packaging/build-linux-nvidia-runtime.py build \
+            --lock packaging/linux-nvidia-runtime.lock.json \
+            --work-dir "$RUNNER_TEMP/nv-runtime-work" \
+            --out "$RUNNER_TEMP/nv-runtime-pack"
+      - name: Verify pack before archiving
+        run: |
+          python3 packaging/build-linux-nvidia-runtime.py verify \
+            --lock packaging/linux-nvidia-runtime.lock.json \
+            --pack "$RUNNER_TEMP/nv-runtime-pack"
+      - name: Build canonical archive and check against release metadata
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          ASSET="$(jq -r '.asset' packaging/linux-nvidia-runtime.release.json)"
+          python3 packaging/build-linux-nvidia-runtime.py archive \
+            --lock packaging/linux-nvidia-runtime.lock.json \
+            --pack "$RUNNER_TEMP/nv-runtime-pack" \
+            --archive-out "$RUNNER_TEMP/$ASSET"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          meta = json.loads(Path("packaging/linux-nvidia-runtime.release.json").read_text())
+          asset = Path(os.environ["RUNNER_TEMP"]) / meta["asset"]
+          assert asset.name == meta["asset"], asset.name
+          digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+          assert digest == meta["asset_sha256"], digest
+          assert asset.stat().st_size == meta["asset_size"], asset.stat().st_size
+          pack_json = Path(os.environ["RUNNER_TEMP"]) / "nv-runtime-pack" / "runtime.json"
+          pack_digest = hashlib.sha256(pack_json.read_bytes()).hexdigest()
+          assert pack_digest == meta["runtime_json_sha256"], pack_digest
+          print(f"canonical {asset.name} matches release metadata")
+          PY
+      - name: Prove archive reproducibility under a different filename
+        run: |
+          ASSET="$(jq -r '.asset' packaging/linux-nvidia-runtime.release.json)"
+          python3 packaging/build-linux-nvidia-runtime.py archive \
+            --lock packaging/linux-nvidia-runtime.lock.json \
+            --pack "$RUNNER_TEMP/nv-runtime-pack" \
+            --archive-out "$RUNNER_TEMP/reproducibility-check.tgz"
+          test "$(sha256sum "$RUNNER_TEMP/$ASSET" | cut -d' ' -f1)" = \
+               "$(sha256sum "$RUNNER_TEMP/reproducibility-check.tgz" | cut -d' ' -f1)"
+          rm "$RUNNER_TEMP/reproducibility-check.tgz"
+      - name: Generate SHA-256 sidecar and upload to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          ASSET="$(jq -r '.asset' packaging/linux-nvidia-runtime.release.json)"
+          cd "$RUNNER_TEMP"
+          sha256sum "$ASSET" > "$ASSET.sha256"
+          sha256sum -c "$ASSET.sha256"
+          # No --clobber: the pre-check above guarantees fresh asset names.
+          gh release upload "$RELEASE_TAG" "$ASSET" "$ASSET.sha256"
+      - name: Clean expanded staging
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/nv-runtime-work" "$RUNNER_TEMP/nv-runtime-pack"

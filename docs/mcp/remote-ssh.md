@@ -45,10 +45,13 @@ Create an executable server-side launcher such as `/absolute/bin/rapidraw-mcp`:
 set -eu
 export GDK_BACKEND=x11
 export WGPU_BACKEND=vulkan
-export ORT_DYLIB_PATH=/absolute/RapidRAW/src-tauri/resources/libonnxruntime.so
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache/rapidraw-runtime}"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
+# Optional CUDA: install the pinned runtime pack once (see onnx-cuda.md) and
+# the binary activates it automatically, defaulting unset ONNX/Nonlocal
+# providers to CUDA. Prefer RAPIDRAW_NVIDIA_RUNTIME over hand-written
+# ORT_DYLIB_PATH/LD_LIBRARY_PATH; keep provider overrides explicit here.
 exec dbus-run-session -- xvfb-run -e /dev/stderr -a \
   -s '-screen 0 1280x720x24 -nolisten tcp -extension GLX' \
   /absolute/path/to/node /absolute/RapidRAW/mcp/dist/index.js \

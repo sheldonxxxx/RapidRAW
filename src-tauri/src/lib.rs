@@ -33,6 +33,7 @@ mod inpainting;
 mod launch_request;
 mod lens_blur;
 mod lens_correction;
+pub mod linux_nvidia_runtime;
 mod lut_processing;
 mod marigold_depth;
 mod marigold_surface;
@@ -1897,8 +1898,18 @@ pub fn run() {
                         { "libonnxruntime.so" }
                     };
                     let ort_library_path = resource_path.join(ort_library_name);
-                    std::env::set_var("ORT_DYLIB_PATH", &ort_library_path);
-                    println!("Set ORT_DYLIB_PATH to: {}", ort_library_path.display());
+                    // A caller-supplied runtime (NVIDIA pack activation via
+                    // re-exec, or a manual ORT_DYLIB_PATH) always wins; the
+                    // bundled CPU library is only the fallback.
+                    if crate::linux_nvidia_runtime::bundled_ort_fallback(
+                        std::env::var_os("ORT_DYLIB_PATH"),
+                        ort_library_path.clone(),
+                    )
+                    .is_some()
+                    {
+                        std::env::set_var("ORT_DYLIB_PATH", &ort_library_path);
+                        println!("Set ORT_DYLIB_PATH to: {}", ort_library_path.display());
+                    }
                 }
             }
 

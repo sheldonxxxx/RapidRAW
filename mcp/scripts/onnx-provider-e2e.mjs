@@ -11,10 +11,12 @@
  * This runner never downloads models, uses generative services, or edits a RAW.
  */
 import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { createNativeHarness, hashBytes, hashFile } from './coverage-evidence.mjs';
 import { decodePng, pixelDifference } from './png-fixtures.mjs';
+import { snapshotCudaMaps } from './cuda-lib-maps.mjs';
 
 for (const key of ['RAPIDRAW_BINARY', 'RAPIDRAW_TEST_IMAGE', 'RAPIDRAW_WORKSPACE']) {
   assert.ok(process.env[key] && isAbsolute(process.env[key]), `Set ${key} to an absolute path`);
@@ -60,6 +62,8 @@ const report = {
   comparisons: {},
   tolerance,
   baseline: baselinePath ?? null,
+  ld_library_path: process.env.LD_LIBRARY_PATH ?? null,
+  library_context: 'native-torch-free',
   timing_scope:
     'Native MCP operation wall time including preparation and serialization; excludes separate open/render/diagnostic calls. First calls include lazy initialization where applicable. Warm means model sessions retained, with a fresh source working path for each operation.',
   provider_scope: 'Session registration diagnostics do not prove that every graph operator ran on GPU.',
@@ -359,6 +363,30 @@ try {
     scope: 'Current balanced native tile policy; this is not an operator trace',
   };
   report.after = await snapshot();
+  {
+    // Actual CUDA library identity from the live engine process. All seven
+    // model sessions are initialized by now, so late-loaded cuDNN/cuBLAS
+    // mappings are present. The binary path plus our workspace in the
+    // cmdline disambiguates our engine from unrelated processes.
+    const binary = resolve(process.env.RAPIDRAW_BINARY);
+    const candidates = execSync(`pgrep -f '${binary}' || true`, { encoding: 'utf8' })
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const ours = candidates.filter((pid) => {
+      try {
+        const cmdline = execSync(`tr '\\0' ' ' < /proc/${pid}/cmdline`, { encoding: 'utf8' });
+        // The binary path alone also matches launcher wrappers whose
+        // command line embeds it; require the bridge invocation itself.
+        return cmdline.includes(binary) && cmdline.includes('--mcp-bridge') && cmdline.includes(workspace);
+      } catch {
+        return false;
+      }
+    });
+    assert.ok(ours.length >= 1, `Expected a live engine for ${workspace}; pgrep found: ${candidates}`);
+    report.native_cuda_libraries = { engine_pid: ours[0], ...snapshotCudaMaps(ours[0]) };
+    await persist();
+  }
   await h.check(
     'all_seven_model_sessions_have_explicit_provider_diagnostics',
     ['tool:models', 'tool:mask_generate', 'tool:retouch', 'tool:denoise'],

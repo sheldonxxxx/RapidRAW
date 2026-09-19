@@ -106,6 +106,16 @@ fn default_gpu_arena_mb(model: &str) -> usize {
     }
 }
 
+/// Narrow convolution-search exception: only the NIND denoise model uses
+/// ORT's default cuDNN algorithm search. Under cuDNN 9.20 the HEURISTIC
+/// search deterministically requests an oversized repeat allocation for
+/// NIND's transposed-convolution nodes on second inference, while DEFAULT
+/// stays stable and within strict numerical gates. Foreground, sky and
+/// depth keep HEURISTIC; Nonlocal has its own provider construction.
+pub(crate) fn use_default_cudnn_search(model: &str) -> bool {
+    model == crate::ai_processing::DENOISE_FILENAME
+}
+
 #[cfg(any(all(target_os = "macos", target_arch = "aarch64"), test))]
 fn apple_silicon_lama_cpu_threads(
     apple_silicon: bool,
@@ -155,7 +165,9 @@ fn load_with_policy<T>(
     }
 }
 
-/// All AI models use the same per-session policy, including background workers.
+/// All AI models share the same per-session policy except for a narrowly
+/// validated NIND convolution-search exception (see
+/// [`use_default_cudnn_search`]), including background workers.
 /// Fallback only happens during initialization; failed inference is never replayed.
 pub(crate) fn load_session(path: impl AsRef<Path>) -> Result<Session> {
     let path = path.as_ref();
@@ -206,7 +218,11 @@ pub(crate) fn load_session(path: impl AsRef<Path>) -> Result<Session> {
                 .with_device_id(config.cuda_device_id)
                 .with_memory_limit(arena_mb * 1024 * 1024)
                 .with_arena_extend_strategy(ArenaExtendStrategy::SameAsRequested)
-                .with_conv_algorithm_search(CuDNNConvAlgorithmSearch::Heuristic)
+                .with_conv_algorithm_search(if use_default_cudnn_search(&model) {
+                    CuDNNConvAlgorithmSearch::Default
+                } else {
+                    CuDNNConvAlgorithmSearch::Heuristic
+                })
                 .with_conv_max_workspace(false)
                 .with_tf32(false)
                 .build()
@@ -362,6 +378,23 @@ mod tests {
         assert_eq!(default_gpu_arena_mb(DENOISE_FILENAME), 8192);
         assert_eq!(default_gpu_arena_mb(DEPTH_FILENAME), 2048);
         assert!(cpu_compatibility_note("unvalidated-model.onnx").is_some());
+    }
+
+    #[test]
+    fn nind_selects_default_cudnn_search_while_validated_models_keep_heuristic() {
+        use crate::ai_processing::*;
+        assert!(use_default_cudnn_search(DENOISE_FILENAME));
+        for model in [U2NETP_FILENAME, SKYSEG_FILENAME, DEPTH_FILENAME] {
+            assert!(!use_default_cudnn_search(model));
+        }
+        for model in [
+            ENCODER_FILENAME,
+            DECODER_FILENAME,
+            LAMA_FILENAME,
+            "unvalidated-model.onnx",
+        ] {
+            assert!(!use_default_cudnn_search(model));
+        }
     }
 
     #[test]

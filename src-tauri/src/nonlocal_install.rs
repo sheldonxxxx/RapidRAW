@@ -478,7 +478,7 @@ fn status_report(models_dir: &Path, linux: bool, macos: bool, requested: Option<
             report["backend"] = Value::Null;
             report["error"] = json!(e.to_string());
             report["installation"] = json!(
-                "Fix RAPIDRAW_NONLOCAL_PROVIDER (cpu; cuda on Linux only; coreml on macOS only), then call install_model kind='nonlocal' when the bundle is missing."
+                "Set RAPIDRAW_NONLOCAL_PROVIDER (unset defaults to cuda on Linux, coreml on macOS, and cpu elsewhere; cpu, cuda and coreml are the valid values), then call install_model kind='nonlocal' when the bundle is missing."
             );
             report
         }
