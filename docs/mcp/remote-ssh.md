@@ -6,7 +6,7 @@ The native bridge still initializes Tauri/GTK. It needs a display server, but no
 
 ## Build on the server
 
-The SSH workflow has been exercised on Debian 13 x86-64 in an LXC container with an NVIDIA RTX 5060 Ti, driver 595.58.03, Node 24 and Rust 1.98.1. This establishes that configuration, not every Linux distribution, driver or packaged build.
+The SSH workflow has been exercised on Debian 13 x86-64 in an LXC container with an NVIDIA RTX 5060 Ti, driver 595.58.03, Node 24 and Rust 1.98.1, and again on Ubuntu 24.04 x86-64 in an LXC container with the same GPU/driver, Node v24.21.0 and Rust 1.98.1 (release build plus the pinned NVIDIA runtime pack with NIND and Nonlocal verification). This establishes those configurations, not every Linux distribution, driver or packaged build.
 
 Install the [Tauri Linux dependencies](https://v2.tauri.app/start/prerequisites/#linux), Xvfb and Vulkan tools. For Debian 13:
 
@@ -45,10 +45,13 @@ Create an executable server-side launcher such as `/absolute/bin/rapidraw-mcp`:
 set -eu
 export GDK_BACKEND=x11
 export WGPU_BACKEND=vulkan
-export ORT_DYLIB_PATH=/absolute/RapidRAW/src-tauri/resources/libonnxruntime.so
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache/rapidraw-runtime}"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
+# Optional CUDA: install the pinned runtime pack once (see onnx-cuda.md) and
+# the binary activates it automatically, defaulting unset ONNX/Nonlocal
+# providers to CUDA. Prefer RAPIDRAW_NVIDIA_RUNTIME over hand-written
+# ORT_DYLIB_PATH/LD_LIBRARY_PATH; keep provider overrides explicit here.
 exec dbus-run-session -- xvfb-run -e /dev/stderr -a \
   -s '-screen 0 1280x720x24 -nolisten tcp -extension GLX' \
   /absolute/path/to/node /absolute/RapidRAW/mcp/dist/index.js \
@@ -59,6 +62,18 @@ exec dbus-run-session -- xvfb-run -e /dev/stderr -a \
 This launcher matches the release build linked above. Before connecting, run `test -x /absolute/RapidRAW/src-tauri/target/release/RapidRAW` and `test -f /absolute/RapidRAW/mcp/dist/index.js` on the server. If you deliberately built debug, change both the executable check and launcher to `target/debug/RapidRAW`; honor `CARGO_TARGET_DIR` if configured. Make the launcher executable with `chmod +x /absolute/bin/rapidraw-mcp`.
 
 `-extension GLX` avoids an Xvfb startup crash observed in NVIDIA EGL/GBM initialization inside the tested container; it does not disable Vulkan compute. If adapter discovery needs an explicit NVIDIA ICD, set `VK_DRIVER_FILES` to its verified installed JSON path in this launcher. Keep these settings process-local.
+
+If the engine exits immediately with `Failed to initialize GTK` or `Authorization required` inside an LXC container, `xvfb-run` likely stored only a hostname-qualified cookie that the engine's Xlib does not match. Start Xvfb yourself and register bare plus qualified cookies before launching:
+
+```sh
+Xvfb :99 -screen 0 1280x720x24 -nolisten tcp -extension GLX &
+COOKIE=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+HN=$(uname -n)
+xauth add ":99" MIT-MAGIC-COOKIE-1 "$COOKIE"
+xauth add "$HN/unix:99" MIT-MAGIC-COOKIE-1 "$COOKIE"
+xauth add "localhost/unix:99" MIT-MAGIC-COOKIE-1 "$COOKIE"
+export DISPLAY=":99"
+```
 
 Xvfb and D-Bus live for the connection and terminate when it closes. The launcher must keep stdout exclusively for MCP traffic. Diagnostics belong on stderr, including any remote shell startup messages. Use one workspace per simultaneous client.
 

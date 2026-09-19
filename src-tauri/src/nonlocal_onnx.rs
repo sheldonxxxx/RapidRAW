@@ -99,8 +99,20 @@ impl NativeConfig {
     }
 }
 
+/// Provider resolution for the Nonlocal denoiser. When
+/// `RAPIDRAW_NONLOCAL_PROVIDER` is unset, the platform default is CUDA on
+/// Linux, direct CoreML on macOS (both the validated accelerated backends),
+/// and CPU on other platforms. An explicit value is honored strictly; CUDA
+/// sessions fail at provider registration when the runtime libraries are
+/// missing, so this never silently downgrades a request.
 pub(crate) fn parse_provider(linux: bool, macos: bool, raw: Option<&str>) -> Result<Provider> {
-    match raw.unwrap_or("cpu") {
+    match raw.unwrap_or(if linux {
+        "cuda"
+    } else if macos {
+        "coreml"
+    } else {
+        "cpu"
+    }) {
         "cpu" => Ok(Provider::Cpu),
         "cuda" if linux => Ok(Provider::Cuda),
         "cuda" => bail!(
@@ -1309,7 +1321,10 @@ mod tests {
 
     #[test]
     fn provider_and_option_parsing_is_strict() {
+        // Unset defaults to CUDA on Linux, CoreML on macOS, CPU elsewhere.
         assert_eq!(parse_provider(false, false, None).unwrap(), Provider::Cpu);
+        assert_eq!(parse_provider(true, false, None).unwrap(), Provider::Cuda);
+        assert_eq!(parse_provider(false, true, None).unwrap(), Provider::Coreml);
         assert_eq!(
             parse_provider(true, true, Some("cpu")).unwrap(),
             Provider::Cpu
@@ -1328,7 +1343,6 @@ mod tests {
         );
         assert!(parse_provider(false, false, Some("coreml")).is_err());
         assert!(parse_provider(true, false, Some("coreml")).is_err());
-        assert_eq!(parse_provider(false, true, None).unwrap(), Provider::Cpu);
         assert_eq!(Provider::Cpu.generation(), BACKEND_GENERATION);
         assert_eq!(Provider::Cuda.generation(), BACKEND_GENERATION);
         assert_eq!(
