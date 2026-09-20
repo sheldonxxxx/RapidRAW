@@ -42,16 +42,12 @@ mod mask_generation;
 mod mcp_bridge;
 mod multi_exposure;
 mod negative_conversion;
-#[cfg(feature = "mcp")]
 mod nonlocal_coreml;
-#[cfg(feature = "mcp")]
 mod nonlocal_install;
-#[cfg(feature = "mcp")]
 mod nonlocal_onnx;
 mod panorama_stitching;
 mod panorama_utils;
 mod preset_converter;
-#[cfg(feature = "mcp")]
 mod raw_denoise;
 mod raw_processing;
 #[cfg(test)]

@@ -75,7 +75,7 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ### Desktop Nonlocal denoise
 
-- Add Nonlocal to the desktop denoise modal's method selection (RAW sources only) with balanced quality, developed through the normal RAW pipeline with in-domain strength blending; NIND is relabeled "NIND (AI - Fast)" and Nonlocal appears as "Nonlocal (AI - Best for RAW)". The model bundle must already be installed (or `RAPIDRAW_NONLOCAL_BUNDLE` set); a missing bundle fails with `MODEL_NOT_INSTALLED` guidance.
+- Add Nonlocal to the desktop denoise modal's method selection (RAW sources only) with balanced quality, developed through the normal RAW pipeline with in-domain strength blending; NIND is relabeled "NIND (AI - Fast)" and Nonlocal appears as "Nonlocal (AI - Best for RAW)". The model bundle must already be installed (or `RAPIDRAW_NONLOCAL_BUNDLE` set); a missing bundle fails with `MODEL_NOT_INSTALLED` guidance. The Nonlocal backend modules (`raw_denoise`, `nonlocal_onnx`, `nonlocal_coreml`, `nonlocal_install`) are no longer gated behind the `mcp` Cargo feature, so standard desktop builds compile the new modal path.
 
 ### Retouch marker visibility
 
