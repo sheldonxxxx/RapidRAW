@@ -385,6 +385,7 @@ export default function MasksPanel() {
     waveform,
     activeWaveformChannel,
     waveformHeight,
+    showPatchMarkers,
     setEditor,
   } = useEditorStore(
     useShallow((state) => ({
@@ -400,6 +401,7 @@ export default function MasksPanel() {
       waveform: state.waveform,
       activeWaveformChannel: state.activeWaveformChannel,
       waveformHeight: state.waveformHeight,
+      showPatchMarkers: state.showPatchMarkers ?? true,
       setEditor: state.setEditor,
     })),
   );
@@ -1123,6 +1125,19 @@ export default function MasksPanel() {
         <div className="p-3 flex justify-between items-center shrink-0 border-b border-surface">
           <Text variant={TextVariants.title}>{t('editor.masks.maskingTitle')}</Text>
           <div className="flex items-center gap-1">
+            <button
+              className="p-2 rounded-full hover:bg-surface transition-colors"
+              onClick={() => setEditor({ showPatchMarkers: !showPatchMarkers })}
+              data-tooltip={
+                showPatchMarkers ? t('editor.masks.hideMarkersTooltip') : t('editor.masks.showMarkersTooltip')
+              }
+              aria-label={
+                showPatchMarkers ? t('editor.masks.hideMarkersTooltip') : t('editor.masks.showMarkersTooltip')
+              }
+              aria-pressed={!showPatchMarkers}
+            >
+              {showPatchMarkers ? <Eye size={18} /> : <EyeOff size={18} />}
+            </button>
             <button
               className={clsx(
                 'p-2 rounded-full transition-colors',

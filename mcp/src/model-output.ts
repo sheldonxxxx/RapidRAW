@@ -45,6 +45,98 @@ export function rejectAssetDescriptors(value: unknown): void {
   }
 }
 
+const unsafeSegment = new Set(['__proto__', 'constructor', 'prototype']);
+
+function lookupStatePath(state: unknown, pointer: string): unknown {
+  // Descriptors carry JSON-pointer-style paths with ~0/~1 escapes.
+  let node: unknown = state;
+  for (const raw of pointer.split('/')) {
+    if (!raw) continue;
+    if (unsafeSegment.has(raw)) throw new BridgeError('INVALID_ARGUMENT', `Unsafe state path segment: ${raw}`);
+    const key = raw.replace(/~1/g, '/').replace(/~0/g, '~');
+    if (unsafeSegment.has(key)) throw new BridgeError('INVALID_ARGUMENT', `Unsafe state path segment: ${key}`);
+    if (Array.isArray(node)) {
+      if (!/^(0|[1-9][0-9]*)$/.test(key) || Number(key) >= node.length) return undefined;
+      node = node[Number(key)];
+    } else if (isObject(node)) {
+      if (!Object.hasOwn(node, key)) return undefined;
+      node = (node as JsonObject)[key];
+    } else return undefined;
+  }
+  return node;
+}
+
+function hasDescriptors(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasDescriptors);
+  if (isObject(value)) {
+    if (value._rapidraw_asset === true || value.kind === 'model-summary-v1') return true;
+    return Object.values(value).some(hasDescriptors);
+  }
+  return false;
+}
+
+/**
+ * Rehydrate model-facing asset descriptors against live session state.
+ *
+ * `get_session` (and kindred reads) project opaque pixels/tensors as
+ * `{_rapidraw_asset, sha256, state_path}` references so responses stay small.
+ * A descriptor is a *verifiable reference*, not pixels: when a mutating call
+ * carries descriptors alongside its `session_id`, each one is looked up in
+ * the session's current full state and substituted only if the live value
+ * still hashes to the recorded digest. Anything else — a digest mismatch
+ * (stale revision, wrong session, hand-edited descriptor), a missing path,
+ * or descriptors without session context — keeps the original rejection, so
+ * no new pixels can ever enter the engine through this path.
+ *
+ * `state_representation` markers are response metadata and are dropped.
+ */
+export async function resolveAssetDescriptors(
+  params: JsonObject,
+  fetchState: (sessionId: string) => Promise<JsonObject>,
+): Promise<JsonObject> {
+  if (!hasDescriptors(params)) return params;
+  const sessionId = params.session_id;
+  if (typeof sessionId !== 'string' || !sessionId) {
+    rejectAssetDescriptors(params);
+    return params; // unreachable; keeps the no-session error contract
+  }
+  const state = await fetchState(sessionId);
+  const resolve = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(resolve).filter((v) => v !== undefined);
+    if (isObject(value)) {
+      if (value.kind === 'model-summary-v1') return undefined;
+      if (value._rapidraw_asset === true) {
+        const pointer = value.state_path;
+        if (typeof pointer !== 'string' || !pointer.startsWith('/'))
+          throw new BridgeError(
+            'INVALID_ARGUMENT',
+            'Asset descriptor has no usable state_path; re-read session state.',
+          );
+        const live = lookupStatePath(state, pointer);
+        if (typeof live !== 'string' || !live)
+          throw new BridgeError(
+            'STALE_DESCRIPTOR',
+            `Asset at ${pointer} is no longer present in session ${sessionId}; re-read session state and retry. No mutation was requested.`,
+          );
+        if (digest(live) !== value.sha256)
+          throw new BridgeError(
+            'STALE_DESCRIPTOR',
+            `Asset at ${pointer} changed since it was read (session ${sessionId} moved on); re-read session state and retry. No mutation was requested.`,
+          );
+        return live;
+      }
+      const out: JsonObject = {};
+      for (const [k, v] of Object.entries(value)) {
+        const r = resolve(v);
+        if (r !== undefined) out[k] = r as JsonObject[string];
+      }
+      return out;
+    }
+    return value;
+  };
+  return resolve(params) as JsonObject;
+}
+
 export function capabilityOutput(available: JsonObject, params: JsonObject = {}): JsonObject {
   const schema = available.adjustment_schema;
   const schemaId = digest(JSON.stringify(schema ?? null));

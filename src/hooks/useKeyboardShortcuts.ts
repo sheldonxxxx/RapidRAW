@@ -537,6 +537,13 @@ export const useKeyboardShortcuts = ({
           handleSetColorLabel('purple');
         },
       },
+      toggle_patch_markers: {
+        shouldFire: (s: ShortcutState) => s.ui.activeView === 'editor' && !!s.editor.selectedImage,
+        execute: (e, s) => {
+          e.preventDefault();
+          s.editor.setEditor({ showPatchMarkers: !(s.editor.showPatchMarkers ?? true) });
+        },
+      },
       brush_size_up: {
         shouldFire: (s: ShortcutState) =>
           s.ui.activeView === 'editor' &&

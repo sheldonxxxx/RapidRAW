@@ -426,6 +426,7 @@
         "workflow": "Przepływ pracy"
       },
       "generativeEditTitle": "Edycja generatywna",
+      "hideMarkersTooltip": "Ukryj znaczniki i maskę (H)",
       "inpaintingTitle": "Inpainting",
       "liquify": {
         "mode": "Tryb Skraplania",
@@ -497,6 +498,7 @@
         "selectionPropertiesTitle": "Właściwości zaznaczenia",
         "useBasicInpaint": "Użyj podstawowego inpaintingu"
       },
+      "showMarkersTooltip": "Pokaż znaczniki i maskę (H)",
       "touchUpTitle": "Poprawki"
     },
     "crop": {
@@ -695,6 +697,7 @@
         "title": "Zakres głębi"
       },
       "dropzoneText": "Upuść tutaj, aby utworzyć nową maskę",
+      "hideMarkersTooltip": "Ukryj znaczniki i maskę (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -749,6 +752,7 @@
         "select": "Wybierz",
         "selectPresetTooltip": "Wybierz preset do zastosowania"
       },
+      "showMarkersTooltip": "Pokaż znaczniki i maskę (H)",
       "toggleAnalyticsInAdjustments": "Przełącz analizę w panelu Dopasowania",
       "toggleAnalyticsTooltip": "Przełącz widok analityki",
       "tooltips": {
@@ -1422,9 +1426,10 @@
       "downloadingText": "Pobieranie {{status}}...",
       "gpuWarningTooltip": "NIND Denoise nie obsługuje jeszcze akceleracji GPU z powodu ograniczeń zależności.",
       "initializing": "Inicjowanie...",
-      "methodAi": "NIND (AI - Najlepsze dla RAW)",
+      "methodAi": "NIND (AI - Szybkie)",
       "methodBm3d": "BM3D (Tradycyjne - Wszystkie formaty)",
       "methodLabel": "Metoda",
+      "methodNonlocal": "Nonlocal (AI - Najlepsze dla RAW)",
       "openInEditor": "Otwórz w edytorze",
       "original": "Oryginał",
       "panZoomEnabled": "Przesuwanie i przybliżanie jest włączone",
@@ -1787,6 +1792,7 @@
         "toggle_library_exif": "Przełącz nakładkę EXIF",
         "toggle_masks": "Przełącz panel Maski",
         "toggle_metadata": "Przełącz panel Metadane",
+        "toggle_patch_markers": "Pokaż/ukryj znaczniki i maskę",
         "toggle_presets": "Przełącz panel Presety",
         "toggle_right_panel": "Przełącz prawy panel",
         "undo": "Cofnij korektę",

@@ -426,6 +426,7 @@
         "workflow": "Рабочий процесс"
       },
       "generativeEditTitle": "Генеративное редактирование",
+      "hideMarkersTooltip": "Скрыть маркеры и маску (H)",
       "inpaintingTitle": "Восстановление",
       "liquify": {
         "mode": "Режим пластики",
@@ -497,6 +498,7 @@
         "selectionPropertiesTitle": "Свойства выделения",
         "useBasicInpaint": "Использовать простое восстановление"
       },
+      "showMarkersTooltip": "Показать маркеры и маску (H)",
       "touchUpTitle": "Ретушь"
     },
     "crop": {
@@ -695,6 +697,7 @@
         "title": "Диапазон глубины"
       },
       "dropzoneText": "Перетащите сюда, чтобы создать новую маску",
+      "hideMarkersTooltip": "Скрыть маркеры и маску (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -749,6 +752,7 @@
         "select": "Выбрать",
         "selectPresetTooltip": "Выберите пресет для применения"
       },
+      "showMarkersTooltip": "Показать маркеры и маску (H)",
       "toggleAnalyticsInAdjustments": "Переключить аналитику на панели «Коррекция»",
       "toggleAnalyticsTooltip": "Показать/скрыть панель гистограммы",
       "tooltips": {
@@ -1422,9 +1426,10 @@
       "downloadingText": "Загрузка {{status}}...",
       "gpuWarningTooltip": "Шумоподавление NIND пока не поддерживает аппаратное ускорение GPU из-за ограничений библиотек.",
       "initializing": "Инициализация...",
-      "methodAi": "NIND (ИИ — лучшее для RAW)",
+      "methodAi": "NIND (ИИ — быстрый)",
       "methodBm3d": "BM3D (Классический — для всех форматов)",
       "methodLabel": "Метод",
+      "methodNonlocal": "Nonlocal (ИИ — лучшее для RAW)",
       "openInEditor": "Открыть в редакторе",
       "original": "Оригинал",
       "panZoomEnabled": "Панорамирование и масштабирование активны",
@@ -1787,6 +1792,7 @@
         "toggle_library_exif": "Информация EXIF поверх сетки",
         "toggle_masks": "Панель масок",
         "toggle_metadata": "Панель метаданных",
+        "toggle_patch_markers": "Показать/скрыть маркеры и маску",
         "toggle_presets": "Панель пресетов",
         "toggle_right_panel": "Показать/скрыть правую панель",
         "undo": "Отменить действие",

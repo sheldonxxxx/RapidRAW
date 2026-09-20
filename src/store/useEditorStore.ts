@@ -68,6 +68,7 @@ export interface EditorState {
   activeAiPatchContainerId: string | null;
   activeAiSubMaskId: string | null;
   isMaskControlHovered: boolean;
+  showPatchMarkers: boolean;
   isGeneratingAiMask: boolean;
   isGeneratingAi: boolean;
   isAIConnectorConnected: boolean;
@@ -134,6 +135,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   isAIConnectorConnected: false,
   isGeneratingAi: false,
   isMaskControlHovered: false,
+  showPatchMarkers: true,
   hasRenderedFirstFrame: false,
   patchesSentToBackend: new Set<string>(),
 

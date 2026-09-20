@@ -4,7 +4,7 @@ import { BridgeError, NativeBridge, isObject, type JsonObject } from './bridge.j
 import { toolDefinitions } from './tools.js';
 import { workflow } from './workflow.js';
 import { OperationJobs } from './operation-jobs.js';
-import { modelOutput, capabilityOutput, rejectAssetDescriptors } from './model-output.js';
+import { modelOutput, capabilityOutput, rejectAssetDescriptors, resolveAssetDescriptors } from './model-output.js';
 
 // SDK v2 stdio peers default to a 10 MiB read buffer. Keep room for SDK
 // envelopes and framing without changing requested image encoding or geometry.
@@ -153,7 +153,7 @@ export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpSer
     { name: 'rapidraw-mcp-server', version: '0.1.1' },
     {
       instructions:
-        'Nondestructive local photo editing through RapidRAW. Read rapidraw://workflow and rapidraw_capabilities(detail:"overview"), then request needed schema_paths. Inspect preview images and detail crops, then save and verify exports. Source files remain unchanged. State asset descriptors are not replacement recipes. Every tool returns structured data; preview tools also return native image blocks.',
+        'Nondestructive local photo editing through RapidRAW. Read rapidraw://workflow and rapidraw_capabilities(detail:"overview"), then request needed schema_paths. Inspect preview images and detail crops, then save and verify exports. Source files remain unchanged. State asset descriptors resolve against live session state when passed back with their session_id. Every tool returns structured data; preview tools also return native image blocks.',
     },
   );
   const capabilities = async (): Promise<JsonObject> => {
@@ -211,7 +211,13 @@ export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpSer
         try {
           const available = await capabilities();
           if (definition.method === 'capabilities') return respond(capabilityOutput(available, params));
-          rejectAssetDescriptors(params);
+          // Descriptors from earlier reads resolve against live session state
+          // (digest-verified; stale ones still reject). Unresolvable input
+          // keeps the original replacement-recipe rejection below.
+          const resolved = await resolveAssetDescriptors(params, (sessionId) =>
+            bridge.request('get_session', { session_id: sessionId, include_adjustments: true }),
+          );
+          rejectAssetDescriptors(resolved);
           if (definition.host) {
             if (!jobs)
               throw new BridgeError(
@@ -223,9 +229,9 @@ export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpSer
               if (!operation) throw new BridgeError('INVALID_ARGUMENT', 'Unknown native operation');
               const valid = operation.schema.safeParse(params.arguments);
               if (!valid.success) throw new BridgeError('INVALID_ARGUMENT', valid.error.message);
-              return respond(await jobs.dispatch(definition.method, { ...params, arguments: valid.data }));
+              return respond(await jobs.dispatch(definition.method, { ...resolved, arguments: valid.data }));
             }
-            return respond(await jobs.dispatch(definition.method, params));
+            return respond(await jobs.dispatch(definition.method, resolved));
           }
           if (!(available.methods as unknown[]).includes(definition.method)) {
             throw new BridgeError(
@@ -233,7 +239,7 @@ export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpSer
               `This engine does not support ${definition.method}. Check rapidraw_capabilities and build a matching fork revision.`,
             );
           }
-          const nativeParams = { ...params };
+          const nativeParams = { ...resolved };
           if (definition.method === 'get_session') delete nativeParams.include_assets;
           return respond(
             await bridge.request(definition.method, nativeParams, definition.timeoutMs, context.mcpReq.signal),

@@ -286,6 +286,12 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     section: 'editing',
   },
   {
+    action: 'toggle_patch_markers',
+    description: 'settings.keybinds.actions.toggle_patch_markers',
+    defaultCombo: ['KeyH'],
+    section: 'view',
+  },
+  {
     action: 'brush_size_up',
     description: 'settings.keybinds.actions.brush_size_up',
     defaultCombo: ['ctrl', 'ArrowUp'],

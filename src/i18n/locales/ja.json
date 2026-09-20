@@ -392,6 +392,7 @@
         "workflow": "ワークフロー"
       },
       "generativeEditTitle": "生成編集",
+      "hideMarkersTooltip": "マーカーとマスクを非表示 (H)",
       "inpaintingTitle": "インペインティング",
       "liquify": {
         "mode": "ゆがみモード",
@@ -448,6 +449,7 @@
         "selectionPropertiesTitle": "選択範囲のプロパティ",
         "useBasicInpaint": "簡易インペインティングを使用"
       },
+      "showMarkersTooltip": "マーカーとマスクを表示 (H)",
       "touchUpTitle": "タッチアップ"
     },
     "crop": {
@@ -646,6 +648,7 @@
         "title": "奥行き範囲"
       },
       "dropzoneText": "ここにドロップして新しいマスクを作成",
+      "hideMarkersTooltip": "マーカーとマスクを非表示 (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -698,6 +701,7 @@
         "select": "選択",
         "selectPresetTooltip": "適用するプリセットを選択"
       },
+      "showMarkersTooltip": "マーカーとマスクを表示 (H)",
       "toggleAnalyticsInAdjustments": "調整パネルでアナリティクスを切り替える",
       "toggleAnalyticsTooltip": "アナリティクス表示の切り替え",
       "tooltips": {
@@ -1361,9 +1365,10 @@
       "downloadingText": "ダウンロード中 {{status}}...",
       "gpuWarningTooltip": "NINDノイズ低減は、依存関係の制限により現在GPUアクセラレーションをサポートしていません。",
       "initializing": "初期化中...",
-      "methodAi": "NIND (AI - RAWに最適)",
+      "methodAi": "NIND (AI - 高速)",
       "methodBm3d": "BM3D (従来型 - すべての形式に対応)",
       "methodLabel": "方式",
+      "methodNonlocal": "Nonlocal (AI - RAWに最適)",
       "openInEditor": "エディタで開く",
       "original": "オリジナル",
       "panZoomEnabled": "パンとズームが有効",
@@ -1710,6 +1715,7 @@
         "toggle_library_exif": "EXIF重ね合わせ表示の表示/非表示",
         "toggle_masks": "マスクパネルの表示/非表示",
         "toggle_metadata": "メタデータパネルの表示/非表示",
+        "toggle_patch_markers": "マーカーとマスクの表示切り替え",
         "toggle_presets": "プリセットパネルの表示/非表示",
         "toggle_right_panel": "右パネルの表示/非表示",
         "undo": "操作を元に戻す",

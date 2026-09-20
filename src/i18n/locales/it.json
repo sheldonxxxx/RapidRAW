@@ -409,6 +409,7 @@
         "workflow": "Flusso di lavoro"
       },
       "generativeEditTitle": "Modifica generativa",
+      "hideMarkersTooltip": "Nascondi indicatori e maschera (H)",
       "inpaintingTitle": "Inpainting",
       "liquify": {
         "mode": "Modalità Fluidifica",
@@ -474,6 +475,7 @@
         "selectionPropertiesTitle": "Proprietà Selezione",
         "useBasicInpaint": "Usa inpainting semplice"
       },
+      "showMarkersTooltip": "Mostra indicatori e maschera (H)",
       "touchUpTitle": "Ritocchi"
     },
     "crop": {
@@ -672,6 +674,7 @@
         "title": "Intervallo di Profondità"
       },
       "dropzoneText": "Rilascia qui per creare una nuova maschera",
+      "hideMarkersTooltip": "Nascondi indicatori e maschera (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -725,6 +728,7 @@
         "select": "Seleziona",
         "selectPresetTooltip": "Seleziona un predefinito da applicare"
       },
+      "showMarkersTooltip": "Mostra indicatori e maschera (H)",
       "toggleAnalyticsInAdjustments": "Mostra/Nascondi analisi nel pannello Regolazioni",
       "toggleAnalyticsTooltip": "Attiva/Disattiva Visualizzazione Analitiche",
       "tooltips": {
@@ -1393,9 +1397,10 @@
       "downloadingText": "Download in corso {{status}}...",
       "gpuWarningTooltip": "NIND Denoise non supporta ancora l'accelerazione GPU a causa di limitazioni delle dipendenze.",
       "initializing": "Inizializzazione...",
-      "methodAi": "NIND (AI - Consigliato per RAW)",
+      "methodAi": "NIND (AI - Veloce)",
       "methodBm3d": "BM3D (Tradizionale - Tutti i formati)",
       "methodLabel": "Metodo",
+      "methodNonlocal": "Nonlocal (AI - Consigliato per RAW)",
       "openInEditor": "Apri nell'Editor",
       "original": "Originale",
       "panZoomEnabled": "Panoramica e Zoom abilitati",
@@ -1750,6 +1755,7 @@
         "toggle_library_exif": "Attiva/Disattiva overlay EXIF",
         "toggle_masks": "Attiva/Disattiva pannello Maschere",
         "toggle_metadata": "Attiva/Disattiva pannello Metadati",
+        "toggle_patch_markers": "Mostra/nascondi indicatori e maschera",
         "toggle_presets": "Attiva/Disattiva pannello Predefiniti",
         "toggle_right_panel": "Mostra/Nascondi pannello destro",
         "undo": "Annulla modifica",

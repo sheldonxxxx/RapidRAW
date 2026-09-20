@@ -52,7 +52,7 @@ For a stitched full-sphere image or a flat view selected from it, read [spherica
 ## State and boundaries
 
 - Read `structuredContent` and `isError`. Images are separate MCP image blocks: display them or save the bytes and view the saved file.
-- Session adjustments contain descriptors for opaque mask, refinement, depth, LUT and retouch assets. These are read-only summaries, never complete replacement recipes. Use targeted merge/mask tools and native save/bundle operations to preserve the full state.
+- Session adjustments contain descriptors for opaque mask, refinement, depth, LUT and retouch assets. A descriptor is a verifiable reference to live session state, not pixels: passing read-back state into a mutating call with its session_id rehydrates each descriptor after a digest check (stale ones error, so re-read first). This makes round-trip edits such as pruning patches possible; use native save/bundle operations to preserve the full state.
 - On `RESPONSE_TOO_LARGE`, keep the connection and returned recovery IDs. A mutation may already have completed; inspect it before further edits. Request smaller overviews or adjacent native-detail tiles explicitly; see [response recovery](references/connection.md#results-and-recovery).
 - A derived operation (denoise, negative conversion, merge) may return a **new session**. Continue with it; recheck dimensions and geometry before applying remaining masks.
 - Prefer `start_denoise` for long filtering, then `get_job`; keep the job ID. `cancel_job` stops its worker without ending the editing engine. After reconnect, inspect `list_jobs`; explicitly `resume_job` only when restarting captured work is intended. See [review and background jobs](references/review-and-jobs.md).

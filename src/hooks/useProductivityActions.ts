@@ -124,7 +124,7 @@ export function useProductivityActions(refreshImageList: () => Promise<void>) {
   }, [refreshImageList, setUI]);
 
   const handleApplyDenoise = useCallback(
-    async (intensity: number, method: 'ai' | 'bm3d') => {
+    async (intensity: number, method: 'ai' | 'bm3d' | 'nonlocal') => {
       const { denoiseModalState } = useUIStore.getState();
       if (denoiseModalState.targetPaths.length === 0) return;
 
@@ -153,7 +153,7 @@ export function useProductivityActions(refreshImageList: () => Promise<void>) {
   );
 
   const handleBatchDenoise = useCallback(
-    async (intensity: number, method: 'ai' | 'bm3d', paths: string[]) => {
+    async (intensity: number, method: 'ai' | 'bm3d' | 'nonlocal', paths: string[]) => {
       try {
         const savedPaths: string[] = await invoke('batch_denoise_images', { paths, intensity, method });
         await refreshImageList();
