@@ -8,7 +8,7 @@ use super::sessions::{Bridge, Session, atomic_write};
 use super::{Result, flag, number, required, validation};
 use crate::app_state::AppState;
 use crate::export_processing::{
-    ExportSettings, ResizeMode, ResizeOptions, WatermarkSettings,
+    ExportSettings, ResizeMode, ResizeOptions, TiffBitDepth, WatermarkSettings,
     apply_export_resize_and_watermark, calculate_resize_target, encode_image_to_bytes,
     export_adjustments_as_lut_high_precision,
 };
@@ -58,7 +58,7 @@ fn encode_preview_image(image: &DynamicImage, format: &str, quality: u8) -> Resu
     } else {
         Cow::Owned(DynamicImage::ImageRgb8(image.to_rgb8()))
     };
-    encode_image_to_bytes(&preview, format, quality)
+    encode_image_to_bytes(&preview, format, quality, TiffBitDepth::Eight)
 }
 
 fn preview_blocks(frame: &Frame, format: &str, quality: u8) -> Result<(Value, Vec<Value>)> {
@@ -536,8 +536,12 @@ impl Bridge {
                 local_image.height(),
                 imageops::FilterType::Lanczos3,
             );
-            let alpha_bytes =
-                encode_image_to_bytes(&DynamicImage::ImageLuma8(alpha.clone()), "png", 100)?;
+            let alpha_bytes = encode_image_to_bytes(
+                &DynamicImage::ImageLuma8(alpha.clone()),
+                "png",
+                100,
+                TiffBitDepth::Eight,
+            )?;
             atomic_write(&image_path, &local_bytes, overwrite)?;
             atomic_write(&alpha_path, &alpha_bytes, overwrite)?;
             verify_raster(&image_path, local_image.dimensions(), bit_depth)?;
@@ -992,6 +996,9 @@ fn export_settings(params: &Value, quality: u8) -> Result<ExportSettings> {
     };
     Ok(ExportSettings {
         jpeg_quality: quality,
+        // The MCP export flow threads channel depth through the separate
+        // `bit_depth` argument at encode time; keep the upstream default here.
+        tiff_bit_depth: TiffBitDepth::default(),
         resize,
         keep_metadata: flag(params, "keep_metadata", true)?,
         strip_gps: flag(params, "strip_gps", true)?,
@@ -1047,7 +1054,12 @@ fn encode_at_depth(
             .map_err(|e| e.to_string())?;
         Ok(bytes)
     } else {
-        encode_image_to_bytes(&image, format, quality)
+        let tiff_bit_depth = if bit_depth == 16 {
+            TiffBitDepth::Sixteen
+        } else {
+            TiffBitDepth::Eight
+        };
+        encode_image_to_bytes(&image, format, quality, tiff_bit_depth)
     }
 }
 
