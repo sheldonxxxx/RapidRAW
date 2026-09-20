@@ -92,6 +92,7 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 ### Fixed
 
 - macOS packages now receive a complete ad-hoc bundle signature, preventing the invalid-signature “damaged” error caused by an executable-only linker signature. CI checks the complete bundle signature. A scoped library-loading entitlement preserves bundled ONNX Runtime and optional camera-library loading under the hardened runtime. These builds are still not notarized and may require approval in macOS Privacy & Security.
+- Double-clicking empty custom title-bar space now toggles maximize/restore through the normal window state instead of entering fullscreen on macOS; single-press dragging and the close/minimize/green-button behavior are unchanged.
 
 ## 0.1.0-beta.1 — 2026-09-14
 

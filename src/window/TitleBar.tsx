@@ -81,6 +81,23 @@ export default function TitleBar() {
     }
   }, [osPlatform, appWindow]);
 
+  const handleTitleBarMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest?.('button')) return;
+      if (e.detail === 2) {
+        appWindow.toggleMaximize().catch((error) => console.error('Failed to toggle maximize:', error));
+      } else {
+        appWindow.startDragging().catch((error) => console.error('Failed to start dragging:', error));
+      }
+    },
+    [appWindow],
+  );
+
+  const stopTitleBarMouseDownPropagation = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
+
   const isMac = osPlatform === 'macos';
   const isLinux = osPlatform === 'linux';
   const isWindows = osPlatform === 'windows';
@@ -88,17 +105,16 @@ export default function TitleBar() {
   if (!osPlatform || isMobile) {
     return null;
   }
-  const outerDragProps = isLinux ? {} : { 'data-tauri-drag-region': 'true' };
 
   return (
-    <div className="relative pt-2 px-2 w-full z-50 bg-transparent" {...outerDragProps}>
-      <div
-        className="h-10 bg-bg-secondary flex justify-between items-center select-none rounded-lg overflow-hidden"
-        {...outerDragProps}
-      >
+    <div className="relative pt-2 px-2 w-full z-50 bg-transparent" onMouseDown={handleTitleBarMouseDown}>
+      <div className="h-10 bg-bg-secondary flex justify-between items-center select-none rounded-lg overflow-hidden">
         <div className="flex items-center h-full">
           {isMac && (
-            <div className="flex items-center h-full px-4 space-x-2 z-10">
+            <div
+              className="flex items-center h-full px-4 space-x-2 z-10"
+              onMouseDown={stopTitleBarMouseDownPropagation}
+            >
               <button
                 aria-label="Close window"
                 className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-600 transition-colors duration-150"
@@ -116,14 +132,14 @@ export default function TitleBar() {
               />
             </div>
           )}
-          <div data-tauri-drag-region className={`flex items-center h-full ${isMac ? '' : 'px-4'}`}>
+          <div className={`flex items-center h-full ${isMac ? '' : 'px-4'}`}>
             <p className="text-sm font-semibold text-text-secondary pointer-events-none">{APPLICATION_NAME}</p>
           </div>
         </div>
-        <div data-tauri-drag-region className="flex-1 h-full" />
+        <div className="flex-1 h-full" />
         <div className="flex items-center h-full z-10">
           {isLinux && (
-            <div className="flex items-center gap-2 pr-2 h-full">
+            <div className="flex items-center gap-2 pr-2 h-full" onMouseDown={stopTitleBarMouseDownPropagation}>
               <button
                 aria-label="Minimize window"
                 className="w-7 h-7 rounded-full inline-flex justify-center items-center hover:bg-white/10 transition-colors duration-150"
@@ -152,12 +168,12 @@ export default function TitleBar() {
             </div>
           )}
 
-          {isWindows && <div data-tauri-drag-region className="w-36 shrink-0 h-full pointer-events-none" />}
+          {isWindows && <div className="w-36 shrink-0 h-full pointer-events-none" />}
         </div>
       </div>
 
       {isWindows && (
-        <div className="absolute top-0 right-0 flex h-12 z-20">
+        <div className="absolute top-0 right-0 flex h-12 z-20" onMouseDown={stopTitleBarMouseDownPropagation}>
           <button aria-label="Minimize window" className="relative w-12 group outline-none" onClick={handleMinimize}>
             <div className="absolute bottom-0 left-0 w-12 h-10 flex justify-center items-center group-hover:bg-white/10 group-active:bg-white/20 transition-colors duration-150">
               <Minus size={16} className="text-text-secondary" />
