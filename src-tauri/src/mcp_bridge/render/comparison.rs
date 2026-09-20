@@ -44,7 +44,12 @@ fn preview_params(params: &Value) -> Result<Value> {
 }
 
 fn image_block(image: &DynamicImage, label: &str) -> Result<Value> {
-    let bytes = encode_image_to_bytes(&DynamicImage::ImageRgb8(image.to_rgb8()), "png", 100)?;
+    let bytes = encode_image_to_bytes(
+        &DynamicImage::ImageRgb8(image.to_rgb8()),
+        "png",
+        100,
+        TiffBitDepth::Eight,
+    )?;
     Ok(
         json!({"label":label,"width":image.width(),"height":image.height(),"mimeType":"image/png","data":STANDARD.encode(bytes)}),
     )

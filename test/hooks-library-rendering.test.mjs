@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const directory = await mkdtemp(join(tmpdir(), 'rapidraw-library-rendering-'));
-after(() => rm(directory, { recursive: true, force: true }));
+after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 const stubs = {
   'react-i18next':
     'export const useTranslation=()=>({t:(key,options)=>options?.count === undefined ? key : `${key}:${options.count}`});',

@@ -21,6 +21,7 @@ import { Invokes, ImageMetadata } from '../components/ui/AppProperties';
 import { globalImageCache } from '../utils/ImageLRUCache';
 import { syncMarigoldOrientation } from '../utils/marigoldGeometry';
 import { surfaceLayoutError } from '../utils/surfaceGeometry';
+import { transformMaskGeometryForSpatialChange } from '../utils/maskGeometry';
 
 export const debouncedSetHistory = debounce((newAdj: Adjustments) => {
   useEditorStore.getState().pushHistory(newAdj);
@@ -40,8 +41,27 @@ export function useEditorActions() {
     (value: Partial<Adjustments> | ((prev: Adjustments) => Adjustments)) => {
       setEditor((state) => {
         const prev = state.adjustments;
+        const requestedAdjustments = typeof value === 'function' ? value(prev) : { ...prev, ...value };
+        const spatialStateChanged =
+          prev.orientationSteps !== requestedAdjustments.orientationSteps ||
+          prev.rotation !== requestedAdjustments.rotation ||
+          prev.flipHorizontal !== requestedAdjustments.flipHorizontal ||
+          prev.flipVertical !== requestedAdjustments.flipVertical;
+        const transformedMasks =
+          state.selectedImage && state.selectedImage.width > 0 && state.selectedImage.height > 0 && spatialStateChanged
+            ? transformMaskGeometryForSpatialChange(
+                requestedAdjustments.masks,
+                requestedAdjustments.aiPatches,
+                state.selectedImage.width,
+                state.selectedImage.height,
+                prev,
+                requestedAdjustments,
+              )
+            : null;
         const newAdjustments = syncMarigoldOrientation(
-          typeof value === 'function' ? value(prev) : { ...prev, ...value },
+          transformedMasks
+            ? { ...requestedAdjustments, masks: transformedMasks.masks, aiPatches: transformedMasks.aiPatches }
+            : requestedAdjustments,
         );
         const surfaceError = surfaceLayoutError(newAdjustments);
         if (surfaceError) {

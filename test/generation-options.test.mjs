@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const directory = await mkdtemp(join(tmpdir(), 'rapidraw-generation-test-'));
-after(() => rm(directory, { recursive: true, force: true }));
+after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 async function bundled(entry, name, plugins = []) {
   const output = join(directory, name + '.mjs');
   await build({

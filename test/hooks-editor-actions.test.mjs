@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const directory = await mkdtemp(join(tmpdir(), 'rapidraw-editor-actions-'));
-after(() => rm(directory, { recursive: true, force: true }));
+after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 const stubs = {
   react: 'export const useCallback = (fn) => fn;',
   '@tauri-apps/api/core': 'export const invoke = (...args) => globalThis.__editorActionsTest.invoke(...args);',
@@ -83,6 +83,47 @@ function environment() {
   globalThis.__editorActionsTest = state;
   return state;
 }
+
+test('rotating an image transforms existing mask geometry with it', () => {
+  const state = environment();
+  state.editor.selectedImage = { path: 'image.dng', width: 100, height: 60 };
+  state.editor.adjustments.masks = [
+    {
+      id: 'mask-1',
+      name: 'Mask',
+      visible: true,
+      invert: false,
+      opacity: 100,
+      adjustments: {},
+      subMasks: [
+        {
+          id: 'radial-1',
+          type: 'radial',
+          mode: 'additive',
+          visible: true,
+          invert: false,
+          opacity: 100,
+          parameters: { centerX: 20, centerY: 10, radiusX: 8, radiusY: 4, rotation: 15 },
+        },
+      ],
+    },
+  ];
+
+  useEditorActions().handleRotate(90);
+
+  const radial = state.editor.adjustments.masks[0].subMasks[0];
+  assert.equal(state.editor.adjustments.orientationSteps, 1);
+  assert.deepEqual(
+    {
+      centerX: radial.parameters.centerX,
+      centerY: radial.parameters.centerY,
+      rotation: radial.parameters.rotation,
+    },
+    { centerX: 50, centerY: 20, rotation: 105 },
+  );
+  assert.equal(radial.parameters.radiusX, 8);
+  assert.equal(radial.parameters.radiusY, 4);
+});
 
 test('copy keeps nested adjustment data independent from later edits', async () => {
   const state = environment();

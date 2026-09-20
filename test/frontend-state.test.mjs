@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 
 const directory = await mkdtemp(join(tmpdir(), 'rapidraw-state-test-'));
-after(() => rm(directory, { recursive: true, force: true }));
+after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 const output = join(directory, 'state.cjs');
 await build({
   stdin: {

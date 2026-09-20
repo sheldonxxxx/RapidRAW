@@ -4,6 +4,10 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Desktop mask geometry
+
+- Preserve existing local and AI-backed mask placement when rotating, fine-rotating, flipping or straightening an image.
+
 ### MCP-only CI and release matrix
 
 - Restrict push, pull-request and manual release packaging to MCP-enabled macOS ARM64/x86_64 and Linux x86_64 builds; remove Windows, Linux ARM and tethering variants.
