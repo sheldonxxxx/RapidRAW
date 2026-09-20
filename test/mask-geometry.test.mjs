@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const directory = await mkdtemp(join(tmpdir(), 'rapidraw-mask-geometry-'));
-after(() => rm(directory, { recursive: true, force: true }));
+after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 
 const output = join(directory, 'mask-geometry.mjs');
 await build({

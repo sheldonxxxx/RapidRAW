@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const directory = await mkdtemp(join(tmpdir(), 'rapidraw-mask-overlay-'));
-after(() => rm(directory, { recursive: true, force: true }));
+after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 const stubs = {
   react: `export const memo = fn => fn;
     export const useState = value => [typeof value === 'function' ? value() : value, () => {}];

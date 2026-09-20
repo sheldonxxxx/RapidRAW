@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const directory = await mkdtemp(join(tmpdir(), 'rapidraw-editor-actions-'));
-after(() => rm(directory, { recursive: true, force: true }));
+after(() => rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 const stubs = {
   react: 'export const useCallback = (fn) => fn;',
   '@tauri-apps/api/core': 'export const invoke = (...args) => globalThis.__editorActionsTest.invoke(...args);',

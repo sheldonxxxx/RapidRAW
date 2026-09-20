@@ -2192,6 +2192,9 @@ fn validate_precision_request(
     Ok(())
 }
 
+// Test-only helper retained for the precision unit tests below. Native
+// high-precision rendering now returns `RenderedPixels::U16` directly.
+#[cfg(test)]
 fn rgba32_bytes_to_rgba16(width: u32, height: u32, pixels: &[u8]) -> Result<DynamicImage, String> {
     let expected_bytes = (width as usize)
         .checked_mul(height as usize)
