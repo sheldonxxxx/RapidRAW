@@ -11,24 +11,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'windows-latest'
-            args: '--bundles nsis'
-            target: ''
-            asset-prefix: '01'
           - platform: 'macos-14'
             target: aarch64-apple-darwin
+            args: '--features mcp'
             asset-prefix: '02'
           - platform: 'ubuntu-22.04'
             target: ''
-            asset-prefix: '03'
-          - platform: 'ubuntu-22.04-arm'
-            target: ''
+            args: '--features mcp'
             asset-prefix: '03'
           - platform: 'ubuntu-24.04'
             target: ''
-            asset-prefix: '03'
-          - platform: 'ubuntu-24.04-arm'
-            target: ''
+            args: '--features mcp'
             asset-prefix: '03'
     uses: ./.github/workflows/build.yml
     with:

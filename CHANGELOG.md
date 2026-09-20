@@ -4,6 +4,10 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### MCP-only CI and release matrix
+
+- Restrict push, pull-request and manual release packaging to MCP-enabled macOS ARM64/x86_64 and Linux x86_64 builds; remove Windows, Linux ARM and tethering variants.
+
 ### MCP asset-descriptor round trip
 
 - Resolve model-facing asset descriptors against live session state: a mutating call carrying read-back state with its `session_id` now rehydrates each `{_rapidraw_asset, sha256, state_path}` reference from the session's current full adjustments after a digest check, instead of rejecting the call. Stale digests, missing paths, and descriptors without session context keep the original rejection with a `STALE_DESCRIPTOR` (or unchanged `INVALID_ARGUMENT`) error, so no new pixels can enter the engine through this path. This enables round-trip edits such as pruning retouch patches via `set_adjustments`. Response projection, the response-size budget, and native save/bundle persistence are unchanged; workflow, server instructions, and the execution skill document the new semantics.
