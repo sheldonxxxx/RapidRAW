@@ -2192,30 +2192,6 @@ fn validate_precision_request(
     Ok(())
 }
 
-// Test-only helper retained for the precision unit tests below. Native
-// high-precision rendering now returns `RenderedPixels::U16` directly.
-#[cfg(test)]
-fn rgba32_bytes_to_rgba16(width: u32, height: u32, pixels: &[u8]) -> Result<DynamicImage, String> {
-    let expected_bytes = (width as usize)
-        .checked_mul(height as usize)
-        .and_then(|count| count.checked_mul(16))
-        .ok_or("GPU output dimensions overflow")?;
-    if pixels.len() != expected_bytes {
-        return Err("High-precision GPU output has an invalid byte count".to_string());
-    }
-    let mut channels = Vec::with_capacity(expected_bytes / 4);
-    for chunk in pixels.as_chunks::<4>().0 {
-        let value = f32::from_le_bytes(*chunk);
-        if !value.is_finite() {
-            return Err("High-precision GPU output contains non-finite pixels".to_string());
-        }
-        channels.push((value.clamp(0.0, 1.0) * 65535.0).round() as u16);
-    }
-    let image = ImageBuffer::<Rgba<u16>, _>::from_raw(width, height, channels)
-        .ok_or("Failed to create high-precision image buffer")?;
-    Ok(DynamicImage::ImageRgba16(image))
-}
-
 pub fn process_and_get_dynamic_image(
     context: &GpuContext,
     state: &tauri::State<AppState>,
@@ -2690,48 +2666,6 @@ mod precision_tests {
             lut: None,
             roi,
         }
-    }
-
-    #[test]
-    fn quantization_retains_sub_eight_bit_steps() {
-        let input: Vec<f32> = (0..1024)
-            .flat_map(|i| {
-                let value = (32768 + i) as f32 / 65535.0;
-                [value, value, value, 1.0]
-            })
-            .collect();
-        let bytes: Vec<u8> = input.into_iter().flat_map(f32::to_le_bytes).collect();
-        let output = rgba32_bytes_to_rgba16(1024, 1, &bytes).unwrap().to_rgba16();
-        for (i, pixel) in output.pixels().enumerate() {
-            assert_eq!(
-                pixel.0,
-                [32768 + i as u16, 32768 + i as u16, 32768 + i as u16, 65535]
-            );
-        }
-    }
-
-    #[test]
-    fn invalid_or_non_finite_readbacks_are_errors() {
-        assert!(rgba32_bytes_to_rgba16(1, 1, &[0; 15]).is_err());
-        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            let bytes: Vec<u8> = [value, 0.0, 0.0, 1.0]
-                .into_iter()
-                .flat_map(f32::to_le_bytes)
-                .collect();
-            assert!(rgba32_bytes_to_rgba16(1, 1, &bytes).is_err());
-        }
-        let bytes: Vec<u8> = [-0.1f32, 1.1, 0.5, 1.0]
-            .into_iter()
-            .flat_map(f32::to_le_bytes)
-            .collect();
-        assert_eq!(
-            rgba32_bytes_to_rgba16(1, 1, &bytes)
-                .unwrap()
-                .to_rgba16()
-                .get_pixel(0, 0)
-                .0,
-            [0, 65535, 32768, 65535]
-        );
     }
 
     #[test]
