@@ -1,4 +1,4 @@
-use crate::app_settings::load_settings;
+use crate::app_settings::{AppSettings, load_settings};
 use crate::app_state::AppState;
 use crate::file_management::parse_virtual_path;
 use crate::formats::is_raw_file;
@@ -7,13 +7,14 @@ use crate::image_processing::apply_cpu_default_raw_processing;
 use base64::{Engine as _, engine::general_purpose};
 use image::{DynamicImage, GenericImageView, ImageFormat, Rgb, Rgb32FImage};
 use rayon::prelude::*;
+use sha2::Digest;
 use std::cmp::Ordering;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub(crate) type DenoiseProgress = Arc<dyn Fn(f32, &str) + Send + Sync>;
 
@@ -446,6 +447,58 @@ fn restore_denoise_source(
     ))
 }
 
+/// Bayer-domain Nonlocal denoise for the desktop denoise modal. The resulting
+/// float Bayer DNG is developed through the normal RAW pipeline below, so the
+/// caller must still apply the default RAW processing for RAW sources.
+/// Strength blends inside the RAW domain; no sRGB blending happens here.
+/// Uses balanced quality; the model bundle must already be installed
+/// (missing bundles fail with `MODEL_NOT_INSTALLED`).
+fn run_nonlocal_denoise(
+    path_str: &str,
+    file_bytes: &[u8],
+    intensity: f32,
+    settings: &AppSettings,
+    app_handle: &AppHandle,
+) -> Result<DynamicImage, String> {
+    if !is_raw_file(path_str) {
+        return Err("NONLOCAL_UNSUPPORTED: Nonlocal requires a Bayer RAW source".into());
+    }
+    let root = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let source_sha = hex::encode(sha2::Sha256::digest(file_bytes));
+    let handle = app_handle.clone();
+    let control = DenoiseControl {
+        cancelled: Arc::new(AtomicBool::new(false)),
+        progress: Arc::new(move |fraction: f32, stage: &str| {
+            let _ = handle.emit(
+                "denoise-progress",
+                format!("Nonlocal {stage}… {:.0}%", fraction * 100.0),
+            );
+        }),
+    };
+    let output = crate::raw_denoise::denoise(
+        Path::new(path_str),
+        &source_sha,
+        &root,
+        intensity,
+        "balanced",
+        &control,
+    )
+    .map_err(|e| format!("{e:#}"))?;
+    let dng_path = output.path();
+    let dng_bytes = fs::read(&dng_path).map_err(|e| e.to_string())?;
+    load_base_image_from_bytes(
+        &dng_bytes,
+        &dng_path.to_string_lossy(),
+        false,
+        settings,
+        None,
+    )
+    .map_err(|e| e.to_string())
+}
+
 pub(crate) fn denoise_image(
     path_str: String,
     intensity: f32,
@@ -478,6 +531,8 @@ pub(crate) fn denoise_image(
             &app_handle,
         )
         .map_err(|e| e.to_string())?
+    } else if method == "nonlocal" {
+        run_nonlocal_denoise(&path_str, &file_bytes, intensity, &settings, &app_handle)?
     } else {
         run_bm3d(&rgb_img_for_denoiser, intensity, &app_handle)?
     };

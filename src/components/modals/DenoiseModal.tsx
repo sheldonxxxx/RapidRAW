@@ -12,8 +12,8 @@ import { listen } from '@tauri-apps/api/event';
 interface DenoiseModalProps {
   isOpen: boolean;
   onClose(): void;
-  onDenoise(intensity: number, method: 'ai' | 'bm3d'): void;
-  onBatchDenoise(intensity: number, method: 'ai' | 'bm3d', paths: string[]): Promise<string[]>;
+  onDenoise(intensity: number, method: 'ai' | 'bm3d' | 'nonlocal'): void;
+  onBatchDenoise(intensity: number, method: 'ai' | 'bm3d' | 'nonlocal', paths: string[]): Promise<string[]>;
   onSave(): Promise<string>;
   onOpenFile(path: string): void;
   error: string | null;
@@ -228,19 +228,21 @@ export default function DenoiseModal({
   const [isMounted, setIsMounted] = useState(false);
   const [show, setShow] = useState(false);
   const [intensity, setIntensity] = useState<number>(15);
-  const [method, setMethod] = useState<'ai' | 'bm3d'>('ai');
+  const [method, setMethod] = useState<'ai' | 'bm3d' | 'nonlocal'>('ai');
   const [isSaving, setIsSaving] = useState(false);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; path: string } | null>(null);
   const isBatch = targetPaths.length > 1;
   const mouseDownTarget = useRef<EventTarget | null>(null);
 
-  const methodOptions = useMemo<Array<{ label: string; value: 'ai' | 'bm3d' }>>(
+  const methodOptions = useMemo<Array<{ label: string; value: 'ai' | 'bm3d' | 'nonlocal' }>>(
     () => [
       { label: t('modals.denoise.methodAi'), value: 'ai' },
+      // Nonlocal is Bayer-RAW only; the backend rejects other sources.
+      ...(isRaw ? [{ label: t('modals.denoise.methodNonlocal'), value: 'nonlocal' as const }] : []),
       { label: t('modals.denoise.methodBm3d'), value: 'bm3d' },
     ],
-    [t],
+    [t, isRaw],
   );
 
   useEffect(() => {
@@ -471,7 +473,7 @@ export default function DenoiseModal({
               value={method}
               onChange={(val) => {
                 setMethod(val);
-                setIntensity(val === 'ai' ? 50 : 15);
+                setIntensity(val === 'nonlocal' ? 100 : val === 'ai' ? 50 : 15);
               }}
             />
           </div>
@@ -482,7 +484,7 @@ export default function DenoiseModal({
               min={0}
               max={100}
               step={1}
-              defaultValue={method === 'ai' ? 50 : 15}
+              defaultValue={method === 'nonlocal' ? 100 : method === 'ai' ? 50 : 15}
               onChange={(e) => setIntensity(Number(e.target.value))}
               trackClassName="bg-bg-secondary"
               fillOrigin="min"

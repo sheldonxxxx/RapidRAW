@@ -52,9 +52,9 @@ For Linux GPU servers over SSH, run both the Node host and the native engine on 
 
 ## Provider notes
 
-- Masking, denoise, and inpainting default to CPU on every platform unless explicitly configured.
+- Masking, denoise, and inpainting default to CPU on every platform unless explicitly configured, except that an installed NVIDIA runtime pack defaults unset ONNX/Nonlocal providers to CUDA on Linux x86_64 (explicit `cpu` is preserved).
 - On macOS, `RAPIDRAW_NONLOCAL_PROVIDER=coreml` selects the direct CoreML Nonlocal backend; install its pinned bundle once with `install_model kind="nonlocal"`.
-- On Linux with NVIDIA hardware, CUDA inference for supported mask/depth/denoise models is opt-in; follow [Optional ONNX CUDA inference on Linux](docs/mcp/onnx-cuda.md). Installing a GPU driver or CUDA runtime alone does not select that provider.
+- On Linux with NVIDIA hardware, CUDA inference for supported mask/depth/denoise models is opt-in via the pinned x86_64 runtime pack; follow [Optional ONNX CUDA inference on Linux](docs/mcp/onnx-cuda.md). Installing a GPU driver or CUDA runtime alone does not select that provider. Linux ARM stays on CPU.
 - Model weights are not part of the npm package or the native installer unless the referenced docs explicitly say otherwise. The explicit `install_model` MCP tool is the model-download boundary: the server never downloads models implicitly.
 
 ## Generic MCP config example

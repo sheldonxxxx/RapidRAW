@@ -392,6 +392,7 @@
         "workflow": "Arbeitsablauf"
       },
       "generativeEditTitle": "Generative Bearbeitung",
+      "hideMarkersTooltip": "Markierungen und Maske ausblenden (H)",
       "inpaintingTitle": "Reparieren",
       "liquify": {
         "mode": "Verflüssigen-Modus",
@@ -451,6 +452,7 @@
         "selectionPropertiesTitle": "Auswahleigenschaften",
         "useBasicInpaint": "Einfaches Reparieren verwenden"
       },
+      "showMarkersTooltip": "Markierungen und Maske einblenden (H)",
       "touchUpTitle": "Ausbessern"
     },
     "crop": {
@@ -649,6 +651,7 @@
         "title": "Tiefenbereich"
       },
       "dropzoneText": "Hier ablegen, um eine neue Maske zu erstellen",
+      "hideMarkersTooltip": "Markierungen und Maske ausblenden (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -701,6 +704,7 @@
         "select": "Auswählen",
         "selectPresetTooltip": "Eine Vorgabe zum Anwenden auswählen"
       },
+      "showMarkersTooltip": "Markierungen und Maske einblenden (H)",
       "toggleAnalyticsInAdjustments": "Analyseanzeige im Anpassungen-Panel umschalten",
       "toggleAnalyticsTooltip": "Analyseanzeige umschalten",
       "tooltips": {
@@ -1364,9 +1368,10 @@
       "downloadingText": "Wird heruntergeladen {{status}}...",
       "gpuWarningTooltip": "NIND Entrauschen unterstützt noch keine GPU-Beschleunigung aufgrund von Abhängigkeiten.",
       "initializing": "Wird initialisiert...",
-      "methodAi": "NIND (KI - Am besten für RAW)",
+      "methodAi": "NIND (KI - Schnell)",
       "methodBm3d": "BM3D (Traditionell - Alle Formate)",
       "methodLabel": "Methode",
+      "methodNonlocal": "Nonlocal (KI - Am besten für RAW)",
       "openInEditor": "Im Editor öffnen",
       "original": "Original",
       "panZoomEnabled": "Schwenken & Zoomen aktiviert",
@@ -1713,6 +1718,7 @@
         "toggle_library_exif": "EXIF-Überlagerung ein-/ausblenden",
         "toggle_masks": "Maskieren-Panel ein-/ausblenden",
         "toggle_metadata": "Metadaten-Panel ein-/ausblenden",
+        "toggle_patch_markers": "Markierungen und Maske ein-/ausblenden",
         "toggle_presets": "Vorgaben-Panel ein-/ausblenden",
         "toggle_right_panel": "Rechtes Panel ein-/ausblenden",
         "undo": "Bearbeitung rückgängig machen",

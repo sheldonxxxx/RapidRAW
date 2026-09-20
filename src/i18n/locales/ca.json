@@ -409,6 +409,7 @@
         "workflow": "Flux de treball"
       },
       "generativeEditTitle": "Edició generativa",
+      "hideMarkersTooltip": "Amaga els marcadors i la màscara (H)",
       "inpaintingTitle": "Inpainting",
       "liquify": {
         "mode": "Mode Liquar",
@@ -474,6 +475,7 @@
         "selectionPropertiesTitle": "Propietats de selecció",
         "useBasicInpaint": "Utilitzar inpainting bàsic"
       },
+      "showMarkersTooltip": "Mostra els marcadors i la màscara (H)",
       "touchUpTitle": "Retocs"
     },
     "crop": {
@@ -672,6 +674,7 @@
         "title": "Rang de profunditat"
       },
       "dropzoneText": "Deixeu anar aquí per crear una màscara nova",
+      "hideMarkersTooltip": "Amaga els marcadors i la màscara (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -725,6 +728,7 @@
         "select": "Seleccionar",
         "selectPresetTooltip": "Seleccioneu un ajust preestablert per aplicar"
       },
+      "showMarkersTooltip": "Mostra els marcadors i la màscara (H)",
       "toggleAnalyticsInAdjustments": "Commutar l'anàlisi al panell d'ajustos",
       "toggleAnalyticsTooltip": "Alternar visualització d'anàlisi",
       "tooltips": {
@@ -1393,9 +1397,10 @@
       "downloadingText": "S'està baixant {{status}}...",
       "gpuWarningTooltip": "La reducció de soroll NIND encara no admet acceleració per GPU a causa de limitacions de dependències.",
       "initializing": "S'està inicialitzant...",
-      "methodAi": "NIND (IA - Millor per a RAW)",
+      "methodAi": "NIND (IA - Ràpid)",
       "methodBm3d": "BM3D (Tradicional - Tots els formats)",
       "methodLabel": "Mètode",
+      "methodNonlocal": "Nonlocal (IA - Millor per a RAW)",
       "openInEditor": "Obrir a l'editor",
       "original": "Original",
       "panZoomEnabled": "Desplaçament i zoom activats",
@@ -1750,6 +1755,7 @@
         "toggle_library_exif": "Alternar superposició EXIF",
         "toggle_masks": "Alternar tauler de Màscares",
         "toggle_metadata": "Alternar tauler de Metadades",
+        "toggle_patch_markers": "Mostra/amaga marcadors i màscara",
         "toggle_presets": "Alternar tauler d'Ajustos preestablerts",
         "toggle_right_panel": "Commutar el panell dret",
         "undo": "Desfer ajustament",

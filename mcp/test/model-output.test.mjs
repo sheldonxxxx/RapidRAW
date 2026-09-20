@@ -6,6 +6,7 @@ import {
   redactClientData,
   summarizeOutput,
   rejectAssetDescriptors,
+  resolveAssetDescriptors,
 } from '../dist/model-output.js';
 import { toolResult } from '../dist/server.js';
 
@@ -180,4 +181,71 @@ test('compact client keeps lifecycle, refinement, export and failure information
   assert.equal(redacted.token, '[redacted]');
   assert.equal(redacted.adjustments.aiPatches[0].patchData.color._rapidraw_asset, true);
   assert.equal(redacted.adjustments.masks[0].subMasks[0].parameters.samRefinement.logitsBase64._rapidraw_asset, true);
+});
+
+test('descriptors round-trip against live session state, then behave as ordinary values', async () => {
+  const native = maskedState();
+  const shown = toolResult(native).structuredContent;
+  const params = {
+    session_id: 'photo',
+    expected_revision: 8,
+    mode: 'merge',
+    // Prune the patch list while keeping the mask: the realistic round-trip edit.
+    patch: {
+      exposure: 0.35,
+      aiPatches: [],
+      masks: shown.adjustments.masks,
+      state_representation: shown.state_representation,
+    },
+  };
+  let fetched = null;
+  const resolved = await resolveAssetDescriptors(params, async (sid) => {
+    fetched = sid;
+    return structuredClone(native);
+  });
+  assert.equal(fetched, 'photo');
+  assert.equal(resolved.state_representation, undefined);
+  assert.deepEqual(resolved.patch.masks, native.adjustments.masks);
+  assert.deepEqual(resolved.patch.aiPatches, []);
+  assert.equal(resolved.patch.exposure, 0.35);
+  // The rehydrated patch no longer trips the replacement-recipe guard.
+  assert.doesNotThrow(() => rejectAssetDescriptors(resolved));
+  // Input was cloned, never mutated in place.
+  assert.equal(params.patch.masks[0].subMasks[0].parameters.maskDataBase64._rapidraw_asset, true);
+});
+
+test('descriptor resolution needs no fetch without descriptors and rejects stale or sessionless input', async () => {
+  let calls = 0;
+  const plain = { session_id: 's', patch: { exposure: 0.6 } };
+  assert.deepEqual(await resolveAssetDescriptors(plain, async () => (calls++, {})), plain);
+  assert.equal(calls, 0);
+
+  const native = maskedState();
+  const shown = toolResult(native).structuredContent;
+  const stale = structuredClone(native);
+  stale.adjustments.masks[0].subMasks[0].parameters.maskDataBase64 += 'rotated';
+  const staleCode = (err) =>
+    err?.code === 'STALE_DESCRIPTOR' || /STALE_DESCRIPTOR|Unsafe state path/.test(err?.message ?? '');
+  await assert.rejects(
+    resolveAssetDescriptors({ session_id: 'photo', patch: { masks: shown.adjustments.masks } }, async () =>
+      structuredClone(stale),
+    ),
+    staleCode,
+  );
+  // Descriptors without session context keep the original rejection.
+  await assert.rejects(
+    resolveAssetDescriptors({ patch: shown.adjustments }, async () => ({})),
+    /replacement recipe/,
+  );
+  // Path traversal and prototype pollution never resolve.
+  const evil = (path) => ({
+    session_id: 'photo',
+    patch: { masks: [{ parameters: { maskDataBase64: { _rapidraw_asset: true, sha256: 'x', state_path: path } } }] },
+  });
+  for (const path of ['/__proto__/x', '/constructor/prototype/x', '/adjustments/masks/99/parameters/maskDataBase64']) {
+    await assert.rejects(
+      resolveAssetDescriptors(evil(path), async () => structuredClone(native)),
+      staleCode,
+    );
+  }
 });

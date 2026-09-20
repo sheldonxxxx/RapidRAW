@@ -91,12 +91,25 @@ test('stdio tools and resources redact native assets and reject summary recipes 
     349528,
   );
   assert.equal(complete.structuredContent.params.include_assets, undefined);
-  const invalid = await client.callTool({
+  // A fresh read-back round-trips: descriptors resolve against live state.
+  const roundtrip = await client.callTool({
     name: 'rapidraw_set_adjustments',
     arguments: {
       session_id: 'asset-state',
       mode: 'replace',
       patch: state.adjustments,
+    },
+  });
+  assert.ok(!roundtrip.isError);
+  // A tampered descriptor digest still fails closed without mutating.
+  const tampered = structuredClone(state.adjustments);
+  tampered.masks[0].subMasks[0].parameters.maskDataBase64.sha256 = '0'.repeat(64);
+  const invalid = await client.callTool({
+    name: 'rapidraw_set_adjustments',
+    arguments: {
+      session_id: 'asset-state',
+      mode: 'replace',
+      patch: tampered,
     },
   });
   assert.equal(invalid.isError, true);

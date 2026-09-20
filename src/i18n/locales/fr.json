@@ -409,6 +409,7 @@
         "workflow": "Flux de travail"
       },
       "generativeEditTitle": "Édition générative",
+      "hideMarkersTooltip": "Masquer les repères et le masque (H)",
       "inpaintingTitle": "Inpainting",
       "liquify": {
         "mode": "Mode Fluidité",
@@ -474,6 +475,7 @@
         "selectionPropertiesTitle": "Propriétés de sélection",
         "useBasicInpaint": "Utiliser l'inpainting simple"
       },
+      "showMarkersTooltip": "Afficher les repères et le masque (H)",
       "touchUpTitle": "Retouches"
     },
     "crop": {
@@ -672,6 +674,7 @@
         "title": "Plage de profondeur"
       },
       "dropzoneText": "Déposer ici pour créer un nouveau masque",
+      "hideMarkersTooltip": "Masquer les repères et le masque (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -725,6 +728,7 @@
         "select": "Sélectionner",
         "selectPresetTooltip": "Sélectionner un paramètre prédéfini à appliquer"
       },
+      "showMarkersTooltip": "Afficher les repères et le masque (H)",
       "toggleAnalyticsInAdjustments": "Afficher/Masquer l'analyse dans le panneau Réglages",
       "toggleAnalyticsTooltip": "Basculer l'affichage des analyses",
       "tooltips": {
@@ -1394,9 +1398,10 @@
       "downloadingText": "Téléchargement {{status}}...",
       "gpuWarningTooltip": "Le débruitage NIND ne prend pas encore en charge l'accélération GPU en raison de limitations de dépendances.",
       "initializing": "Initialisation...",
-      "methodAi": "NIND (IA - Meilleur pour RAW)",
+      "methodAi": "NIND (IA - Rapide)",
       "methodBm3d": "BM3D (Traditionnel - Tous formats)",
       "methodLabel": "Méthode",
+      "methodNonlocal": "Nonlocal (IA - Meilleur pour RAW)",
       "openInEditor": "Ouvrir dans l'éditeur",
       "original": "Original",
       "panZoomEnabled": "Panoramique & Zoom activés",
@@ -1751,6 +1756,7 @@
         "toggle_library_exif": "Basculer la superposition EXIF",
         "toggle_masks": "Basculer le panneau des masques",
         "toggle_metadata": "Basculer le panneau des métadonnées",
+        "toggle_patch_markers": "Afficher/masquer repères et masque",
         "toggle_presets": "Basculer le panneau des paramètres prédéfinis",
         "toggle_right_panel": "Afficher/Masquer le panneau droit",
         "undo": "Annuler l'ajustement",

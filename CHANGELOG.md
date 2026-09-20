@@ -4,6 +4,23 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### MCP-only CI and release matrix
+
+- Restrict push, pull-request and manual release packaging to MCP-enabled macOS ARM64/x86_64 and Linux x86_64 builds; remove Windows, Linux ARM and tethering variants.
+
+### MCP asset-descriptor round trip
+
+- Resolve model-facing asset descriptors against live session state: a mutating call carrying read-back state with its `session_id` now rehydrates each `{_rapidraw_asset, sha256, state_path}` reference from the session's current full adjustments after a digest check, instead of rejecting the call. Stale digests, missing paths, and descriptors without session context keep the original rejection with a `STALE_DESCRIPTOR` (or unchanged `INVALID_ARGUMENT`) error, so no new pixels can enter the engine through this path. This enables round-trip edits such as pruning retouch patches via `set_adjustments`. Response projection, the response-size budget, and native save/bundle persistence are unchanged; workflow, server instructions, and the execution skill document the new semantics.
+
+### Optional pinned NVIDIA runtime packaging and activation
+
+- Add an independently versioned Linux x86_64 NVIDIA runtime pack (official ONNX Runtime 1.30.0 CUDA 13, cuDNN 9.20.0, CUDA 13.2/13.3 user-space libraries; supported driver baseline 595.58.03+) with a dedicated `nvidia-runtime-vX.Y.Z` draft-release workflow, pinned release metadata (`packaging/linux-nvidia-runtime.release.json`), and SHA-verified non-root install under the XDG data directory. No runtime release is published by this change.
+- On Linux x86_64 startup, auto-discover the installed pack (`RAPIDRAW_NVIDIA_RUNTIME` explicit path, `off` disable, or the XDG `current` symlink), pin its `runtime.json` identity, re-exec with pack-first libraries before ONNX initialization, and default unset ONNX/Nonlocal providers to CUDA. Explicit provider choices (including `cpu`) are preserved; desktop setup no longer overwrites a caller-supplied `ORT_DYLIB_PATH`. The NIND denoise model keeps its narrow `CuDNNConvAlgorithmSearch::Default` compatibility exception while foreground/sky/depth and Nonlocal remain HEURISTIC, and normal CPU packages embed no NVIDIA payload.
+
+### Nonlocal provider defaults
+
+- Default `RAPIDRAW_NONLOCAL_PROVIDER` to Linux CUDA and macOS CoreML when unset (previously silent CPU) while keeping explicit values strict with no fallback, and update the denoise README, root README, install guidance and skill reference to the new platform-aware default. The Linux production launcher now derives `RAPIDRAW_NONLOCAL_PROVIDER` from `RAPIDRAW_ONNX_PROVIDER` when unset, so the ONNX and Nonlocal providers can no longer diverge in one process.
+
 ### Experimental GPU RAW denoising
 
 - Integrate optional Nonlocal inference with MCP `start_denoise` via an in-process native ONNX Runtime backend (CPU or Linux CUDA, explicit provider, no fallback) and a pinned FP32 bundle. Return a separate float Bayer DNG and retain captured edits, using RapidRAW's existing decoder, demosaic and colour pipeline. Add one-pass/four-rotation modes, runtime-aware reusable verified predictions, tile-boundary cancellation and persistent job results. Keep NIND and BM3D available. Python remains research/export tooling only.
@@ -59,6 +76,14 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 - Reuse checksum-verified model seeds across MCP workspaces through a host cache. Model files remain local to each workspace; corrupt cache entries fail validation.
 - Disable development incremental compilation and debug symbols by default to reduce compiler-cache growth. Both remain available through Cargo profile overrides.
 - Require 20 GiB free on the output volume before MCP native test harness and enhancement benchmark runs, with additional checks between large operations/cases; allow an explicit positive `RAPIDRAW_MIN_FREE_GIB` override.
+
+### Desktop Nonlocal denoise
+
+- Add Nonlocal to the desktop denoise modal's method selection (RAW sources only) with balanced quality, developed through the normal RAW pipeline with in-domain strength blending; NIND is relabeled "NIND (AI - Fast)" and Nonlocal appears as "Nonlocal (AI - Best for RAW)". The model bundle must already be installed (or `RAPIDRAW_NONLOCAL_BUNDLE` set); a missing bundle fails with `MODEL_NOT_INSTALLED` guidance. The Nonlocal backend modules (`raw_denoise`, `nonlocal_onnx`, `nonlocal_coreml`, `nonlocal_install`) are no longer gated behind the `mcp` Cargo feature, so standard desktop builds compile the new modal path.
+
+### Retouch marker visibility
+
+- Add a canvas toggle for clone/heal/liquify/retouch markers plus the active mask overlay in the AI (Inpainting) and Masking panels, plus an `H` shortcut (remappable in Settings → Keyboard shortcuts), so the area under a marker and its selection can be inspected without leaving the panel. Toggling back restores all overlays; per-edit eye toggles and rendering are unchanged.
 
 ### Fixed
 

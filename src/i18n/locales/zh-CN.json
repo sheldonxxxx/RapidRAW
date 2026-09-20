@@ -392,6 +392,7 @@
         "workflow": "工作流程"
       },
       "generativeEditTitle": "生成式编辑",
+      "hideMarkersTooltip": "隐藏标记和蒙版 (H)",
       "inpaintingTitle": "图像修复",
       "liquify": {
         "mode": "液化模式",
@@ -448,6 +449,7 @@
         "selectionPropertiesTitle": "选区属性",
         "useBasicInpaint": "使用基础图像修复"
       },
+      "showMarkersTooltip": "显示标记和蒙版 (H)",
       "touchUpTitle": "润色"
     },
     "crop": {
@@ -646,6 +648,7 @@
         "title": "深度范围"
       },
       "dropzoneText": "拖放到此处以创建新蒙版",
+      "hideMarkersTooltip": "隐藏标记和蒙版 (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -698,6 +701,7 @@
         "select": "选择",
         "selectPresetTooltip": "选择一个预设以应用"
       },
+      "showMarkersTooltip": "显示标记和蒙版 (H)",
       "toggleAnalyticsInAdjustments": "在调整面板中切换分析",
       "toggleAnalyticsTooltip": "切换分析显示",
       "tooltips": {
@@ -1361,9 +1365,10 @@
       "downloadingText": "下载中 {{status}}...",
       "gpuWarningTooltip": "由于依赖项限制，NIND 降噪尚不支持 GPU 加速。",
       "initializing": "初始化中...",
-      "methodAi": "NIND（AI - 最适合 RAW）",
+      "methodAi": "NIND（AI - 快速）",
       "methodBm3d": "BM3D（传统 - 所有格式）",
       "methodLabel": "方法",
+      "methodNonlocal": "Nonlocal（AI - 最适合 RAW）",
       "openInEditor": "在编辑器中打开",
       "original": "原始",
       "panZoomEnabled": "平移和缩放已启用",
@@ -1710,6 +1715,7 @@
         "toggle_library_exif": "切换 EXIF 叠加",
         "toggle_masks": "切换蒙版面板",
         "toggle_metadata": "切换元数据面板",
+        "toggle_patch_markers": "显示/隐藏标记和蒙版",
         "toggle_presets": "切换预设面板",
         "toggle_right_panel": "切换右侧面板",
         "undo": "撤销调整",

@@ -427,6 +427,7 @@ export default function AIPanel() {
   const isGeneratingAi = useEditorStore((s) => s.isGeneratingAi);
   const isGeneratingAiMask = useEditorStore((s) => s.isGeneratingAiMask);
   const selectedImage = useEditorStore((s) => s.selectedImage);
+  const showPatchMarkers = useEditorStore((s) => s.showPatchMarkers ?? true);
   const setEditor = useEditorStore((s) => s.setEditor);
 
   const aiModelDownloadStatus = useProcessStore((s) => s.aiModelDownloadStatus);
@@ -1187,13 +1188,24 @@ export default function AIPanel() {
       <div className="flex flex-col h-full select-none overflow-hidden" onContextMenu={handlePanelContextMenu}>
         <div className="p-3 flex justify-between items-center shrink-0 border-b border-surface">
           <Text variant={TextVariants.title}>{t('editor.enhancement.aiTitle', { defaultValue: 'AI editing' })}</Text>
-          <button
-            className="p-2 rounded-full hover:bg-surface transition-colors"
-            onClick={handleResetAllAiEdits}
-            data-tooltip={t('editor.ai.resetInpaintingTooltip')}
-          >
-            <RotateCcw size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              className="p-2 rounded-full hover:bg-surface transition-colors"
+              onClick={() => setEditor({ showPatchMarkers: !showPatchMarkers })}
+              data-tooltip={showPatchMarkers ? t('editor.ai.hideMarkersTooltip') : t('editor.ai.showMarkersTooltip')}
+              aria-label={showPatchMarkers ? t('editor.ai.hideMarkersTooltip') : t('editor.ai.showMarkersTooltip')}
+              aria-pressed={!showPatchMarkers}
+            >
+              {showPatchMarkers ? <Eye size={18} /> : <EyeOff size={18} />}
+            </button>
+            <button
+              className="p-2 rounded-full hover:bg-surface transition-colors"
+              onClick={handleResetAllAiEdits}
+              data-tooltip={t('editor.ai.resetInpaintingTooltip')}
+            >
+              <RotateCcw size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col min-h-0 p-3">

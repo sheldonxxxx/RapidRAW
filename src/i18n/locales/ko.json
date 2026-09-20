@@ -392,6 +392,7 @@
         "workflow": "워크플로"
       },
       "generativeEditTitle": "생성형 편집",
+      "hideMarkersTooltip": "마커와 마스크 숨기기 (H)",
       "inpaintingTitle": "인페인팅",
       "liquify": {
         "mode": "유동화 모드",
@@ -448,6 +449,7 @@
         "selectionPropertiesTitle": "선택 영역 속성",
         "useBasicInpaint": "기본 인페인팅 사용"
       },
+      "showMarkersTooltip": "마커와 마스크 표시 (H)",
       "touchUpTitle": "터치업"
     },
     "crop": {
@@ -646,6 +648,7 @@
         "title": "심도 범위"
       },
       "dropzoneText": "여기에 놓아 새 마스크를 만드세요",
+      "hideMarkersTooltip": "마커와 마스크 숨기기 (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -698,6 +701,7 @@
         "select": "선택",
         "selectPresetTooltip": "적용할 프리셋 선택"
       },
+      "showMarkersTooltip": "마커와 마스크 표시 (H)",
       "toggleAnalyticsInAdjustments": "조정 패널에서 분석 토글",
       "toggleAnalyticsTooltip": "분석 표시 전환",
       "tooltips": {
@@ -1361,9 +1365,10 @@
       "downloadingText": "{{status}} 다운로드 중...",
       "gpuWarningTooltip": "NIND 노이즈 제거는 종속성 제한으로 인해 아직 GPU 가속을 지원하지 않습니다.",
       "initializing": "초기화 중...",
-      "methodAi": "NIND (AI - RAW에 최적)",
+      "methodAi": "NIND (AI - 빠름)",
       "methodBm3d": "BM3D (기존 방식 - 모든 포맷)",
       "methodLabel": "방식",
+      "methodNonlocal": "Nonlocal (AI - RAW에 최적)",
       "openInEditor": "편집기에서 열기",
       "original": "원본",
       "panZoomEnabled": "이동 및 확대/축소 활성화됨",
@@ -1710,6 +1715,7 @@
         "toggle_library_exif": "EXIF 오버레이 전환",
         "toggle_masks": "마스크 패널 전환",
         "toggle_metadata": "메타데이터 패널 전환",
+        "toggle_patch_markers": "마커와 마스크 표시 전환",
         "toggle_presets": "프리셋 패널 전환",
         "toggle_right_panel": "오른쪽 패널 토글",
         "undo": "조정 실행 취소",

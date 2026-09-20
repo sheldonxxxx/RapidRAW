@@ -392,6 +392,7 @@
         "workflow": "工作流程"
       },
       "generativeEditTitle": "生成式編輯",
+      "hideMarkersTooltip": "隱藏標記和遮罩 (H)",
       "inpaintingTitle": "影像修復",
       "liquify": {
         "mode": "液化模式",
@@ -448,6 +449,7 @@
         "selectionPropertiesTitle": "選區屬性",
         "useBasicInpaint": "使用基礎影像修復"
       },
+      "showMarkersTooltip": "顯示標記和遮罩 (H)",
       "touchUpTitle": "潤色"
     },
     "crop": {
@@ -646,6 +648,7 @@
         "title": "深度範圍"
       },
       "dropzoneText": "拖放到此處以建立新遮色片",
+      "hideMarkersTooltip": "隱藏標記和遮罩 (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -698,6 +701,7 @@
         "select": "選擇",
         "selectPresetTooltip": "選擇一個預設以應用"
       },
+      "showMarkersTooltip": "顯示標記和遮罩 (H)",
       "toggleAnalyticsInAdjustments": "在調整面板中切換分析",
       "toggleAnalyticsTooltip": "切換分析顯示",
       "tooltips": {
@@ -1361,9 +1365,10 @@
       "downloadingText": "下載中 {{status}}...",
       "gpuWarningTooltip": "由於依賴項限制，NIND 降噪尚不支援 GPU 加速。",
       "initializing": "初始化中...",
-      "methodAi": "NIND（AI - 最適合 RAW）",
+      "methodAi": "NIND（AI - 快速）",
       "methodBm3d": "BM3D（傳統 - 所有格式）",
       "methodLabel": "方法",
+      "methodNonlocal": "Nonlocal（AI - 最適合 RAW）",
       "openInEditor": "在編輯器中開啟",
       "original": "原始",
       "panZoomEnabled": "平移和縮放已啟用",
@@ -1710,6 +1715,7 @@
         "toggle_library_exif": "切換 EXIF 疊加",
         "toggle_masks": "切換遮色片面板",
         "toggle_metadata": "切換後設資料面板",
+        "toggle_patch_markers": "顯示/隱藏標記和遮罩",
         "toggle_presets": "切換預設面板",
         "toggle_right_panel": "切換右側面板",
         "undo": "復原調整",

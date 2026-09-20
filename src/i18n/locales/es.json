@@ -409,6 +409,7 @@
         "workflow": "Flujo de trabajo"
       },
       "generativeEditTitle": "Edición generativa",
+      "hideMarkersTooltip": "Ocultar marcadores y máscara (H)",
       "inpaintingTitle": "Inpainting",
       "liquify": {
         "mode": "Modo Licuar",
@@ -474,6 +475,7 @@
         "selectionPropertiesTitle": "Propiedades de la selección",
         "useBasicInpaint": "Usar Inpainting básico"
       },
+      "showMarkersTooltip": "Mostrar marcadores y máscara (H)",
       "touchUpTitle": "Retoques"
     },
     "crop": {
@@ -672,6 +674,7 @@
         "title": "Rango de profundidad"
       },
       "dropzoneText": "Suelta aquí para crear una nueva máscara",
+      "hideMarkersTooltip": "Ocultar marcadores y máscara (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -725,6 +728,7 @@
         "select": "Seleccionar",
         "selectPresetTooltip": "Selecciona un ajuste preestablecido para aplicar"
       },
+      "showMarkersTooltip": "Mostrar marcadores y máscara (H)",
       "toggleAnalyticsInAdjustments": "Alternar análisis en el panel de Ajustes",
       "toggleAnalyticsTooltip": "Alternar vista de análisis",
       "tooltips": {
@@ -1393,9 +1397,10 @@
       "downloadingText": "Descargando {{status}}...",
       "gpuWarningTooltip": "La reducción de ruido NIND aún no soporta aceleración por GPU debido a limitaciones de dependencias.",
       "initializing": "Inicializando...",
-      "methodAi": "NIND (IA - Mejor para RAW)",
+      "methodAi": "NIND (IA - Rápido)",
       "methodBm3d": "BM3D (Tradicional - Todos los formatos)",
       "methodLabel": "Método",
+      "methodNonlocal": "Nonlocal (IA - Mejor para RAW)",
       "openInEditor": "Abrir en el editor",
       "original": "Original",
       "panZoomEnabled": "Desplazamiento y zoom habilitados",
@@ -1750,6 +1755,7 @@
         "toggle_library_exif": "Alternar superposición EXIF",
         "toggle_masks": "Alternar panel de Máscaras",
         "toggle_metadata": "Alternar panel de Metadatos",
+        "toggle_patch_markers": "Mostrar/ocultar marcadores y máscara",
         "toggle_presets": "Alternar panel de Ajustes preestablecidos",
         "toggle_right_panel": "Alternar panel derecho",
         "undo": "Deshacer ajuste",

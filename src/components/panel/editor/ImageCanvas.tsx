@@ -1422,6 +1422,7 @@ const ImageCanvas = memo(
     hasRenderedFirstFrame,
   }: ImageCanvasProps) => {
     const isGuidedPerspectiveActive = useEditorStore((state) => state.isGuidedPerspectiveActive);
+    const showPatchMarkers = useEditorStore((state) => state.showPatchMarkers ?? true);
     const [draftGuideLine, setDraftGuideLine] = useState<{ p1: Coord; p2: Coord } | null>(null);
     const [localDragLines, setLocalDragLines] = useState<GuideLine[] | null>(null);
 
@@ -1434,6 +1435,9 @@ const ImageCanvas = memo(
     const [localInitialDrawParams, setLocalInitialDrawParams] = useState<MaskParameters | null>(null);
     const [isMaskInteractionActive, setIsMaskInteractionActive] = useState(false);
     const [hoveredMarkerId, setHoveredMarkerId] = useState<string | null>(null);
+    useEffect(() => {
+      if (!showPatchMarkers) setHoveredMarkerId(null);
+    }, [showPatchMarkers]);
     const isDrawing = useRef(false);
     const drawingStageRef = useRef<Konva.Stage | null>(null);
     const dragStartPointer = useRef<Coord | null>(null);
@@ -3165,7 +3169,7 @@ const ImageCanvas = memo(
                 )}
               </svg>
 
-              {displayedMaskUrl && (
+              {displayedMaskUrl && showPatchMarkers && (
                 <img
                   alt="Mask Overlay"
                   className="absolute object-contain pointer-events-none"
@@ -3186,6 +3190,7 @@ const ImageCanvas = memo(
 
             <div className="absolute inset-0 pointer-events-none z-50">
               {!isDrawing.current &&
+                showPatchMarkers &&
                 directPatchMarkers.map((m) => {
                   const left = (m.cx - cropX) * imageRenderSize.scale + imageRenderSize.offsetX;
                   const top = (m.cy - cropY) * imageRenderSize.scale + imageRenderSize.offsetY;
@@ -3312,8 +3317,8 @@ const ImageCanvas = memo(
                           const isActivelyDrawingThis = isThisSubMaskActive && isDrawing.current;
                           const isHoveringThisMarker = hoveredMarkerId === renderSubMask.id;
 
-                          let showBrushStrokes = true;
-                          if (isDirectPatch) {
+                          let showBrushStrokes = showPatchMarkers;
+                          if (showPatchMarkers && isDirectPatch) {
                             showBrushStrokes =
                               isActivelyDrawingThis ||
                               isHoveringThisMarker ||

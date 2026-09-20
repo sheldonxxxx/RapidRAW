@@ -409,6 +409,7 @@
         "workflow": "Fluxo de trabalho"
       },
       "generativeEditTitle": "Edição Generativa",
+      "hideMarkersTooltip": "Ocultar marcadores e máscara (H)",
       "inpaintingTitle": "Preenchimento",
       "liquify": {
         "mode": "Modo Dissolver",
@@ -474,6 +475,7 @@
         "selectionPropertiesTitle": "Propriedades da Seleção",
         "useBasicInpaint": "Usar preenchimento básico"
       },
+      "showMarkersTooltip": "Mostrar marcadores e máscara (H)",
       "touchUpTitle": "Retoques"
     },
     "crop": {
@@ -672,6 +674,7 @@
         "title": "Intervalo de Profundidade"
       },
       "dropzoneText": "Solte aqui para criar uma nova máscara",
+      "hideMarkersTooltip": "Ocultar marcadores e máscara (H)",
       "marigold": {
         "builtin": "Depth source: built-in",
         "cancel": "Discard result",
@@ -725,6 +728,7 @@
         "select": "Selecionar",
         "selectPresetTooltip": "Selecione uma predefinição para aplicar"
       },
+      "showMarkersTooltip": "Mostrar marcadores e máscara (H)",
       "toggleAnalyticsInAdjustments": "Alternar análise no painel de Ajustes",
       "toggleAnalyticsTooltip": "Alternar Exibição de Análises",
       "tooltips": {
@@ -1393,9 +1397,10 @@
       "downloadingText": "Baixando {{status}}...",
       "gpuWarningTooltip": "O NIND Denoise ainda não suporta aceleração de GPU devido a limitações de dependência.",
       "initializing": "Inicializando...",
-      "methodAi": "NIND (IA - Melhor para RAW)",
+      "methodAi": "NIND (IA - Rápido)",
       "methodBm3d": "BM3D (Tradicional - Todos os formatos)",
       "methodLabel": "Método",
+      "methodNonlocal": "Nonlocal (IA - Melhor para RAW)",
       "openInEditor": "Abrir no Editor",
       "original": "Original",
       "panZoomEnabled": "Panorâmica e Zoom ativados",
@@ -1750,6 +1755,7 @@
         "toggle_library_exif": "Alternar sobreposição EXIF",
         "toggle_masks": "Alternar painel de Máscaras",
         "toggle_metadata": "Alternar painel de Metadados",
+        "toggle_patch_markers": "Mostrar/ocultar marcadores e máscara",
         "toggle_presets": "Alternar painel de Predefinições",
         "toggle_right_panel": "Alternar painel direito",
         "undo": "Desfazer ajuste",

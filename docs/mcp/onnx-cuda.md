@@ -1,19 +1,19 @@
 # Optional ONNX CUDA inference on Linux
 
-RapidRAW uses **CPU inference by default on every platform**. Linux MCP deployments can opt into CUDA for foreground masking, sky masking, depth estimation and AI denoise. This is separate from the Vulkan/Metal photo renderer: installing a GPU driver or CUDA does not enable ONNX acceleration by itself.
+RapidRAW uses **CPU inference by default on every platform without the pinned runtime pack below**. Linux MCP deployments can opt into CUDA for foreground masking, sky masking, depth estimation and AI denoise. This is separate from the Vulkan/Metal photo renderer: installing a GPU driver or CUDA does not enable ONNX acceleration by itself.
 
-This guide configures the native MCP process. The desktop application's bundled runtime selection is unchanged, and macOS needs no CUDA libraries, new Cargo feature or runtime replacement. Follow the [Linux SSH/Xvfb guide](remote-ssh.md) first for a server without a desktop environment.
+This guide configures the native MCP process. The desktop application's startup can also activate the runtime automatically (see [Install the pinned runtime pack](#install-the-pinned-runtime-pack)), and macOS needs no CUDA libraries, new Cargo feature or runtime replacement. Follow the [Linux SSH/Xvfb guide](remote-ssh.md) first for a server without a desktop environment.
 
 ## Provider policy
 
 Set these environment variables in the **server-side MCP launcher**, before starting Node and the native engine. Reconnect after changing them; an initialized session keeps its provider.
 
-| Variable                         | Default         | Meaning                                                                                                                                                                                                                                                     |
-| -------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RAPIDRAW_ONNX_PROVIDER`         | `cpu`           | `cpu` uses CPU; Linux `cuda` requires successful CUDA initialization for supported models; Linux `auto` tries CUDA and creates a CPU session if initialization fails. On other platforms, `auto` uses CPU and `cuda` returns an unsupported-platform error. |
-| `RAPIDRAW_ONNX_DEVICE_ID`        | `0`             | Nonnegative CUDA device index, read only when CUDA can be attempted.                                                                                                                                                                                        |
-| `RAPIDRAW_ONNX_GPU_MEM_LIMIT_MB` | Model-specific  | Optional positive integer overriding the arena limit of **each CUDA session**, in units of 1024 × 1024 bytes.                                                                                                                                               |
-| `ORT_DYLIB_PATH`                 | Bundled runtime | Absolute path to a compatible ONNX Runtime shared library. CUDA requires a GPU build with its matching provider libraries.                                                                                                                                  |
+| Variable                         | Default                                                                             | Meaning                                                                                                                                                                                                                                                     |
+| -------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RAPIDRAW_ONNX_PROVIDER`         | `cpu` (or `cuda` when the pinned pack below is installed and the variable is unset) | `cpu` uses CPU; Linux `cuda` requires successful CUDA initialization for supported models; Linux `auto` tries CUDA and creates a CPU session if initialization fails. On other platforms, `auto` uses CPU and `cuda` returns an unsupported-platform error. |
+| `RAPIDRAW_ONNX_DEVICE_ID`        | `0`                                                                                 | Nonnegative CUDA device index, read only when CUDA can be attempted.                                                                                                                                                                                        |
+| `RAPIDRAW_ONNX_GPU_MEM_LIMIT_MB` | Model-specific                                                                      | Optional positive integer overriding the arena limit of **each CUDA session**, in units of 1024 × 1024 bytes.                                                                                                                                               |
+| `ORT_DYLIB_PATH`                 | Bundled runtime                                                                     | Absolute path to a compatible ONNX Runtime shared library. CUDA requires a GPU build with its matching provider libraries.                                                                                                                                  |
 
 The CUDA policy is deliberately limited to the validated models:
 
@@ -31,7 +31,33 @@ Bundled SAM models contain quantized integer operators that execute on CPU withi
 
 These explicit compatibility choices also apply in `cuda` mode. For the four supported models, `cuda` reports an initialization error instead of silently selecting CPU. `auto` records its initialization fallback reason. **Neither mode retries failed inference on CPU**: an out-of-memory error during a run remains an error. `auto` also needs a usable core ONNX runtime; it does not replace a missing or incompatible library with another runtime.
 
-## Install a separate GPU runtime
+When the pinned runtime pack below is installed, an unset `RAPIDRAW_ONNX_PROVIDER` defaults to `cuda` and an unset `RAPIDRAW_NONLOCAL_PROVIDER` follows it; explicit values (including `cpu`) are always preserved and never promoted.
+
+## Install the pinned runtime pack
+
+The recommended Linux x86_64 path is the pinned NVIDIA runtime pack from the dedicated `nvidia-runtime-v1.0.0` GitHub release. It contains the official ONNX Runtime 1.30.0 CUDA 13 build, cuDNN 9.20.0 for CUDA 13, and CUDA 13.2/13.3 user-space libraries. It requires a compatible NVIDIA driver (supported baseline: 595.58.03 or newer) and nothing else: no root, no pip, no system CUDA toolkit, and no copying files into `/usr/lib`. This pack is x86_64 only; Linux ARM stays on CPU. The archive is ~1.1 GB; reserve ~3 GB free for download plus extraction.
+
+```sh
+RUNTIME_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/rapidraw/nvidia-runtime"
+PACK=RapidRAW-NVIDIA-CUDA13-ORT1.30-cuDNN9.20.0.48-linux-x86_64
+mkdir -p "$RUNTIME_ROOT"
+cd "$RUNTIME_ROOT"
+curl -fL --retry 2 \
+  -o "$PACK.tgz" \
+  "https://github.com/sheldonxxxx/RapidRAW/releases/download/nvidia-runtime-v1.0.0/$PACK.tgz"
+curl -fL --retry 2 \
+  -o "$PACK.tgz.sha256" \
+  "https://github.com/sheldonxxxx/RapidRAW/releases/download/nvidia-runtime-v1.0.0/$PACK.tgz.sha256"
+sha256sum -c "$PACK.tgz.sha256"
+tar -xzf "$PACK.tgz"
+ln -sfn "$PACK" current
+```
+
+The next normal RapidRAW launch discovers `current`, verifies the pack identity against the pinned release metadata, re-execs with the pack libraries, and defaults unset providers to CUDA. No launcher changes are needed.
+
+To use a different location without reinstalling, set `RAPIDRAW_NVIDIA_RUNTIME=/absolute/path/to/pack`. To disable the runtime and run on CPU, set `RAPIDRAW_NVIDIA_RUNTIME=off` or remove the `current` symlink; the versioned pack directory may be kept or deleted. To restore the original inference configuration permanently, uninstall as above.
+
+## Advanced: manual external GPU runtime
 
 The tested configuration uses Debian 13 x86-64, an NVIDIA RTX 5060 Ti with 16 GB VRAM, driver 595.58.03, CUDA 13.2, cuDNN 9.17 and the official **ONNX Runtime 1.30.0 CUDA 13** release. The runtime successfully served RapidRAW's existing C API version 22. Other combinations require their own validation; use the [official CUDA requirements](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements) when choosing dependencies.
 
@@ -53,12 +79,14 @@ ldd onnxruntime-linux-x64-gpu_cuda13-1.30.0/lib/libonnxruntime_providers_cuda.so
 
 Keep `libonnxruntime.so`, its versioned target, `libonnxruntime_providers_cuda.so` and `libonnxruntime_providers_shared.so` together from the same release. Preserve the archive's library symlinks. CUDA runtime, cuBLAS, cuRAND, NVIDIA driver libraries and matching cuDNN must be discoverable by the process. A successful `ldd` check covers direct dependencies; executing the models checks libraries loaded later. TensorRT is not used by this policy.
 
-Replace the bundled `ORT_DYLIB_PATH` line in the [SSH launcher](remote-ssh.md#launch-through-a-virtual-display) with the following, and add the provider selection:
+Replace the `ORT_DYLIB_PATH` handling in the [SSH launcher](remote-ssh.md#launch-through-a-virtual-display) with the following, and add the provider selection:
 
 ```sh
 export ORT_DYLIB_PATH=/absolute/rapidraw-runtimes/onnxruntime-linux-x64-gpu_cuda13-1.30.0/lib/libonnxruntime.so
 export RAPIDRAW_ONNX_PROVIDER=cuda
 ```
+
+A caller-supplied `ORT_DYLIB_PATH` remains supported when `RAPIDRAW_NVIDIA_RUNTIME` is unset or `off`: pre-start planning leaves the manual runtime untouched, never auto-discovers or re-execs a pack, and lets the existing native provider logic validate the manual runtime fail-closed (an unusable manual CUDA runtime still errors instead of silently falling back). If a `current` pack exists but the operator wants the manual runtime, set `RAPIDRAW_NVIDIA_RUNTIME=off` for explicit intent; an explicit `RAPIDRAW_NVIDIA_RUNTIME=/absolute/pack` always wins over manual `ORT_DYLIB_PATH`. Manual CUDA remains responsible for matching CUDA/cuDNN library search paths.
 
 Set these only for the Linux MCP process. Keep the bundled runtime files intact; this setup requires no changes to `Cargo.toml`, `Cargo.lock`, model files or macOS installation. If dependencies are installed in a nonstandard directory, add only that verified directory to the launcher's `LD_LIBRARY_PATH`.
 

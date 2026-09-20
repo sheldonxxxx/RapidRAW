@@ -43,6 +43,8 @@ src-tauri/libs/
 # bench/replay.js result dumps
 bench/out/
 bench/enhance/__pycache__/
+# Apple RAW 9 standalone probe artifacts (renders/receipts/binaries)
+bench/raw9/out/
 
 # Local photo experiments and optional MCP runtime state
 /output/
@@ -56,3 +58,5 @@ mcp/test-output/
 
 
 nonlocal-onnx-evidence
+
+bench/
