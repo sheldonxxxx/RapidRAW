@@ -150,7 +150,7 @@ function jsonResource(uri: URL, data: JsonObject, requestId: string | number) {
 
 export function createServer(bridge: NativeBridge, jobs?: OperationJobs): McpServer {
   const server = new McpServer(
-    { name: 'rapidraw-mcp-server', version: '0.1.1' },
+    { name: 'rapidraw-mcp-server', version: '0.2.0' },
     {
       instructions:
         'Nondestructive local photo editing through RapidRAW. Read rapidraw://workflow and rapidraw_capabilities(detail:"overview"), then request needed schema_paths. Inspect preview images and detail crops, then save and verify exports. Source files remain unchanged. State asset descriptors resolve against live session state when passed back with their session_id. Every tool returns structured data; preview tools also return native image blocks.',

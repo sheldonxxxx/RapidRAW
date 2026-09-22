@@ -7,13 +7,13 @@ This npm package is ONLY the Node stdio MCP host. It does not contain, install, 
 Run the pinned host directly from the registry without cloning the repository:
 
 ```sh
-npx -y @sheldonxxxx/rapidraw-mcp@0.1.0 --binary /absolute/path/to/rapidraw-mcp --workspace /absolute/path/to/workspace
+npx -y @sheldonxxxx/rapidraw-mcp@0.2.0 --binary /absolute/path/to/rapidraw-mcp --workspace /absolute/path/to/workspace
 ```
 
 Or install the pinned package once and run it by name:
 
 ```sh
-npm install -g @sheldonxxxx/rapidraw-mcp@0.1.0
+npm install -g @sheldonxxxx/rapidraw-mcp@0.2.0
 rapidraw-mcp --binary /absolute/path/to/rapidraw-mcp --workspace /absolute/path/to/workspace
 ```
 
@@ -21,7 +21,7 @@ Both `--binary` and `--workspace` must be absolute paths; there is no automatic 
 
 ## Normal setup
 
-For installation, client registration, and connection verification, follow the canonical [agent setup guide](https://github.com/sheldonxxxx/RapidRAW/blob/main/AGENT_SETUP.md): install the matching fork native package from this fork's releases (upstream packages do not include this fork's MCP bridge), configure the pinned npm host above in your MCP client, then verify with `rapidraw_capabilities` and `rapidraw_models`. The host package reports `0.1.0`, while the native bridge reports `1.2.0`; these component versions are independent of the app release version. The fork's new application identifier separates preferences and model storage from upstream; it does not migrate them automatically.
+For installation, client registration, and connection verification, follow the canonical [agent setup guide](https://github.com/sheldonxxxx/RapidRAW/blob/main/AGENT_SETUP.md): install the matching fork native package from this fork's releases (upstream packages do not include this fork's MCP bridge), configure the pinned npm host above in your MCP client, then verify with `rapidraw_capabilities` and `rapidraw_models`. The host package reports `0.2.0`, while the native bridge reports `1.2.0`; these component versions are independent of the app release version. The fork's new application identifier separates preferences and model storage from upstream; it does not migrate them automatically.
 
 The [RapidRAW MCP skill](https://github.com/sheldonxxxx/RapidRAW/blob/main/skills/rapidraw-mcp/SKILL.md) provides agent guidance for editing, mask coordinates, derived sessions, recovery, and verified exports. Install it with `npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp`. Pair it with your own brief or [Lightweft](https://github.com/sheldonxxxx/lightweft) for photographic direction, shared review and personal style exploration.
 
