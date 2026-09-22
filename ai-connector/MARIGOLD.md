@@ -44,7 +44,9 @@ Check `/depth/capabilities` on the connector. It checks required nodes, compatib
 
 ## Use it
 
-**Desktop:** open Settings → Processing → AI and enable **Optional Marigold depth**. Use **Check Marigold setup**, then choose **Add New Mask → Marigold Depth** in the mask panel. An existing depth mask can also use **Generate with Marigold**. The shared connector address does not require changing the selected generative AI provider.
+**Desktop:** open Settings → Processing → AI and enable **Depth Selection**. Use **Check depth setup**, then choose **Add New Mask → Depth Selection** in the mask panel. An existing depth mask can also use **Analyse depth**. The shared connector address does not require changing the selected generative AI provider.
+
+Choose **Near**, **Middle** or **Far** for a starting selection, refine its range, then use ordinary local adjustments. See the [photographer guide](../docs/creative-selections.md#depth-selection).
 
 Choose **Visualize depth** in a depth component's properties to inspect its saved full-frame map before rotation and crop. The viewer includes a far-to-near legend, Fit, 100% and zoom controls. It works with built-in and Marigold maps without another GPU request or changes to the edit.
 

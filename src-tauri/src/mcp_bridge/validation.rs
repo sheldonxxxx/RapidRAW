@@ -471,6 +471,15 @@ fn mask_schema(patch: bool) -> Value {
             "profile":{"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
             "megapixels":number(0.0625,16.0)
         }), &[]));
+        props.insert(
+            "removalOptions".into(),
+            object(
+                json!({
+                    "expandPixels":integer(0,256), "featherPixels":integer(0,256)
+                }),
+                &[],
+            ),
+        );
         props.insert("isLoading".into(), json!({"const":false}));
         props.insert("patchData".into(),object(json!({
             "color":image_asset(),"mask":image_asset(),"offsetX":integer(0,100000),"offsetY":integer(0,100000),"width":integer(1,100000),"height":integer(1,100000),"isSrgbEncoded":boolean(),

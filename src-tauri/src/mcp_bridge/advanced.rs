@@ -684,6 +684,27 @@ impl Bridge {
             return Err("INVALID_ARGUMENT: unknown retouch mode".into());
         }
         let generation_options = generation_options(params, mode)?;
+        let removal_options = params
+            .get("removal_options")
+            .map(|value| {
+                let options: crate::inpainting::removal::RemovalOptions =
+                    serde_json::from_value(value.clone())
+                        .map_err(|error| format!("INVALID_ARGUMENT: removal_options: {error}"))?;
+                options.validate()?;
+                Ok::<_, String>(options)
+            })
+            .transpose()?;
+        let preview_only = match params.get("preview_only") {
+            None => false,
+            Some(value) => value
+                .as_bool()
+                .ok_or("INVALID_ARGUMENT: preview_only must be boolean")?,
+        };
+        if (removal_options.is_some() || preview_only) && !["inpaint", "generative"].contains(&mode)
+        {
+            return Err("INVALID_ARGUMENT: removal_options and preview_only require inpaint or generative mode".into());
+        }
+
         let submasks = params["sub_masks"]
             .as_array()
             .ok_or("INVALID_ARGUMENT: sub_masks must be an array")?;
@@ -703,6 +724,9 @@ impl Bridge {
         if let Some(options) = &generation_options {
             patch["generationOptions"] = json!(options);
         }
+        if let Some(options) = &removal_options {
+            patch["removalOptions"] = json!(options);
+        }
         let test_mask = json!({"id":id,"name":name,"visible":true,"invert":false,"adjustments":{},"subMasks":submasks});
         validation::validate_adjustments(&json!({"masks":[test_mask]}), session.dimensions)?;
         let source = if ["clone", "heal"].contains(&mode) {
@@ -717,10 +741,10 @@ impl Bridge {
         } else {
             (0.0, 0.0)
         };
-        if mode == "inpaint" {
+        if mode == "inpaint" && !preview_only {
             self.ensure_models("inpaint", false).await?;
         }
-        if mode == "generative" {
+        if mode == "generative" && !preview_only {
             let settings = crate::app_settings::load_settings(self.handle.clone())
                 .map_err(|e| e.to_string())?;
             match settings.ai_provider.as_deref() {
@@ -742,7 +766,22 @@ impl Bridge {
                     "INVALID_ARGUMENT: cloud generative retouch requires a request token".into(),
                 );
             }
-            if params["prompt"].as_str().is_none_or(str::is_empty) {
+            let prompt_free_removal = generation_options
+                .as_ref()
+                .and_then(|options| options.profile.as_deref())
+                == Some("qwen21-remove-v1");
+            if prompt_free_removal
+                && params["prompt"]
+                    .as_str()
+                    .is_some_and(|text| !text.trim().is_empty())
+            {
+                return Err("INVALID_ARGUMENT: Qwen Remove does not accept a text prompt".into());
+            }
+            if !prompt_free_removal
+                && params["prompt"]
+                    .as_str()
+                    .is_none_or(|text| text.trim().is_empty())
+            {
                 return Err("INVALID_ARGUMENT: generative retouch requires a prompt".into());
             }
         }
@@ -774,6 +813,7 @@ impl Bridge {
                     definition,
                     adjustments,
                     mode == "inpaint",
+                    Some(preview_only),
                     params["token"].as_str().map(str::to_string),
                     self.handle.clone(),
                     state,
@@ -791,6 +831,13 @@ impl Bridge {
         )?;
         if mask_statistics(&bitmap)["empty"] == true {
             return Err("EMPTY_MASK: Retouch generated no affected pixels".into());
+        }
+        if preview_only {
+            return Ok(json!({"session_id":session.id,"revision":session.revision,
+                "preview_only":true,"changed":false,"remote_generation":false,
+                "mask_statistics":mask_statistics(&bitmap),"bounds":data["bounds"],
+                "coordinate_space":"unoriented source pixels before crop",
+                "image":image_reply(&bitmap)?,"removal_options":removal_options}));
         }
         let generation_receipt = data.get("generation").cloned();
         patch["patchData"] = data;
@@ -811,6 +858,9 @@ impl Bridge {
         result["remote_generation"] = json!(mode == "generative");
         if let Some(generation) = generation_receipt {
             result["generation"] = generation;
+        }
+        if let Some(options) = removal_options {
+            result["removal_options"] = json!(options);
         }
         if let Some(options) = generation_options {
             result["generation_options"] = json!(options);

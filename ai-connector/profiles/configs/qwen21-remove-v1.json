@@ -1,0 +1,15 @@
+{
+  "id": "qwen21-remove-v1",
+  "family": "qwen21",
+  "model": "qwen_image_2.1_int8_convrot.safetensors",
+  "text_encoder": "qwen3vl_8b_int8_convrot.safetensors",
+  "vae": "qwen_image_2.1_vae_bf16.safetensors",
+  "steps": 30,
+  "cfg": 1,
+  "megapixels": 1,
+  "mode": "context",
+  "task": "remove",
+  "sampler": "euler",
+  "scheduler": "simple",
+  "dimension_multiple": 32
+}

@@ -23,7 +23,7 @@ export default function MarigoldDepthSettings({
   return (
     <section className="mt-6 space-y-3 rounded-lg border border-border-color p-4">
       <Switch
-        label={t('settings.marigold.enable', { defaultValue: 'Optional Marigold depth' })}
+        label={t('settings.marigold.enable', { defaultValue: 'Depth Selection' })}
         checked={enabled}
         onChange={(value) => {
           void onChange({ ...settings, marigoldDepthEnabled: value });
@@ -32,7 +32,7 @@ export default function MarigoldDepthSettings({
       <p className="text-sm text-text-secondary">
         {t('settings.marigold.description', {
           defaultValue:
-            'Create depth selections with Marigold. Uses your AI connector and ComfyUI; the connector queues model workflows on your GPU. Saved masks work offline.',
+            'Select nearer or more distant parts of a photograph for local adjustments. Powered by Marigold through your AI connector and ComfyUI. Saved analysis works offline.',
         })}
       </p>
       {enabled && (
@@ -66,7 +66,7 @@ export default function MarigoldDepthSettings({
               setStatus('');
               try {
                 await invoke('test_marigold_depth_connection', { address: settings.aiConnectorAddress });
-                setStatus(t('settings.marigold.ready', { defaultValue: 'Marigold is ready.' }));
+                setStatus(t('settings.marigold.ready', { defaultValue: 'Depth Selection is ready.' }));
               } catch (error) {
                 setStatus(String(error));
               } finally {
@@ -76,7 +76,7 @@ export default function MarigoldDepthSettings({
           >
             {checking
               ? t('settings.marigold.checking', { defaultValue: 'Checking models…' })
-              : t('settings.marigold.check', { defaultValue: 'Check Marigold setup' })}
+              : t('settings.marigold.check', { defaultValue: 'Check depth setup' })}
           </button>
           <p role="status" className="text-sm break-words">
             {status}

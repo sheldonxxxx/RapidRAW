@@ -4,6 +4,27 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Automatic repair colour matching
+
+- Match small generated colour differences to surrounding source pixels before RapidRAW composites Klein and Qwen repairs. Preserve the original mask and record skipped corrections in generation receipts.
+- On uniform grainy surfaces, let Qwen repairs borrow fine texture from a nearby source area that passes colour and texture checks. Record the decision in the private receipt.
+
+### Qwen Image 2.1 workflow
+
+- Add a discoverable Qwen Image 2.1 connector profile with 1 MP and 2 MP options, native reference conditioning and a 30-step sampling starting default. Keep the existing default workflow.
+- Add a separate Qwen Remove workflow for brush-selected cleanup without a typed prompt. Preserve literal prompts in the ordinary Qwen workflow and record the removal instruction in the private receipt.
+
+### Native removal coverage
+
+- Add opt-in source-pixel removal expansion and outward feathering to desktop and MCP local/generative retouch. Apply subtractive and intersection protection after expansion; preserve existing masks when controls are omitted or zero.
+- Preview the effective mask without generating or changing the session. Save removal settings with native patches for regeneration, recipe validation and portable sessions.
+
+### Photographer-facing light, colour and depth tools
+
+- Present optional Marigold analysis as Shape Light, Surface Colour and Depth Selection, with a [photographer guide](docs/creative-selections.md) and matching setup labels.
+- Add light-direction buttons, a strength control and a gentle starting edit; pick surface colours on the photograph through crop, rotation and flips; add Near/Middle/Far depth starting ranges and a direct brush-intersection action for light and colour.
+- Keep technical light/colour maps under Analysis details and recolouring optional. Preserve existing saved maps, MCP parameters and offline rendering.
+
 ### Desktop mask geometry
 
 - Preserve existing local and AI-backed mask placement when rotating, fine-rotating, flipping or straightening an image.

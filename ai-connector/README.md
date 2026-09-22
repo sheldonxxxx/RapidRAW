@@ -10,7 +10,7 @@ See the [ComfyUI integration guide](../docs/comfyui.md) for tested revisions, sh
 
 - Python 3.11 or newer, and a working [ComfyUI installation](https://github.com/Comfy-Org/ComfyUI).
 - Run the connector on the ComfyUI host, under the same operating-system user. It writes source images and inference masks into ComfyUI's input directory. The connector itself needs no PyTorch or GPU packages.
-- ComfyUI must include `Flux2Scheduler`, `ReferenceLatent`, `FluxKVCache`, `TextEncodeBooguEdit`, and the built-in image, mask, loader and sampler nodes used by your enabled profiles. The supplied graphs were checked against [ComfyUI revision c75d8c9](https://github.com/Comfy-Org/ComfyUI/tree/c75d8c966c29cb0392259af791f43373315b72db); older builds may lack these nodes. No custom node package is needed for these examples.
+- ComfyUI must include `Flux2Scheduler`, `ReferenceLatent`, `FluxKVCache`, `TextEncodeBooguEdit`, and the built-in image, mask, loader and sampler nodes used by your enabled profiles. The supplied graphs were checked against [ComfyUI revision c75d8c9](https://github.com/Comfy-Org/ComfyUI/tree/c75d8c966c29cb0392259af791f43373315b72db); older builds may lack these nodes. No custom node package is needed for the Klein and Boogu examples. Qwen Image 2.1 additionally needs `TextEncodeQwenImage21` and `QwenImage21Cache` (see [Qwen Image 2.1](#qwen-image-21)).
 - Download the weights for each profile you enable. Weights are separate downloads with their own license terms.
 
 | Profile          | Diffusion model in `models/diffusion_models/`                                                                                                   | Encoder in `models/text_encoders/`                                                                                      | VAE in `models/vae/`                                                                                                               |
@@ -55,11 +55,11 @@ The service has no authentication or TLS; keep the default loopback binding and 
 
 For an opt-in depth-mask workflow on the same connector and ComfyUI instance, see [Marigold depth setup](MARIGOLD.md). It has separate enablement and does not change the default generative profile.
 
-[profiles/profiles.json](profiles/profiles.json) advertises four examples: Klein 4B, Klein 4B with closer context, Klein 9B KV and Boogu Edit Turbo. Remove entries whose models are unavailable and keep `default_profile` set to an enabled entry. Restart the connector after changing the catalog or a configuration file.
+[profiles/profiles.json](profiles/profiles.json) advertises seven examples: Klein 4B, Klein 4B with closer context, Klein 9B KV, Boogu Edit Turbo, an experimental Klein 4B native edit, Qwen Image 2.1 and Qwen Image 2.1 Remove. Remove entries whose models are unavailable and keep `default_profile` set to an enabled entry. Restart the connector after changing the catalog or a configuration file.
 
 For practical selection and prompting, use the [AI editing workflow guide](../docs/ai-editing-workflows.md). It starts with Klein 4B at 1 MP and distinguishes these included profiles from research-only text and super-resolution workflows.
 
-Klein 4B exposes 1 and 2 MP generation budgets; the 9B KV and Boogu examples expose 1 MP. These choices describe the supplied profiles, not hard model limits. One MP here means a target area of 1024 × 1024 pixels, rounded to dimensions divisible by 16. The selection bounds and context margin determine the aspect ratio. The default context margin is half the selection's longest side, with a 64-pixel minimum; the closer-context example uses one tenth.
+Klein 4B, the experimental Klein native edit and both Qwen Image 2.1 profiles expose 1 and 2 MP generation budgets; the 9B KV and Boogu examples expose 1 MP. These choices describe the supplied profiles, not hard model limits. One MP here means a target area of 1024 × 1024 pixels, rounded to dimensions divisible by 16. The selection bounds and context margin determine the aspect ratio. The default context margin is half the selection's longest side, with a 64-pixel minimum; the closer-context example uses one tenth.
 
 The generated crop is resized back to the native context dimensions. This preserves output canvas size and alignment; it does not recover original RAW detail in regenerated pixels. Inspect fine textures and boundaries at native size. Klein uses masked latent sampling with a reference image; Boogu's example regenerates the context, then RapidRAW reveals only the original selection. Klein's conditioning uses a zeroed negative branch, so negative prompt text has no effect for these Klein profiles. Boogu receives the negative prompt.
 
@@ -85,4 +85,20 @@ python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-Tests use synthetic pixels and fixed graph fixtures. They cover all four profile graphs, native coordinates and single mask application, multipart upload/retry behavior, cache conflicts, request validation and receipts for successful and failed generation. They do not download weights or use a GPU; a successful test run is not a visual quality evaluation.
+Tests use synthetic pixels and fixed graph fixtures. They cover the original four profile graph fixtures, the retained Klein native-edit variant and the Qwen Image 2.1 graph, native coordinates and single mask application, multipart upload/retry behavior, cache conflicts, request validation and receipts for successful and failed generation. They do not download weights or use a GPU; a successful test run is not a visual quality evaluation.
+
+## Qwen Image 2.1
+
+The `qwen21-v1` profile appears as **Qwen Image 2.1** in the workflow selector and supports 1 MP and 2 MP context generation. It uses 30 steps, CFG 1, Euler/simple, one local context reference and the native Qwen latent output. The connector rounds generation dimensions to multiples of 32. RapidRAW composites the result through the removal mask. The 30-step value is a starting default; it does not guarantee preserved structure inside the selected area or prevent broad tonal bands in skies. Inspect the repair at native size.
+
+For a quick removal, select **Qwen Image 2.1 · Remove** and brush the object. This separate workflow supplies a general removal instruction itself, so no text prompt is needed; the ordinary Qwen workflow continues to use the entered prompt verbatim. The connector records the instruction in its private receipt and returns only the selected-area patch. The mask limits the final composite but is not a native Qwen inpainting mask, so an unwanted object can still be regenerated. Inspect the subject and repair boundary at native size; use a scene-specific edit prompt or a different repair when it fails.
+
+Install `qwen_image_2.1_int8_convrot.safetensors` in `models/diffusion_models`, `qwen3vl_8b_int8_convrot.safetensors` in `models/text_encoders`, and `qwen_image_2.1_vae_bf16.safetensors` in `models/vae`. ComfyUI must provide `TextEncodeQwenImage21` and `QwenImage21Cache`. Restart the connector after updating its profile catalog, then refresh the workflow list in RapidRAW. Existing default profiles remain unchanged.
+
+## Automatic repair colour matching
+
+After generation, the connector matches small background colour differences at the selection boundary before returning the repair. It estimates a smooth correction from unselected source pixels, without sampling source pixels inside the selection or changing the selection. RapidRAW still applies the original mask once. This runs automatically for generative profiles, including Klein and Qwen. Existing saved edits require regeneration to receive the correction.
+
+Full-image selections without surrounding reference pixels and large context colour changes skip matching. The private receipt records whether matching ran or was skipped. This reduces colour seams; it does not repair incorrect generated structure, incomplete selections or texture mismatches, and does not guarantee one-pass success for every photograph.
+
+Qwen repairs also borrow fine detail from a nearby unselected source area when the selection is surrounded by a uniform, grainy surface and a donor passes colour and texture checks. This can reduce a smooth patch left on asphalt. It preserves the generated broad shapes and colour, and skips areas that fail those checks. The private receipt records the donor position or skip reason. Inspect for copied marks or repeated texture: the checks can miss small structures. This step cannot fix a mask that misses part of the object or a generated repair that changes important structure.

@@ -14,14 +14,18 @@ Read the live retouch schema and `get_engine_settings`. Native `capabilities` de
 
 Current fork builds accept `generation_options` with `profile`, `megapixels` and `seed`. Use advertised profile IDs and resolutions. The included Comfy Connector advertises:
 
-| Profile                | Use                                                                             | Supported generation MP |
-| ---------------------- | ------------------------------------------------------------------------------- | ----------------------- |
-| `klein4-v1`            | Starting point for general removal and creative replacement                     | 1, 2; default 1         |
-| `klein4-tight2mp`      | Compare closer context for a small target when surrounding structure still fits | 1, 2; default 2         |
-| `klein9-kv`            | A bounded alternative when 4B misses the requested change                       | 1                       |
-| `boogu-turbo4-context` | A different reconstruction alternative                                          | 1                       |
+| Profile                | Use                                                                                 | Supported generation MP |
+| ---------------------- | ----------------------------------------------------------------------------------- | ----------------------- |
+| `klein4-v1`            | Starting point for general removal and creative replacement                         | 1, 2; default 1         |
+| `klein4-tight2mp`      | Compare closer context for a small target when surrounding structure still fits     | 1, 2; default 2         |
+| `klein9-kv`            | A bounded alternative when 4B misses the requested change                           | 1                       |
+| `boogu-turbo4-context` | A different reconstruction alternative                                              | 1                       |
+| `qwen21-v1`            | Image-guided editing with a literal text prompt                                     | 1, 2                    |
+| `qwen21-remove-v1`     | Brush-selected removal with a connector-supplied general instruction; omit `prompt` | 1, 2                    |
 
-Deployments can change this catalog. The package supports Klein and Boogu workflow families; arbitrary profile names do not add another architecture. Qwen/Z-Image text editing and neural super-resolution are not bundled profiles. `install_model` cannot install connector workflows.
+Deployments can change this catalog. The package supports Klein, Boogu and Qwen Image 2.1 workflow families; arbitrary profile names do not add another architecture. Z-Image editing and neural super-resolution are not bundled profiles. `install_model` cannot install connector workflows.
+
+For `qwen21-remove-v1`, omit the prompt. The connector supplies a general removal instruction while the brush mask limits final placement. Qwen does not receive the brush as a native inpainting mask and can still redraw the object, so inspect the complete repair and use a scene-specific prompt in `qwen21-v1` or another method if needed. The ordinary Qwen profile uses the prompt exactly as sent.
 
 Explicit options require a capable AI Connector and fail before image upload if unsupported. Cloud and local inpaint do not accept them. Legacy operation is possible with options omitted only when using provider defaults matches the user's intent; do not silently drop requested settings. Report a missing profile or discovery failure before dependent generation.
 
@@ -49,6 +53,19 @@ For replacement, cover the original object and allow room for the new silhouette
 For clothing, inspect collar, sleeve and hem transitions plus pose, skin and retained embroidery. For backgrounds, review subject and hair boundaries before generation; whole-frame selection permits identity and foreground reconstruction. For weather, distinguish sky-only changes from scene-wide changes to illumination, shadows, wet surfaces and reflections. A full-frame selection has no outside-mask preservation test; inspect structural and semantic fidelity instead.
 
 Separate instruction success from integration quality. Correct object category does not establish orientation, count, scale or pose. Inspect retained content inside an expanded mask, not only unselected pixels. When comparing mask sizes, fix source, prompt, seed, profile and MP, and record actual context geometry: production context is mask-derived, so the crop and effective target resolution can also change. MCP has no explicit context-box option. Do not describe a fixed-crop research comparison as identical to production retouch.
+
+## Native removal coverage and protection
+
+Check that the live retouch schema exposes `removal_options` and `preview_only` before using this workflow; older native builds require an update.
+
+`retouch` in `inpaint` or `generative` mode accepts optional `removal_options`:
+`{"expandPixels": 12, "featherPixels": 24}`. Each value is an integer from 0 to 256 in source pixels. Omitted options or two zero values preserve the existing brush mask exactly. Choose values from the photograph and defect; these example values are not a universal preset.
+
+With nonzero controls, additive components define the target. Pixels with at least 50% alpha form a fully replaced core. Expansion grows that core, and the blend width adds a smooth outward transition without weakening the core. Existing softer alpha is retained where stronger. Subtractive components and intersections constrain the final mask after expansion, regardless of component order; use them to protect retained subject or structure. Inverted containers are rejected with nonzero controls. Existing component coordinates follow the normal oriented, uncropped mask contract; pixel widths are applied after conversion to source coordinates.
+
+First call `retouch` with the intended mode, `sub_masks`, `removal_options`, and `preview_only: true`. This returns the effective mask, bounds, and current session revision without generation, model downloads, or a saved edit. A prompt and configured provider are not required for this preview. Inspect it against the source, adjust coverage/protection, then submit the same selection with `preview_only` omitted and the current revision. Preview images may be reduced to 1200 pixels; use returned source dimensions and bounds when assessing scale. Generation returns the effective mask preview and persists the options with the patch. Desktop removal controls use the same native calculation and provide a mask preview.
+
+Keep candidate generation on independent forks of the same saved source version. Diagnose remaining failures separately: revise coverage for remnants; retry generation for missing or malformed retained structure; use native healing or a verified texture donor for sound content with mismatched texture. Do not apply experimental wire fitting, mixed-gradient blending, or unconditional smoothing as general removal defaults. Native mask controls do not automatically identify the object, select a donor, or guarantee photographic quality.
 
 ## Generate and compare without compounding edits
 

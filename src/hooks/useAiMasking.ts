@@ -355,7 +355,7 @@ export function useAiMasking() {
       current.patchesSentToBackend.delete(subMaskId);
       updateSubMask(subMaskId, { parameters: { ...part.parameters, ...generated } });
     } catch (error) {
-      toast.error(`Marigold ${kind} failed: ${error}`);
+      toast.error(`${kind === 'normals' ? 'Shape Light' : 'Surface Colour'} analysis failed: ${error}`);
     } finally {
       pendingMarigold.delete(subMaskId);
       setEditor({ isGeneratingAiMask: false });
@@ -405,7 +405,7 @@ export function useAiMasking() {
         current.patchesSentToBackend.delete(subMaskId);
         updateSubMask(subMaskId, { parameters: { ...subMask.parameters, ...generated } });
       } catch (error) {
-        toast.error(`Marigold depth failed: ${error}`);
+        toast.error(`Depth analysis failed: ${error}`);
       } finally {
         pendingMarigold.delete(subMaskId);
         setEditor({ isGeneratingAiMask: false });

@@ -148,6 +148,7 @@ import { useAiMasking } from '../../../hooks/useAiMasking';
 import { useGenerationCapabilities } from '../../../hooks/useGenerationCapabilities';
 import { generationDraft, resolveGenerationOptions, type GenerationDraft } from '../../../utils/generationOptions';
 import GenerationControls, { GenerationResultInfo } from './GenerationControls';
+import RemovalControls from './RemovalControls';
 import EnhancementPanel from './EnhancementPanel';
 
 export const STANDALONE_MASK_TYPES: Mask[] = [Mask.Clone, Mask.Heal, Mask.Liquify, Mask.Retouch];
@@ -2068,6 +2069,11 @@ function SettingsPanel({
   const draftReady = draftState.key === draftKey;
   const draft = draftReady ? draftState.value : generationDraft();
   const generationSelection = resolveGenerationOptions(capabilityState, draft);
+  const promptFreeRemoval =
+    !useFastInpaint &&
+    capabilityState.status === 'ready' &&
+    capabilityState.data?.profiles.find((entry) => entry.id === generationSelection.options?.profile)
+      ?.requiresPrompt === false;
   const updateGenerationDraft = (value: GenerationDraft) => setDraftState({ key: draftKey, value });
 
   useEffect(() => {
@@ -2115,7 +2121,12 @@ function SettingsPanel({
       (!useFastInpaint && (!draftReady || generationSelection.error))
     )
       return;
-    onGenerativeReplace(container.id, prompt, useFastInpaint, useFastInpaint ? undefined : generationSelection.options);
+    onGenerativeReplace(
+      container.id,
+      promptFreeRemoval ? '' : prompt,
+      useFastInpaint,
+      useFastInpaint ? undefined : generationSelection.options,
+    );
   };
 
   const handleToggleSection = (section: 'generative' | 'properties') =>
@@ -2156,7 +2167,9 @@ function SettingsPanel({
                 ? t('editor.ai.settings.quickEraseDesc')
                 : useFastInpaint
                   ? t('editor.ai.settings.fastInpaintDesc')
-                  : t('editor.ai.settings.generativeDesc')}
+                  : promptFreeRemoval
+                    ? t('editor.ai.settings.removeModeDesc')
+                    : t('editor.ai.settings.generativeDesc')}
             </Text>
 
             <div>
@@ -2181,22 +2194,24 @@ function SettingsPanel({
                     initial={{ opacity: 0, height: 0, marginTop: 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <div className="flex items-center gap-2">
-                      <Input
-                        className="grow"
-                        disabled={isGeneratingAi || displayContainer.isLoading}
-                        onChange={(e) => {
-                          setPrompt(e.target.value);
-                        }}
-                        onBlur={() => isActive && updateContainer(container.id, { prompt })}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleGenerateClick();
-                        }}
-                        placeholder={t('editor.ai.settings.placeholder')}
-                        type="text"
-                        value={prompt}
-                      />
-                    </div>
+                    {!promptFreeRemoval && (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          className="grow"
+                          disabled={isGeneratingAi || displayContainer.isLoading}
+                          onChange={(e) => {
+                            setPrompt(e.target.value);
+                          }}
+                          onBlur={() => isActive && updateContainer(container.id, { prompt })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleGenerateClick();
+                          }}
+                          placeholder={t('editor.ai.settings.placeholder')}
+                          type="text"
+                          value={prompt}
+                        />
+                      </div>
+                    )}
                     <div className="mt-3">
                       <GenerationControls
                         state={capabilityState}
@@ -2231,9 +2246,18 @@ function SettingsPanel({
                   ? t('editor.ai.settings.generating')
                   : useFastInpaint
                     ? t('editor.ai.settings.inpaintSelectionButton')
-                    : t('editor.ai.settings.generateWithAiButton')}
+                    : promptFreeRemoval
+                      ? t('editor.ai.settings.removeSelectionButton')
+                      : t('editor.ai.settings.generateWithAiButton')}
               </span>
             </Button>
+            {container && (
+              <RemovalControls
+                patch={container}
+                disabled={isGeneratingAi || displayContainer.isLoading}
+                onChange={(removalOptions) => updateContainer(container.id, { removalOptions })}
+              />
+            )}
             <GenerationResultInfo generation={displayContainer.patchData?.generation} />
           </div>
         </CollapsibleSection>

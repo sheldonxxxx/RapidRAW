@@ -8,16 +8,16 @@ These fork features require a [current source build](desktop-guide.md#build-this
 
 ## What is available
 
-| Capability                                              | Integration                                                    | Starting choice                                                                |
-| ------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Removal, recolouring, replacement and instruction edits | Desktop AI panel and MCP generative retouch                    | Klein 4B, 1 MP                                                                 |
-| Alternative generative profiles                         | Same connector and selector                                    | Closer-context Klein 4B, Klein 9B KV or Boogu Turbo for a specific failed edit |
-| Marigold depth masks                                    | Optional desktop/MCP provider, disabled by default             | Q4 shared-GPU profile                                                          |
-| Saved depth visualization                               | Desktop depth-component properties, built-in and Marigold maps | Visualize depth; no new inference                                              |
+| Capability                                              | Integration                                                    | Starting choice                                                                                |
+| ------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Removal, recolouring, replacement and instruction edits | Desktop AI panel and MCP generative retouch                    | Klein 4B, 1 MP                                                                                 |
+| Alternative generative profiles                         | Same connector and selector                                    | Closer-context Klein 4B, Klein 9B KV, Boogu Turbo or Qwen Image 2.1 for a specific failed edit |
+| Marigold depth masks                                    | Optional desktop/MCP provider, disabled by default             | Q4 shared-GPU profile                                                                          |
+| Saved depth visualization                               | Desktop depth-component properties, built-in and Marigold maps | Visualize depth; no new inference                                                              |
 
-Configuring the AI connector does not remove local depth. Enable **Optional Marigold depth** separately, then choose **Add New Mask → Marigold Depth**. Existing components also offer **Generate with Marigold**. See the [depth guide](../ai-connector/MARIGOLD.md#use-it) for setup, MCP arguments and saved-map behavior.
+Configuring the AI connector does not remove local depth. Enable **Depth Selection** separately, then choose **Add New Mask → Depth Selection**. Existing components also offer **Analyse depth**. See the [depth guide](../ai-connector/MARIGOLD.md#use-it) for setup, MCP arguments and saved-map behavior.
 
-Enable **Optional Marigold directional light and colour** separately for [normals dodge/burn and albedo colour masks](../ai-connector/SURFACES.md#use-in-rapidraw). They reuse this connector and ComfyUI, with saved RGB16 maps, desktop/MCP controls and native exports.
+Enable **Shape Light and Surface Colour** separately for [normals dodge/burn and albedo colour masks](../ai-connector/SURFACES.md#use-in-rapidraw). They reuse this connector and ComfyUI, with saved RGB16 maps, desktop/MCP controls and native exports.
 
 ## Tested versions
 
@@ -34,7 +34,7 @@ The shared-server regression does not requalify every generative profile on the 
 
 **Measured hardware/runtime:** Linux, NVIDIA RTX 5060 Ti, 16,311 MiB reported VRAM, driver 595.58.03 and PyTorch 2.12.0+cu130. The Marigold environment used comfy-kitchen 0.2.34, comfy-aimdo 0.5.3, frontend 1.52.7 and workflow templates 0.11.60. The CUDA suffix describes the PyTorch build; it is separate from RapidRAW's ONNX runtime.
 
-The four generative profiles use native ComfyUI nodes. Marigold additionally requires [ComfyUI-GGUF at `6ea2651e7df66d7585f6ffee804b20e92fb38b8a`](https://github.com/city96/ComfyUI-GGUF/tree/6ea2651e7df66d7585f6ffee804b20e92fb38b8a) and the [bundled optional sampler](../ai-connector/comfy-nodes/rapidraw_marigold/__init__.py). Marigold task weights were verified from Comfy-Org/marigold-v2-0 revision `70e2127d026c8f6b62d8049b73f5392e1e81ebfa`, and the Q4 backbone from QuantStack/Qwen-Image-Edit-2509-GGUF revision `84a3006979126011422eeeefe0c9485ddf431ef5`. Exact filenames, SHA-256 values and source links are in the [model manifest](../ai-connector/workflows/models.json).
+The Klein and Boogu generative profiles use native ComfyUI nodes. Qwen Image 2.1 additionally requires `TextEncodeQwenImage21` and `QwenImage21Cache` (see its [model and node requirements](../ai-connector/README.md#qwen-image-21)). Marigold additionally requires [ComfyUI-GGUF at `6ea2651e7df66d7585f6ffee804b20e92fb38b8a`](https://github.com/city96/ComfyUI-GGUF/tree/6ea2651e7df66d7585f6ffee804b20e92fb38b8a) and the [bundled optional sampler](../ai-connector/comfy-nodes/rapidraw_marigold/__init__.py). Marigold task weights were verified from Comfy-Org/marigold-v2-0 revision `70e2127d026c8f6b62d8049b73f5392e1e81ebfa`, and the Q4 backbone from QuantStack/Qwen-Image-Edit-2509-GGUF revision `84a3006979126011422eeeefe0c9485ddf431ef5`. Exact filenames, SHA-256 values and source links are in the [model manifest](../ai-connector/workflows/models.json).
 
 For reproducible validation, record `git rev-parse HEAD` in ComfyUI and each required custom-node checkout, plus installed package versions. Install the requirements matching that revision in its own Python environment. Before updating an existing server, preserve its configuration and workflow files; after updating, repeat the acceptance checks below.
 
@@ -62,19 +62,22 @@ The connector has no authentication or TLS. Keep its loopback binding and use th
 
 ## Workflow and model inventory
 
-The repository includes seven chosen connector workflows:
+The repository includes ten chosen connector workflows:
 
-| Workflow                  | Public graph                                                                                                 | Runtime configuration                                                            |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| Klein 4B                  | [API example](../ai-connector/workflows/klein4-v1.api.json)                                                  | [1 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-v1.json)       |
-| Klein 4B closer context   | [API example](../ai-connector/workflows/klein4-tight2mp.api.json)                                            | [2 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-tight2mp.json) |
-| Klein 9B KV               | [API example](../ai-connector/workflows/klein9-kv.api.json)                                                  | [1 MP](../ai-connector/profiles/configs/klein9-kv.json)                          |
-| Boogu Edit Turbo          | [API example](../ai-connector/workflows/boogu-turbo4-context.api.json)                                       | [1 MP](../ai-connector/profiles/configs/boogu-turbo4-context.json)               |
-| Marigold V2 Q4 shared GPU | [Actual connector template](../ai-connector/rapidraw_connector/depth_profiles/marigold-v2-q4.json)           | [Optional depth setup](../ai-connector/MARIGOLD.md)                              |
-| Marigold V2 normals Q4    | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json) | [Optional surface setup](../ai-connector/SURFACES.md)                            |
-| Marigold V2 albedo Q4     | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json)  | [Optional surface setup](../ai-connector/SURFACES.md)                            |
+| Workflow                  | Public graph                                                                                                 | Runtime configuration                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Klein 4B                  | [API example](../ai-connector/workflows/klein4-v1.api.json)                                                  | [1 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-v1.json)        |
+| Klein 4B closer context   | [API example](../ai-connector/workflows/klein4-tight2mp.api.json)                                            | [2 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-tight2mp.json)  |
+| Klein 9B KV               | [API example](../ai-connector/workflows/klein9-kv.api.json)                                                  | [1 MP](../ai-connector/profiles/configs/klein9-kv.json)                           |
+| Boogu Edit Turbo          | [API example](../ai-connector/workflows/boogu-turbo4-context.api.json)                                       | [1 MP](../ai-connector/profiles/configs/boogu-turbo4-context.json)                |
+| Klein 4B native edit      | Runtime graph builder only; no standalone API example                                                        | [Experimental, 1 or 2 MP](../ai-connector/profiles/configs/klein4-native-v1.json) |
+| Qwen Image 2.1            | Runtime graph builder only; no standalone API example                                                        | [1 or 2 MP](../ai-connector/profiles/configs/qwen21-v1.json)                      |
+| Qwen Image 2.1 Remove     | Runtime graph builder only; no standalone API example                                                        | [Removal, 1 or 2 MP](../ai-connector/profiles/configs/qwen21-remove-v1.json)      |
+| Marigold V2 Q4 shared GPU | [Actual connector template](../ai-connector/rapidraw_connector/depth_profiles/marigold-v2-q4.json)           | [Optional depth setup](../ai-connector/MARIGOLD.md)                               |
+| Marigold V2 normals Q4    | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json) | [Optional surface setup](../ai-connector/SURFACES.md)                             |
+| Marigold V2 albedo Q4     | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json)  | [Optional surface setup](../ai-connector/SURFACES.md)                             |
 
-The [download guide](../ai-connector/workflows/README.md) explains API format, input/mask conventions and the difference between a standalone crop output and RapidRAW's native composite. The four generative examples are exported from the tested runtime graph builder with neutral input names, a replacement prompt and example geometry. The Marigold link points directly to the template used by the connector.
+The [download guide](../ai-connector/workflows/README.md) explains API format, input/mask conventions and the difference between a standalone crop output and RapidRAW's native composite. The four Klein and Boogu generative examples are exported from the tested runtime graph builder with neutral input names, a replacement prompt and example geometry. The native-edit and Qwen profiles are runtime-builder-only. The Marigold link points directly to the template used by the connector.
 
 Graphs include the model filenames; the [model manifest](../ai-connector/workflows/models.json) supplies recorded download provenance and checksum information. The [connector model table](../ai-connector/README.md#requirements) and [Marigold model table](../ai-connector/MARIGOLD.md#set-up-the-existing-server) give the supported setup paths. Download only assets needed by the workflows you select. RapidRAW's license does not replace upstream code/model licenses.
 

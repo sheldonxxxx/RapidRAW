@@ -85,6 +85,8 @@ pub struct AiPatchDefinition {
     pub prompt: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation_options: Option<crate::ai_connector::GenerationOptions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub removal_options: Option<crate::inpainting::removal::RemovalOptions>,
     #[serde(default)]
     pub patch_data: Option<PatchData>,
     #[serde(default = "default_opacity")]

@@ -20,6 +20,21 @@
       "label": "Boogu Edit Turbo",
       "config": "configs/boogu-turbo4-context.json",
       "megapixels": [1]
+    },
+    "klein4-native-v1": {
+      "label": "Experimental: Klein 4B native edit, local reference",
+      "config": "configs/klein4-native-v1.json",
+      "megapixels": [1, 2]
+    },
+    "qwen21-v1": {
+      "label": "Qwen Image 2.1",
+      "config": "configs/qwen21-v1.json",
+      "megapixels": [1, 2]
+    },
+    "qwen21-remove-v1": {
+      "label": "Qwen Image 2.1 · Remove",
+      "config": "configs/qwen21-remove-v1.json",
+      "megapixels": [1, 2]
     }
   }
 }

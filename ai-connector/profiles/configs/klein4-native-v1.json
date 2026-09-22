@@ -1,0 +1,12 @@
+{
+  "family": "klein",
+  "model": "flux-2-klein-4b-fp8.safetensors",
+  "text_encoder": "qwen_3_4b.safetensors",
+  "vae": "flux2-vae.safetensors",
+  "steps": 4,
+  "cfg": 1,
+  "megapixels": 1,
+  "mode": "masked",
+  "id": "klein4-native-v1",
+  "pure_noise_output": true
+}

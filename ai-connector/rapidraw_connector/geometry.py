@@ -21,7 +21,7 @@ def geometry(source_size, mask, config):
     width, height = right-left, bottom-top
     megapixels = float(config.get('megapixels', 1))
     multiple = int(config.get('dimension_multiple', 16))
-    if not .0625 <= megapixels <= 16 or multiple != 16:
+    if not .0625 <= megapixels <= 16 or multiple not in (16, 32):
         raise ValueError('Invalid generation resolution')
     scale = math.sqrt(megapixels*1024*1024/(width*height))
     gen_width = max(multiple, round(width*scale/multiple)*multiple)
@@ -59,10 +59,23 @@ def pack(context, mask, g):
                 color=encode_png(color), mask=encode_png(mask.crop((left, top, right, bottom))))
 
 
-def restore_output(data, mask, g, output_kind):
+def restore_output(data, mask, g, output_kind, source=None, integration_report=None,
+                   texture=False):
     with Image.open(io.BytesIO(data)) as image:
         if output_kind != 'generation' or image.size != (g['gen_width'], g['gen_height']):
             raise ValueError('Profile returned unexpected generation dimensions')
         generated = image.convert('RGB')
     context = generated.resize((g['width'], g['height']), Image.Resampling.LANCZOS)
+    if source is not None:
+        from .integration import match_boundary
+        box = (g['x'], g['y'], g['x'] + g['width'], g['y'] + g['height'])
+        context, report = match_boundary(source.crop(box), context, mask.crop(box))
+        if integration_report is not None:
+            integration_report.update(report)
+        if texture:
+            from .integration import match_stochastic_texture
+            context, texture_report = match_stochastic_texture(
+                source, context, mask.crop(box), (g['x'], g['y']))
+            if integration_report is not None:
+                integration_report['texture'] = texture_report
     return pack(context, mask, g), list(generated.size)

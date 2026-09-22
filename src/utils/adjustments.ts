@@ -281,6 +281,11 @@ export interface GenerationOptions {
   megapixels?: number;
 }
 
+export interface RemovalOptions {
+  expandPixels?: number;
+  featherPixels?: number;
+}
+
 export interface AiPatchGeneration {
   seed: number;
   profile: string;
@@ -311,6 +316,7 @@ export interface AiPatch {
   patchData: AiPatchData | null;
   prompt: string;
   generationOptions?: GenerationOptions;
+  removalOptions?: RemovalOptions;
   subMasks: Array<SubMask>;
   visible: boolean;
 }

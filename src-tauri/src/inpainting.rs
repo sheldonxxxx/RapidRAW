@@ -14,6 +14,7 @@ use crate::image_processing::apply_linear_to_srgb;
 use crate::mask_generation::{AiPatchDefinition, MaskDefinition, generate_mask_bitmap};
 use crate::resolve_warped_image_for_masks;
 
+pub mod removal;
 mod texture_cleanup;
 
 fn prepare_source_image(
@@ -428,19 +429,30 @@ pub async fn generate_manual_cleanup_patch(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri exposes these arguments as named command fields.
 pub async fn invoke_generative_replace_with_mask_def(
     path: String,
     patch_definition: AiPatchDefinition,
     current_adjustments: Value,
     use_fast_inpaint: bool,
+    preview_only: Option<bool>,
     token: Option<String>,
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
+    let preview_only = preview_only.unwrap_or(false);
+    if let Some(options) = &patch_definition.removal_options {
+        options.validate()?;
+        if options.enabled() && patch_definition.invert {
+            return Err("Removal controls require a non-inverted selection".into());
+        }
+    }
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
     if let Some(options) = &patch_definition.generation_options {
         options.validate().map_err(|error| error.to_string())?;
-        if use_fast_inpaint || settings.ai_provider.as_deref() != Some("ai-connector") {
+        if !preview_only
+            && (use_fast_inpaint || settings.ai_provider.as_deref() != Some("ai-connector"))
+        {
             return Err(
                 "Generation options require generative mode with an AI Connector provider"
                     .to_string(),
@@ -493,7 +505,63 @@ pub async fn invoke_generative_replace_with_mask_def(
     let mask_bitmap =
         crate::image_processing::inverse_transform_mask(mask_bitmap, &current_adjustments);
 
+    let mask_bitmap = if let Some(options) = patch_definition
+        .removal_options
+        .as_ref()
+        .filter(|o| o.enabled())
+    {
+        use crate::mask_generation::{SubMask, SubMaskMode};
+        let mut selection = mask_def_for_generation.clone();
+        selection
+            .sub_masks
+            .retain(|sm| sm.mode == SubMaskMode::Additive);
+        let mut constraints = mask_def_for_generation.clone();
+        constraints
+            .sub_masks
+            .retain(|sm| sm.mode != SubMaskMode::Additive);
+        constraints.sub_masks.insert(
+            0,
+            SubMask {
+                id: "removal-allow-all".into(),
+                mask_type: "all".into(),
+                visible: true,
+                invert: false,
+                opacity: 100.0,
+                mode: SubMaskMode::Additive,
+                parameters: Value::Null,
+            },
+        );
+        let raster = |definition: &MaskDefinition| -> Result<image::GrayImage, String> {
+            let bitmap = generate_mask_bitmap(
+                definition,
+                trans_w,
+                trans_h,
+                1.0,
+                (0.0, 0.0),
+                warped_image.as_deref(),
+            )
+            .ok_or("Failed to rasterize removal selection or protection")?;
+            Ok(crate::image_processing::inverse_transform_mask(
+                bitmap,
+                &current_adjustments,
+            ))
+        };
+        removal::effective_mask(&raster(&selection)?, &raster(&constraints)?, options)?
+    } else {
+        mask_bitmap
+    };
     let (min_x, max_x, min_y, max_y) = calculate_mask_bounds(&mask_bitmap)?;
+    if preview_only {
+        let mut bytes = Cursor::new(Vec::new());
+        DynamicImage::ImageLuma8(mask_bitmap.clone())
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .map_err(|error| error.to_string())?;
+        return Ok(serde_json::json!({
+            "mask": format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(bytes.into_inner())),
+            "width": img_w, "height": img_h,
+            "bounds": {"x": min_x, "y": min_y, "width": max_x-min_x+1, "height": max_y-min_y+1}
+        }).to_string());
+    }
 
     let mut generation = None;
     let patch_rgba = if use_fast_inpaint {

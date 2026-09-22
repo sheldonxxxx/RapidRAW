@@ -169,8 +169,8 @@ export interface SubMask {
 }
 
 export function formatMaskTypeName(type: string) {
-  if (type === Mask.AiNormals) return i18n.t('masks.types.normals', { defaultValue: 'Marigold Directional Light' });
-  if (type === Mask.AiAlbedo) return i18n.t('masks.types.albedo', { defaultValue: 'Marigold Colour' });
+  if (type === Mask.AiNormals) return i18n.t('masks.types.normals', { defaultValue: 'Shape Light' });
+  if (type === Mask.AiAlbedo) return i18n.t('masks.types.albedo', { defaultValue: 'Surface Colour' });
   if (type === Mask.AiDepth) return i18n.t('masks.types.depth');
   if (type === Mask.AiSubject) return i18n.t('masks.types.subject');
   if (type === Mask.AiForeground) return i18n.t('masks.types.foreground');

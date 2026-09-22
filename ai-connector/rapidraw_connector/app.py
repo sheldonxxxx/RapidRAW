@@ -33,7 +33,7 @@ class InpaintRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
     source_id: str = Field(pattern=SOURCE_ID)
     mask_image_base64: str = Field(max_length=4*((MAX_IMAGE_BYTES+2)//3))
-    prompt: str = Field(min_length=1, max_length=20000)
+    prompt: str = Field(default='', max_length=20000)
     negative_prompt: str = Field(default='', max_length=20000)
     seed: int = Field(default=0, ge=0, le=9007199254740991, strict=True)
     profile: str | None = Field(default=None, pattern=r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
@@ -222,7 +222,9 @@ def create_app(settings=None):
 
     @app.get('/capabilities')
     async def capabilities():
-        profiles = [dict(id=name, label=item['label'], default_megapixels=item['config']['megapixels'], megapixels=item['megapixels']) for name, item in listing['profiles'].items()]
+        profiles = [dict(id=name, label=item['label'], default_megapixels=item['config']['megapixels'],
+                         megapixels=item['megapixels'], requires_prompt=item['config'].get('task') != 'remove')
+                    for name, item in listing['profiles'].items()]
         return dict(protocol_version=2, generation=dict(seed=True, default_profile=listing['default_profile'], profiles=profiles))
 
     @app.get('/health')
@@ -259,6 +261,11 @@ def create_app(settings=None):
             profile, config = select_profile(listing, request.profile, request.megapixels)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+        if config.get('task') == 'remove':
+            if request.prompt.strip():
+                raise HTTPException(400, 'Remove workflow does not accept a text prompt')
+        elif not request.prompt.strip():
+            raise HTTPException(400, 'Edit workflow requires a text prompt')
         source_path = settings.cache_dir/(request.source_id+'.jpg')
         if not source_path.is_file():
             raise HTTPException(404, 'Source not cached')
@@ -273,15 +280,19 @@ def create_app(settings=None):
         mask_path = settings.cache_dir/(request_id+'-mask.png')
         evidence = settings.receipt_dir/request_id
         graph = build_workflow(source_path.relative_to(settings.input_dir).as_posix(), mask_path.relative_to(settings.input_dir).as_posix(), request.prompt, seed, g, config)
+        experiment = dict(pure_noise_output=bool(config.get('pure_noise_output', False)))
         receipt = dict(request_id=request_id, source_id=request.source_id,
                        source_sha256=hashlib.sha256(source_bytes).hexdigest(), source_path=str(evidence/'source.jpg'),
                        cached_source_path=str(source_path), mask_sha256=hashlib.sha256(mask_bytes).hexdigest(),
                        mask_path=str(evidence/'request-mask.png'), inference_mask_path=str(mask_path),
                        seed=seed, profile=profile, config=config, requested_megapixels=request.megapixels,
+                       experiment=experiment,
                        source_size=list(source.size), context=g,
                        workflow_sha256=hashlib.sha256(json.dumps(graph['workflow'], sort_keys=True).encode()).hexdigest(),
                        prompt=request.prompt, negative_prompt=request.negative_prompt,
                        status='prepared', created_unix=time.time(), execution_events=[])
+        if config.get('task') == 'remove':
+            receipt['effective_prompt'] = graph['workflow']['7']['inputs']['prompt']
         await asyncio.to_thread(prepare_evidence, evidence, receipt, graph['workflow'], source_bytes, mask, mask_bytes, mask_path)
 
         async def on_event(event):
@@ -309,7 +320,12 @@ def create_app(settings=None):
             receipt['prompt_id'] = prompt_id
             await asyncio.to_thread(save_history, evidence/'history.json', history)
             await asyncio.to_thread(write_private, evidence/'generated.png', data)
-            response, generated_size = await asyncio.to_thread(restore_output, data, mask, g, graph['output_kind'])
+            # The original request mask owns the final composite.
+            integration_report = {}
+            response, generated_size = await asyncio.to_thread(
+                restore_output, data, mask, g, graph['output_kind'], source,
+                integration_report, config['family'] == 'qwen21')
+            receipt['integration'] = integration_report
             receipt.update(status='completed', generated_size=generated_size, seconds=time.monotonic()-started, finished_unix=time.time())
             await on_event(dict(kind='completed', prompt_id=prompt_id))
             response['generation'] = public_generation(receipt)
