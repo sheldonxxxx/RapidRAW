@@ -14,6 +14,10 @@ Release tag: `fork-v0.3.0`. See the [release notes](docs/releases/0.3.0.md).
 - Keep generation history scoped to each edit in the sidecar across restarts, reuse settings, delete unwanted candidates, and stop a batch after its running variation finishes.
 - Add up to four reference images in a separate collapsible section for Qwen Image 2.1 and supporting Klein edit workflows. Keep Variations in its own row. Unsupported workflows reject references rather than silently ignoring them.
 
+### MCP host
+
+- Prepare the independently versioned Node host as `@sheldonxxxx/rapidraw-mcp@0.2.0` for the public removal-coverage and preview options added in this fork release; publish it separately with the `mcp-v0.2.0` tag after the release commit reaches `main`.
+
 ### Development checks
 
 - Exclude generated Python virtual environments and pytest caches from Prettier checks. Allow unused Linux runtime helpers on other platforms while keeping strict Clippy checks on their supported targets.

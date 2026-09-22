@@ -10,8 +10,8 @@ No repository clone is required for the normal packaged setup below. The npm hos
 
 | Component                                               | Current value                           |
 | ------------------------------------------------------- | --------------------------------------- |
-| Fork application release                                | `fork-v0.1.0-beta.1`                    |
-| npm MCP host                                            | `@sheldonxxxx/rapidraw-mcp@0.1.0`       |
+| Fork application release                                | `fork-v0.3.0`                           |
+| npm MCP host                                            | `@sheldonxxxx/rapidraw-mcp@0.2.0`       |
 | Native MCP bridge (reported by `rapidraw_capabilities`) | `1.2.0`                                 |
 | Node.js                                                 | 22.12 or later (package engine: `>=22`) |
 
@@ -26,13 +26,13 @@ Component versions are independent: the fork release tag, the npm host version, 
 5. **Use the published npm host; do not clone this repository.** Run the pinned host directly:
 
    ```sh
-   npx -y @sheldonxxxx/rapidraw-mcp@0.1.0 --binary /absolute/path/to/rapidraw-mcp --workspace /absolute/path/to/workspace
+   npx -y @sheldonxxxx/rapidraw-mcp@0.2.0 --binary /absolute/path/to/rapidraw-mcp --workspace /absolute/path/to/workspace
    ```
 
    Alternatively, install the pinned package once and run it by name:
 
    ```sh
-   npm install -g @sheldonxxxx/rapidraw-mcp@0.1.0
+   npm install -g @sheldonxxxx/rapidraw-mcp@0.2.0
    rapidraw-mcp --binary /absolute/path/to/rapidraw-mcp --workspace /absolute/path/to/workspace
    ```
 
@@ -68,7 +68,7 @@ Complete `mcpServers` JSON for hosts that accept that format. Replace every `/ab
       "command": "npx",
       "args": [
         "-y",
-        "@sheldonxxxx/rapidraw-mcp@0.1.0",
+        "@sheldonxxxx/rapidraw-mcp@0.2.0",
         "--binary",
         "/absolute/path/to/rapidraw-mcp",
         "--workspace",
@@ -104,7 +104,7 @@ Create the parent directory if needed. Add the following table to the chosen fil
 command = "/absolute/path/to/npx"
 args = [
   "-y",
-  "@sheldonxxxx/rapidraw-mcp@0.1.0",
+  "@sheldonxxxx/rapidraw-mcp@0.2.0",
   "--binary", "/absolute/path/to/rapidraw-mcp",
   "--workspace", "/absolute/photo-work/jobs/agent-a",
   "--timeout-ms", "900000"
@@ -126,7 +126,7 @@ Reconnect and verify: open and trust the photo-work project in Codex, save the c
 
 - [ ] Fork native package installed from this fork's releases (not upstream).
 - [ ] Node.js 22.12+ available (`node --version`, `npm --version`).
-- [ ] Exact npm host available (`npx -y @sheldonxxxx/rapidraw-mcp@0.1.0 --help` succeeds with no repository checkout).
+- [ ] Exact npm host available (`npx -y @sheldonxxxx/rapidraw-mcp@0.2.0 --help` succeeds with no repository checkout).
 - [ ] Isolated absolute workspace created (one per simultaneous connection).
 - [ ] `rapidraw_capabilities` succeeds against the fork engine.
 - [ ] `rapidraw_models` succeeds.
