@@ -174,6 +174,7 @@ export interface ParametricCurve {
 
 export interface Adjustments {
   aiPatches: Array<AiPatch>;
+  inpaintHistory?: InpaintCandidate[];
   aspectRatio: number | null;
   blacks: number;
   brightness: number;
@@ -276,6 +277,7 @@ export type MaskAdjustmentSetter = (
 ) => void;
 
 export interface GenerationOptions {
+  referenceImagesBase64?: string[];
   seed?: number;
   profile?: string;
   megapixels?: number;
@@ -308,8 +310,18 @@ export interface AiPatchData {
   generation?: AiPatchGeneration;
 }
 
+export interface InpaintCandidate {
+  id: string;
+  batchId: string;
+  createdAt: string;
+  patch: AiPatch;
+  spatialKey: string;
+  method: 'basic' | 'generative';
+}
+
 export interface AiPatch {
   id: string;
+  appliedCandidateId?: string;
   isLoading: boolean;
   invert: boolean;
   name: string;

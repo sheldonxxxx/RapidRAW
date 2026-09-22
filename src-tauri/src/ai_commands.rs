@@ -449,6 +449,8 @@ pub struct AiGenerationProfile {
     megapixels: Vec<f64>,
     #[serde(default = "prompt_required_by_default", alias = "requires_prompt")]
     requires_prompt: bool,
+    #[serde(default, alias = "reference_image")]
+    reference_image: bool,
 }
 
 fn prompt_required_by_default() -> bool {

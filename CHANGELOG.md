@@ -4,6 +4,26 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+## 0.3.0 — 2026-09-22
+
+Release tag: `fork-v0.3.0`. See the [release notes](docs/releases/0.3.0.md).
+
+### Inpaint studio
+
+- Generate 1–4 variations from a fixed source and selection, then click a result to apply it or click again to disable it. Basic inpaint generates one candidate.
+- Keep generation history scoped to each edit in the sidecar across restarts, reuse settings, delete unwanted candidates, and stop a batch after its running variation finishes.
+- Add up to four reference images in a separate collapsible section for Qwen Image 2.1 and supporting Klein edit workflows. Keep Variations in its own row. Unsupported workflows reject references rather than silently ignoring them.
+
+### Development checks
+
+- Exclude generated Python virtual environments and pytest caches from Prettier checks. Allow unused Linux runtime helpers on other platforms while keeping strict Clippy checks on their supported targets.
+
+### Editor responsiveness
+
+- Keep the latest pending slider preview and avoid copying cached mask and repair images on each edit. Normal live previews use at most 1,920 pixels on the long edge while dragging, then restore the requested preview resolution on release; the Full quality setting keeps its requested resolution.
+- Send pan and zoom transforms directly to the native renderer, and redraw mask controls with their resized canvas to prevent a delayed jump after zooming.
+- Generate mask overlays on a background worker and discard outdated overlay responses when the selection or photograph changes.
+
 ### Automatic repair colour matching
 
 - Match small generated colour differences to surrounding source pixels before RapidRAW composites Klein and Qwen repairs. Preserve the original mask and record skipped corrections in generation receipts.
@@ -11,8 +31,10 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ### Qwen Image 2.1 workflow
 
+- When references are attached, identify the source photo as the image to edit and the uploads as auxiliary references in the Qwen prompt. Keep the original user prompt and the effective model instruction in the generation receipt.
+
 - Add a discoverable Qwen Image 2.1 connector profile with 1 MP and 2 MP options, native reference conditioning and a 30-step sampling starting default. Keep the existing default workflow.
-- Add a separate Qwen Remove workflow for brush-selected cleanup without a typed prompt. Preserve literal prompts in the ordinary Qwen workflow and record the removal instruction in the private receipt.
+- Add a separate Qwen Remove workflow for brush-selected cleanup without a typed prompt. Send literal prompts in the ordinary Qwen workflow when no references are attached and record the removal instruction in the private receipt.
 
 ### Native removal coverage
 

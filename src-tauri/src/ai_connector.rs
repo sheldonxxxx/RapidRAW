@@ -23,6 +23,8 @@ where
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GenerationOptions {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reference_images_base64: Vec<String>,
     #[serde(
         default,
         deserialize_with = "deserialize_generation_option",
@@ -45,6 +47,16 @@ pub struct GenerationOptions {
 
 impl GenerationOptions {
     pub fn validate(&self) -> Result<()> {
+        if self.reference_images_base64.len() > 4
+            || self
+                .reference_images_base64
+                .iter()
+                .any(|data| data.is_empty() || data.len() > 12 * 1024 * 1024)
+        {
+            return Err(anyhow!(
+                "Use up to four nonempty reference images, at most 9 MiB each"
+            ));
+        }
         if self
             .seed
             .is_some_and(|seed| !(1..=MAX_GENERATION_SEED).contains(&seed))
@@ -97,6 +109,8 @@ struct GenerationCapabilities {
 struct GenerationProfile {
     id: String,
     #[serde(default)]
+    reference_image: bool,
+    #[serde(default)]
     megapixels: Vec<f64>,
 }
 
@@ -125,6 +139,13 @@ fn validate_capabilities(
         return Err(anyhow!(
             "AI Connector does not advertise generation profile '{}'",
             options.profile.as_deref().unwrap()
+        ));
+    }
+    if !options.reference_images_base64.is_empty()
+        && !profile.is_some_and(|entry| entry.reference_image)
+    {
+        return Err(anyhow!(
+            "The selected workflow does not support reference images"
         ));
     }
     if let Some(mp) = options.megapixels {
@@ -175,6 +196,8 @@ async fn check_generation_capabilities(
 
 #[derive(Serialize)]
 struct InpaintRequest {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    reference_images_base64: Vec<String>,
     source_id: String,
     prompt: String,
     negative_prompt: String,
@@ -226,6 +249,7 @@ impl GenerationMetadata {
             seed: Some(self.seed),
             profile: Some(self.profile.clone()),
             megapixels: None,
+            ..Default::default()
         }
         .validate()?;
         if self.source_size != size
@@ -436,6 +460,9 @@ pub async fn process_inpainting(
     let (w, h) = full_source_image.dimensions();
 
     let payload = InpaintRequest {
+        reference_images_base64: generation_options
+            .map(|options| options.reference_images_base64.clone())
+            .unwrap_or_default(),
         source_id: source_id.clone(),
         prompt,
         negative_prompt: "blur, low quality, distortion, watermark".to_string(),
@@ -596,11 +623,28 @@ mod tests {
     }
 
     #[test]
+    fn reference_images_require_explicit_profile_support_and_bounded_data() {
+        let mut options = GenerationOptions {
+            reference_images_base64: vec!["reference".into()],
+            ..Default::default()
+        };
+        let mut advertised = capabilities();
+        assert!(validate_capabilities(&options, &advertised).is_err());
+        advertised.generation.profiles[0].reference_image = true;
+        validate_capabilities(&options, &advertised).unwrap();
+        options.reference_images_base64 = vec![String::new()];
+        assert!(options.validate().is_err());
+        options.reference_images_base64 = vec!["a".repeat(12 * 1024 * 1024 + 1)];
+        assert!(options.validate().is_err());
+    }
+
+    #[test]
     fn generation_capabilities_reject_unsupported_explicit_options() {
         let mut options = GenerationOptions {
             seed: Some(MAX_GENERATION_SEED),
             profile: Some("balanced".into()),
             megapixels: Some(2.),
+            ..Default::default()
         };
         validate_capabilities(&options, &capabilities()).unwrap();
         options.profile = Some("missing".into());
@@ -749,6 +793,7 @@ mod tests {
             seed: Some(MAX_GENERATION_SEED),
             profile: Some("balanced".into()),
             megapixels: Some(2.),
+            ..Default::default()
         };
         let result = tokio::time::timeout(
             Duration::from_secs(5),

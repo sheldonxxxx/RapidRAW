@@ -1,7 +1,7 @@
 import Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { MaskParameters } from '../right/Masks';
-import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, memo, useMemo, useLayoutEffect } from 'react';
 import ReactCrop from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { Stage, Layer, Ellipse, Line, Transformer, Group, Circle, Rect, Arrow } from 'react-konva';
@@ -1543,6 +1543,7 @@ const ImageCanvas = memo(
     const groupOffsetX = paddingX;
     const groupOffsetY = paddingY;
 
+    const maskStageRef = useRef<Konva.Stage | null>(null);
     const [settledScale, setSettledScale] = useState(transformState.scale);
     useEffect(() => {
       const timer = setTimeout(() => {
@@ -1553,6 +1554,13 @@ const ImageCanvas = memo(
 
     const maxDimension = Math.max(stageWidth, stageHeight, 1);
     const maxSafeScale = Math.max(1, Math.min(settledScale, 4092 / maxDimension));
+
+    // Resize the backing canvas and paint its new coordinates in the same frame
+    // as the inverse CSS scale. Konva's deferred draw otherwise shows a stale
+    // mask for a frame after zoom settles.
+    useLayoutEffect(() => {
+      maskStageRef.current?.draw();
+    }, [maxSafeScale, stageWidth, stageHeight]);
 
     const getCanvasPointer = useCallback(
       (stage: Konva.Stage | null) => {
@@ -3346,6 +3354,7 @@ const ImageCanvas = memo(
               }}
             >
               <Stage
+                ref={maskStageRef}
                 width={stageWidth * maxSafeScale}
                 height={stageHeight * maxSafeScale}
                 onMouseDown={handleStart}

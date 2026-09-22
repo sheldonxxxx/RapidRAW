@@ -8,7 +8,6 @@ interface SettingsPanelProps {
   updateSubMask: (id: string, data: Partial<SubMask>) => void;
   isGeneratingAi: boolean;
   isGeneratingAiMask: boolean;
-  onGenerativeReplace: ReturnType<typeof useAiMasking>['handleGenerativeReplace'];
   collapsibleState: { generative: boolean; properties: boolean };
   setCollapsibleState: React.Dispatch<React.SetStateAction<{ generative: boolean; properties: boolean }>>;
   isGenerativeAvailable: boolean;
@@ -113,7 +112,6 @@ import {
 import CollapsibleSection from '../../ui/CollapsibleSection';
 import Switch from '../../ui/Switch';
 import Slider from '../../ui/Slider';
-import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 
@@ -150,6 +148,10 @@ import { generationDraft, resolveGenerationOptions, type GenerationDraft } from 
 import GenerationControls, { GenerationResultInfo } from './GenerationControls';
 import RemovalControls from './RemovalControls';
 import EnhancementPanel from './EnhancementPanel';
+import InpaintGallery from './InpaintGallery';
+import ReferenceUpload from './ReferenceUpload';
+import { useInpaintCandidates } from '../../../hooks/useInpaintCandidates';
+import { toast } from 'react-toastify';
 
 export const STANDALONE_MASK_TYPES: Mask[] = [Mask.Clone, Mask.Heal, Mask.Liquify, Mask.Retouch];
 
@@ -435,8 +437,7 @@ export default function AIPanel() {
   const setCustomEscapeHandler = useUIStore((s) => s.setCustomEscapeHandler);
 
   const { setAdjustments } = useEditorActions();
-  const { handleGenerativeReplace, handleDeleteAiPatch, handleGenerateAiForegroundMask, handleDirectPatch } =
-    useAiMasking();
+  const { handleDeleteAiPatch, handleGenerateAiForegroundMask, handleDirectPatch } = useAiMasking();
   const appSettings = useSettingsStore((s) => s.appSettings);
   const aiProvider = appSettings?.aiProvider || 'cpu';
   const generationCapabilities = useGenerationCapabilities(
@@ -1364,7 +1365,7 @@ export default function AIPanel() {
               <div className="h-4 shrink-0 w-full" onClick={handleDeselect} />
 
               <AnimatePresence>
-                {isSettingsPanelEverOpened && (
+                {(isSettingsPanelEverOpened || !!adjustments.inpaintHistory?.length) && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -1385,7 +1386,6 @@ export default function AIPanel() {
                       updateSubMask={updateSubMask}
                       isGeneratingAi={isGeneratingAi}
                       isGeneratingAiMask={isGeneratingAiMask}
-                      onGenerativeReplace={handleGenerativeReplace}
                       collapsibleState={collapsibleState}
                       setCollapsibleState={setCollapsibleState}
                       isGenerativeAvailable={isGenerativeAvailable}
@@ -2045,7 +2045,6 @@ function SettingsPanel({
   updateSubMask,
   isGeneratingAi,
   isGeneratingAiMask: _isGeneratingAiMask,
-  onGenerativeReplace,
   collapsibleState,
   setCollapsibleState,
   isGenerativeAvailable,
@@ -2058,9 +2057,15 @@ function SettingsPanel({
   const isComponentMode = !!activeSubMask;
   const displayContainer = container || PLACEHOLDER_PATCH;
   const [prompt, setPrompt] = useState(displayContainer.prompt || '');
+  const [sampleCount, setSampleCount] = useState(3);
+  const [references, setReferences] = useState<string[]>([]);
+  const [referenceLoading, setReferenceLoading] = useState(false);
+  const referenceRequest = useRef(0);
+  const { generate, progress, stop } = useInpaintCandidates();
   const [useFastInpaint, setUseFastInpaint] = useState(!isGenerativeAvailable);
   const prevContainerId = useRef<string | null>(null);
-  const draftKey = JSON.stringify([container?.id, capabilityState.scope]);
+  const selectedPath = useEditorStore((state) => state.selectedImage?.path);
+  const draftKey = JSON.stringify([selectedPath, container?.id, capabilityState.scope]);
   const previousScope = useRef(capabilityState.scope);
   const [draftState, setDraftState] = useState<{ key: string; value: GenerationDraft }>(() => ({
     key: draftKey,
@@ -2075,6 +2080,56 @@ function SettingsPanel({
     capabilityState.data?.profiles.find((entry) => entry.id === generationSelection.options?.profile)
       ?.requiresPrompt === false;
   const updateGenerationDraft = (value: GenerationDraft) => setDraftState({ key: draftKey, value });
+  const supportsReference =
+    !useFastInpaint &&
+    capabilityState.status === 'ready' &&
+    capabilityState.data?.profiles.find((entry) => entry.id === generationSelection.options?.profile)
+      ?.referenceImage === true;
+  const referenceBlocked = !useFastInpaint && (referenceLoading || (references.length > 0 && !supportsReference));
+
+  useEffect(() => {
+    referenceRequest.current++;
+    setReferences([]);
+    setReferenceLoading(false);
+    return () => {
+      referenceRequest.current++;
+    };
+  }, [draftKey]);
+
+  const uploadReference = async (files: File[]) => {
+    if (!files.length) return;
+    if (references.length + files.length > 4) {
+      toast.error(t('editor.ai.studio.referenceCountLimit'));
+      return;
+    }
+    const request = ++referenceRequest.current;
+    setReferenceLoading(true);
+    try {
+      const added: string[] = [];
+      for (const file of files) {
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 9 * 1024 * 1024) {
+          throw new Error(t('editor.ai.studio.referenceLimits'));
+        }
+        const data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error(t('editor.ai.studio.referenceError')));
+          reader.readAsDataURL(file);
+        });
+        const image = new Image();
+        image.src = data;
+        await image.decode();
+        if (image.naturalWidth * image.naturalHeight > 16_000_000)
+          throw new Error(t('editor.ai.studio.referenceLimits'));
+        added.push(data.split(',')[1]);
+      }
+      if (request === referenceRequest.current) setReferences((current) => [...current, ...added]);
+    } catch (error) {
+      if (request === referenceRequest.current) toast.error(String(error));
+    } finally {
+      if (request === referenceRequest.current) setReferenceLoading(false);
+    }
+  };
 
   useEffect(() => {
     const endpointChanged = previousScope.current !== capabilityState.scope;
@@ -2087,7 +2142,7 @@ function SettingsPanel({
 
   useEffect(() => {
     if (container) setPrompt(container.prompt || '');
-  }, [container?.id]);
+  }, [selectedPath, container?.id]);
 
   const isQuickErasePatch = displayContainer.subMasks?.some((sm: SubMask) => sm.type === Mask.QuickEraser);
   const isStandalonePatch = displayContainer.subMasks?.some((sm: SubMask) => isStandaloneMask(sm.type));
@@ -2118,14 +2173,21 @@ function SettingsPanel({
       !container ||
       isGeneratingAi ||
       displayContainer.isLoading ||
+      referenceBlocked ||
+      (!useFastInpaint && !promptFreeRemoval && !prompt.trim()) ||
       (!useFastInpaint && (!draftReady || generationSelection.error))
     )
       return;
-    onGenerativeReplace(
+    void generate(
       container.id,
       promptFreeRemoval ? '' : prompt,
       useFastInpaint,
-      useFastInpaint ? undefined : generationSelection.options,
+      useFastInpaint
+        ? undefined
+        : references.length
+          ? { ...generationSelection.options, referenceImagesBase64: references }
+          : generationSelection.options,
+      sampleCount,
     );
   };
 
@@ -2133,13 +2195,10 @@ function SettingsPanel({
     setCollapsibleState((prev) => ({ ...prev, [section]: !prev[section] }));
 
   return (
-    <div
-      className={`space-y-2 transition-opacity duration-300 ${!isActive ? 'opacity-50 pointer-events-none' : ''}`}
-      onClick={(e) => e.stopPropagation()}
-    >
+    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
       {!isStandalonePatch && (
         <CollapsibleSection
-          title={t('editor.ai.settings.generativeReplaceTitle')}
+          title={t('editor.ai.studio.title')}
           isOpen={collapsibleState.generative}
           onToggle={() => handleToggleSection('generative')}
           canToggleVisibility={false}
@@ -2196,18 +2255,22 @@ function SettingsPanel({
                   >
                     {!promptFreeRemoval && (
                       <div className="flex items-center gap-2">
-                        <Input
-                          className="grow"
+                        <textarea
+                          className="w-full resize-y rounded-md border border-border-color bg-bg-secondary p-3 text-sm focus-visible:outline-accent"
+                          rows={3}
+                          aria-label={t('editor.ai.studio.prompt')}
                           disabled={isGeneratingAi || displayContainer.isLoading}
                           onChange={(e) => {
                             setPrompt(e.target.value);
                           }}
                           onBlur={() => isActive && updateContainer(container.id, { prompt })}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleGenerateClick();
+                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                              e.preventDefault();
+                              handleGenerateClick();
+                            }
                           }}
                           placeholder={t('editor.ai.settings.placeholder')}
-                          type="text"
                           value={prompt}
                         />
                       </div>
@@ -2226,11 +2289,46 @@ function SettingsPanel({
               </AnimatePresence>
             </div>
 
+            {!useFastInpaint && (
+              <div className="space-y-3">
+                <label className="flex items-center justify-between text-sm">
+                  {t('editor.ai.studio.samples')}
+                  <select
+                    aria-label={t('editor.ai.studio.samples')}
+                    value={sampleCount}
+                    disabled={isGeneratingAi}
+                    onChange={(event) => setSampleCount(Number(event.target.value))}
+                    className="bg-bg-secondary p-1 rounded"
+                  >
+                    {[1, 2, 3, 4].map((count) => (
+                      <option key={count} value={count}>
+                        {count}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-xs text-text-secondary">{t('editor.ai.studio.batchHint')}</p>
+                <ReferenceUpload
+                  references={references}
+                  loading={referenceLoading}
+                  disabled={isGeneratingAi || displayContainer.isLoading}
+                  supported={supportsReference}
+                  onUpload={(files) => void uploadReference(files)}
+                  onRemove={(index) => {
+                    referenceRequest.current++;
+                    setReferences((current) => current.filter((_, i) => i !== index));
+                    setReferenceLoading(false);
+                  }}
+                />
+              </div>
+            )}
             <Button
               className="w-full"
               disabled={
                 isGeneratingAi ||
                 displayContainer.isLoading ||
+                referenceBlocked ||
+                (!useFastInpaint && !promptFreeRemoval && !prompt.trim()) ||
                 displayContainer.subMasks.length === 0 ||
                 (!useFastInpaint && (!draftReady || !!generationSelection.error))
               }
@@ -2244,13 +2342,16 @@ function SettingsPanel({
               <span className="ml-2">
                 {isGeneratingAi || displayContainer.isLoading
                   ? t('editor.ai.settings.generating')
-                  : useFastInpaint
-                    ? t('editor.ai.settings.inpaintSelectionButton')
-                    : promptFreeRemoval
-                      ? t('editor.ai.settings.removeSelectionButton')
-                      : t('editor.ai.settings.generateWithAiButton')}
+                  : t('editor.ai.studio.generate', { count: useFastInpaint ? 1 : sampleCount })}
               </span>
             </Button>
+            {progress && (
+              <div className="space-y-2" role="status">
+                <p className="text-xs">{t('editor.ai.studio.progress', progress)}</p>
+                <Button onClick={stop}>{t('editor.ai.studio.stop')}</Button>
+                <p className="text-xs text-text-secondary">{t('editor.ai.studio.stopHint')}</p>
+              </div>
+            )}
             {container && (
               <RemovalControls
                 patch={container}
@@ -2263,6 +2364,17 @@ function SettingsPanel({
         </CollapsibleSection>
       )}
 
+      <InpaintGallery
+        key={JSON.stringify([selectedPath, container?.id])}
+        editId={container?.id ?? null}
+        disabled={isGeneratingAi}
+        onReuse={(candidate) => {
+          setPrompt(candidate.patch.prompt);
+          setUseFastInpaint(candidate.method === 'basic');
+          updateGenerationDraft(generationDraft(candidate.patch.generationOptions));
+          setReferences(candidate.patch.generationOptions?.referenceImagesBase64 ?? []);
+        }}
+      />
       <CollapsibleSection
         title={
           isStandalone

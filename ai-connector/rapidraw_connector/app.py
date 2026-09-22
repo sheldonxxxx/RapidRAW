@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+from typing import Annotated
 import time
 import uuid
 
@@ -20,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .config import Settings, load_catalog, select_profile
 from .geometry import geometry, restore_output
-from .workflows import build_workflow
+from .workflows import build_workflow, supports_reference
 
 MAX_IMAGE_BYTES = 128 * 1024 * 1024
 MAX_IMAGE_PIXELS = 100_000_000
@@ -38,6 +39,7 @@ class InpaintRequest(BaseModel):
     seed: int = Field(default=0, ge=0, le=9007199254740991, strict=True)
     profile: str | None = Field(default=None, pattern=r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
     megapixels: float | None = Field(default=None, ge=.0625, le=16)
+    reference_images_base64: list[Annotated[str, Field(min_length=1, max_length=12*1024*1024)]] = Field(default_factory=list, max_length=4)
 
 
 def write_private(path, data):
@@ -85,6 +87,20 @@ def store_source(cache, source_id, data):
                 raise SourceConflict('Source identifier already contains different image bytes')
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def read_reference(data):
+    raw = base64.b64decode(data, validate=True)
+    if len(raw) > 9*1024*1024:
+        raise ValueError('Reference image is too large')
+    with checked_image(raw) as image:
+        if image.width*image.height > 16_000_000:
+            raise ValueError('Reference image exceeds 16 megapixels')
+        image = ImageOps.exif_transpose(image).convert('RGB')
+        image.thumbnail((1536, 1536), Image.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        return buffer.getvalue()
 
 
 def read_request_images(source_path, mask_base64, config):
@@ -223,7 +239,8 @@ def create_app(settings=None):
     @app.get('/capabilities')
     async def capabilities():
         profiles = [dict(id=name, label=item['label'], default_megapixels=item['config']['megapixels'],
-                         megapixels=item['megapixels'], requires_prompt=item['config'].get('task') != 'remove')
+                         megapixels=item['megapixels'], requires_prompt=item['config'].get('task') != 'remove',
+                         reference_image=supports_reference(item['config']))
                     for name, item in listing['profiles'].items()]
         return dict(protocol_version=2, generation=dict(seed=True, default_profile=listing['default_profile'], profiles=profiles))
 
@@ -266,6 +283,18 @@ def create_app(settings=None):
                 raise HTTPException(400, 'Remove workflow does not accept a text prompt')
         elif not request.prompt.strip():
             raise HTTPException(400, 'Edit workflow requires a text prompt')
+        references = request.reference_images_base64
+        reference_bytes = []
+        if references:
+            if not supports_reference(config):
+                raise HTTPException(400, 'This workflow does not support reference images')
+            try:
+                for reference in references:
+                    if not reference or len(reference) > 12 * 1024 * 1024:
+                        raise ValueError('Reference is empty or too large')
+                    reference_bytes.append(await asyncio.to_thread(read_reference, reference))
+            except Exception as exc:
+                raise HTTPException(400, 'Reference must be a valid still image, at most 9 MiB and 16 megapixels') from exc
         source_path = settings.cache_dir/(request.source_id+'.jpg')
         if not source_path.is_file():
             raise HTTPException(404, 'Source not cached')
@@ -279,7 +308,12 @@ def create_app(settings=None):
         request_id = uuid.uuid4().hex
         mask_path = settings.cache_dir/(request_id+'-mask.png')
         evidence = settings.receipt_dir/request_id
-        graph = build_workflow(source_path.relative_to(settings.input_dir).as_posix(), mask_path.relative_to(settings.input_dir).as_posix(), request.prompt, seed, g, config)
+        reference_paths = []
+        for index, data in enumerate(reference_bytes):
+            path = settings.cache_dir/(request_id+f'-reference-{index + 1}.png')
+            await asyncio.to_thread(write_private, path, data)
+            reference_paths.append(path.relative_to(settings.input_dir).as_posix())
+        graph = build_workflow(source_path.relative_to(settings.input_dir).as_posix(), mask_path.relative_to(settings.input_dir).as_posix(), request.prompt, seed, g, config, reference_paths)
         experiment = dict(pure_noise_output=bool(config.get('pure_noise_output', False)))
         receipt = dict(request_id=request_id, source_id=request.source_id,
                        source_sha256=hashlib.sha256(source_bytes).hexdigest(), source_path=str(evidence/'source.jpg'),
@@ -291,9 +325,13 @@ def create_app(settings=None):
                        workflow_sha256=hashlib.sha256(json.dumps(graph['workflow'], sort_keys=True).encode()).hexdigest(),
                        prompt=request.prompt, negative_prompt=request.negative_prompt,
                        status='prepared', created_unix=time.time(), execution_events=[])
-        if config.get('task') == 'remove':
+        if config.get('task') == 'remove' or (config['family'] == 'qwen21' and references):
             receipt['effective_prompt'] = graph['workflow']['7']['inputs']['prompt']
+        if reference_bytes:
+            receipt['reference_sha256'] = [hashlib.sha256(data).hexdigest() for data in reference_bytes]
         await asyncio.to_thread(prepare_evidence, evidence, receipt, graph['workflow'], source_bytes, mask, mask_bytes, mask_path)
+        for index, data in enumerate(reference_bytes):
+            await asyncio.to_thread(write_private, evidence/f'reference-{index + 1}.png', data)
 
         async def on_event(event):
             event = dict(event, unix=time.time())

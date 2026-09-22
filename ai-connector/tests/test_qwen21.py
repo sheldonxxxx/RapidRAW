@@ -78,6 +78,39 @@ class Qwen21Tests(unittest.TestCase):
                 self.assertEqual(receipt['effective_prompt'],REMOVE_PROMPT)
                 self.assertEqual(receipt['config']['task'],'remove')
 
+    def test_multi_reference_request_reaches_qwen_and_receipts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            app = create_app(Settings(root, ROOT/'profiles', root/'state'))
+            async def generate(settings, graph, output_node, on_event):
+                self.assertEqual(graph['7']['inputs']['images.image_1'], ['51', 0])
+                self.assertEqual(graph['7']['inputs']['images.image_2'], ['70', 0])
+                self.assertEqual(graph['7']['inputs']['images.image_3'], ['71', 0])
+                return self._png(Image.new('RGB', (graph['51']['inputs']['width'], graph['51']['inputs']['height']), (60,80,100))), 'id', {}
+            app.state.execute = AsyncMock(side_effect=generate)
+            with TestClient(app) as client:
+                profiles = client.get('/capabilities').json()['generation']['profiles']
+                self.assertTrue(next(p for p in profiles if p['id'] == 'qwen21-v1')['reference_image'])
+                source = io.BytesIO()
+                Image.new('RGB', (320,320), (60,80,100)).save(source, format='JPEG')
+                source_id = 'b'*64
+                client.post('/upload_source', data={'source_id':source_id}, files={'file':('source.jpg',source.getvalue(),'image/jpeg')})
+                references = [base64.b64encode(self._png(Image.new('RGB', (64,64), color))).decode() for color in ('red','blue')]
+                payload = dict(source_id=source_id, profile='qwen21-v1', prompt='Use both references', seed=42,
+                               mask_image_base64=base64.b64encode(self._png(Image.new('L',(320,320),255))).decode(), reference_images_base64=references)
+                self.assertEqual(client.post('/inpaint', json={**payload, 'reference_images_base64':references*3}).status_code, 422)
+                self.assertEqual(client.post('/inpaint', json={**payload, 'reference_images_base64':['']}).status_code, 422)
+                response = client.post('/inpaint', json=payload)
+                self.assertEqual(response.status_code, 200, response.text[:300])
+                evidence = root/'state/receipts'/response.json()['generation']['request_id']
+                receipt = json.loads((evidence/'receipt.json').read_text())
+                self.assertEqual(receipt['prompt'], 'Use both references')
+                self.assertTrue(receipt['effective_prompt'].startswith('Edit image 1'))
+                self.assertTrue(receipt['effective_prompt'].endswith(receipt['prompt']))
+                self.assertEqual(len(receipt['reference_sha256']), 2)
+                self.assertTrue((evidence/'reference-1.png').is_file())
+                self.assertTrue((evidence/'reference-2.png').is_file())
+
     @staticmethod
     def _png(image):
         stream=io.BytesIO(); image.save(stream,format='PNG'); return stream.getvalue()

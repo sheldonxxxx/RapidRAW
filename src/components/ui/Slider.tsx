@@ -111,9 +111,31 @@ const Slider = ({
   const onDragStateChangeRef = useRef(onDragStateChange);
   onDragStateChangeRef.current = onDragStateChange;
 
-  useEffect(() => {
-    onDragStateChangeRef.current(isDragging);
-  }, [isDragging]);
+  const draggingRef = useRef(false);
+  const reportedDraggingRef = useRef(false);
+  const notifyDragState = useCallback(() => {
+    const dragging = draggingRef.current || isWheelActivelyChangingRef.current;
+    if (reportedDraggingRef.current !== dragging) {
+      reportedDraggingRef.current = dragging;
+      onDragStateChangeRef.current(dragging);
+    }
+  }, []);
+  const setDragging = useCallback(
+    (dragging: boolean) => {
+      draggingRef.current = dragging;
+      // Publish before onChange so the first preview uses interactive quality.
+      notifyDragState();
+      setIsDragging(dragging);
+    },
+    [notifyDragState],
+  );
+
+  useEffect(
+    () => () => {
+      if (reportedDraggingRef.current) onDragStateChangeRef.current(false);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!disabled) return;
@@ -131,7 +153,7 @@ const Slider = ({
       animationFrameRef.current = undefined;
     }
 
-    setIsDragging(false);
+    setDragging(false);
     setIsEditing(false);
     setIsLabelHovered(false);
     setDisplayValue(value);
@@ -156,6 +178,7 @@ const Slider = ({
 
       if (clampedValue !== value && !isNaN(clampedValue)) {
         isWheelActivelyChangingRef.current = true;
+        notifyDragState();
         setDisplayValue(clampedValue);
         setInputValue(String(clampedValue));
 
@@ -164,6 +187,7 @@ const Slider = ({
         }
         wheelTimeoutRef.current = window.setTimeout(() => {
           isWheelActivelyChangingRef.current = false;
+          notifyDragState();
         }, 150);
 
         const syntheticEvent = {
@@ -180,7 +204,7 @@ const Slider = ({
     return () => {
       sliderElement.removeEventListener('wheel', handleWheel);
     };
-  }, [disabled, value, min, max, step, onChange, decimalPlaces]);
+  }, [disabled, value, min, max, step, onChange, decimalPlaces, notifyDragState]);
 
   // Handle Dragging
   useEffect(() => {
@@ -234,7 +258,7 @@ const Slider = ({
       if (isDragging) {
         onPointerUp?.();
       }
-      setIsDragging(false);
+      setDragging(false);
     };
 
     window.addEventListener('mousemove', handlePointerMove, { passive: false });
@@ -242,6 +266,7 @@ const Slider = ({
     window.addEventListener('touchmove', handlePointerMove, { passive: false });
     window.addEventListener('touchend', handlePointerUp);
     window.addEventListener('touchcancel', handlePointerUp);
+    window.addEventListener('blur', handlePointerUp);
 
     return () => {
       window.removeEventListener('mousemove', handlePointerMove);
@@ -249,6 +274,7 @@ const Slider = ({
       window.removeEventListener('touchmove', handlePointerMove);
       window.removeEventListener('touchend', handlePointerUp);
       window.removeEventListener('touchcancel', handlePointerUp);
+      window.removeEventListener('blur', handlePointerUp);
     };
   }, [disabled, isDragging]);
 
@@ -356,7 +382,7 @@ const Slider = ({
     accumulatedValueRef.current = rawValue;
     lastPointerXRef.current = e.clientX;
 
-    setIsDragging(true);
+    setDragging(true);
     setDisplayValue(snappedValue);
     setInputValue(String(snappedValue));
     onChange({ target: { value: snappedValue } });
@@ -427,7 +453,7 @@ const Slider = ({
       e.preventDefault();
     }
 
-    setIsDragging(true);
+    setDragging(true);
     setDisplayValue(snappedValue);
     setInputValue(String(snappedValue));
     onChange({ target: { value: snappedValue } });

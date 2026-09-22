@@ -70,7 +70,7 @@
     "@swc/core@1.16.1": true,
     "esbuild@0.28.2": true
   },
-  "version": "0.2.0",
+  "version": "0.3.0",
   "engines": {
     "node": ">=22.12.0"
   }

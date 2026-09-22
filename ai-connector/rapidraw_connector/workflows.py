@@ -5,9 +5,35 @@ REMOVE_PROMPT = ('Remove the object from the selected area completely. Fill the 
                  'lighting and colour. No part, silhouette or shadow of the removed object '
                  'remains. Keep all other scene content unchanged.')
 
-def build_workflow(source_name, mask_name, prompt, seed, geometry, config):
+
+def qwen_reference_prompt(prompt, count):
+    if not count:
+        return prompt
+    reference_role = (
+        'Image 2 is an auxiliary reference: use only the subject appearance or visual properties needed for the requested edit. '
+        if count == 1 else
+        f'Images 2 through {count + 1} are auxiliary references, in upload order: use only the subject appearance or visual properties needed for the requested edit. '
+    )
+    return (
+        'Edit image 1, the source photograph. Preserve its scene, background, viewpoint, composition and lighting except for the requested edit. '
+        + reference_role
+        + 'Do not reproduce the reference image or replace the source scene with its background. Return the edited image 1.\n\nRequested edit: '
+        + prompt
+    )
+
+
+def supports_reference(config):
+    return config['family'] in ('klein', 'qwen21') and config.get('task') != 'remove'
+
+
+def build_workflow(source_name, mask_name, prompt, seed, geometry, config, reference_names=None):
+    reference_names = reference_names or []
+    if len(reference_names) > 4:
+        raise ValueError('At most four reference images are supported')
     g, c, workflow = geometry, config, {}
     family = c['family']
+    if reference_names and not supports_reference(c):
+        raise ValueError('This workflow does not support a reference image')
     if family not in ('klein', 'boogu', 'qwen21'):
         raise ValueError('Unsupported generation family')
     pure_noise = bool(c.get('pure_noise_output', False))
@@ -30,7 +56,11 @@ def build_workflow(source_name, mask_name, prompt, seed, geometry, config):
         model = node(1, 'UNETLoader', unet_name=c['model'], weight_dtype=c.get('weight_dtype', 'default'))
         clip = node(2, 'CLIPLoader', clip_name=c['text_encoder'], type='qwen_image', device=c.get('encoder_device', 'default'))
         vae = node(3, 'VAELoader', vae_name=c['vae'])
-        node(7, 'TextEncodeQwenImage21', clip=clip, prompt=effective_prompt, negative_prompt=c.get('negative_prompt', ''), vae=vae, resolution=0, **{'images.image_1': pixels})
+        effective_prompt = qwen_reference_prompt(effective_prompt, len(reference_names))
+        images = {'images.image_1': pixels}
+        for index, name in enumerate(reference_names):
+            images[f'images.image_{index + 2}'] = node(70 + index, 'LoadImage', image=name)
+        node(7, 'TextEncodeQwenImage21', clip=clip, prompt=effective_prompt, negative_prompt=c.get('negative_prompt', ''), vae=vae, resolution=0, **images)
         model = node(5, 'QwenImage21Cache', model=model, device='auto', dtype='default')
         latent = node(63, 'KSampler', model=model, seed=int(seed), steps=int(c['steps']), cfg=float(c['cfg']), sampler_name=c.get('sampler', 'euler'), scheduler=c.get('scheduler', 'simple'), positive=['7', 0], negative=['7', 1], latent_image=['7', 2], denoise=float(c.get('denoise', 1)))
         decoded = node(64, 'VAEDecode', samples=latent, vae=vae)
@@ -66,9 +96,15 @@ def build_workflow(source_name, mask_name, prompt, seed, geometry, config):
     else:
         raise ValueError('Unsupported generation mode')
     if family == 'klein':
-        # Local encoded crop is the only reference, on both paths.
+        # The source crop stays first, followed by the ordered reference images.
         positive = node(58, 'ReferenceLatent', conditioning=positive, latent=encoded)
         negative = node(59, 'ReferenceLatent', conditioning=negative, latent=encoded)
+        for index, name in enumerate(reference_names):
+            offset = index * 4
+            reference = node(70 + offset, 'LoadImage', image=name)
+            reference_latent = node(71 + offset, 'VAEEncode', pixels=reference, vae=vae)
+            positive = node(72 + offset, 'ReferenceLatent', conditioning=positive, latent=reference_latent)
+            negative = node(73 + offset, 'ReferenceLatent', conditioning=negative, latent=reference_latent)
         noise = node(28, 'RandomNoise', noise_seed=int(seed))
         guider = node(60, 'CFGGuider', model=model, positive=positive, negative=negative, cfg=float(c['cfg']))
         sampler = node(61, 'KSamplerSelect', sampler_name=c.get('sampler', 'euler'))
