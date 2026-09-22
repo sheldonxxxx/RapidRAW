@@ -16,6 +16,11 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Trusted Publishing uses GitHub OIDC; do not allow legacy npm token
+    # variables to override or trip the token-free release path.
+    env:
+      NODE_AUTH_TOKEN: ''
+      NPM_TOKEN: ''
     defaults:
       run:
         working-directory: mcp
