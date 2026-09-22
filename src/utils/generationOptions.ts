@@ -5,6 +5,8 @@ export interface GenerationProfile {
   label: string;
   defaultMegapixels: number;
   megapixels: number[];
+  requiresPrompt?: boolean;
+  referenceImage?: boolean;
 }
 
 export interface GenerationCapabilities {

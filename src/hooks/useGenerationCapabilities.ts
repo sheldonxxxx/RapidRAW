@@ -14,6 +14,12 @@ export function useGenerationCapabilities(provider: string, address: string, con
 
   useEffect(() => {
     if (!enabled) return;
+    window.addEventListener('focus', retry);
+    return () => window.removeEventListener('focus', retry);
+  }, [enabled, retry]);
+
+  useEffect(() => {
+    if (!enabled) return;
     let current = true;
     setState({ scope, status: 'loading' });
     async function load() {

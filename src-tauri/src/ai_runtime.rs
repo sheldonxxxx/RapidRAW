@@ -112,6 +112,10 @@ fn default_gpu_arena_mb(model: &str) -> usize {
 /// NIND's transposed-convolution nodes on second inference, while DEFAULT
 /// stays stable and within strict numerical gates. Foreground, sky and
 /// depth keep HEURISTIC; Nonlocal has its own provider construction.
+#[cfg_attr(
+    not(any(target_os = "linux", test)),
+    allow(dead_code, reason = "CUDA session construction is Linux-only")
+)]
 pub(crate) fn use_default_cudnn_search(model: &str) -> bool {
     model == crate::ai_processing::DENOISE_FILENAME
 }

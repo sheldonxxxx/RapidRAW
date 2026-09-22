@@ -1,8 +1,10 @@
-# Directional light and colour with Marigold
+# Shape Light and Surface Colour setup
 
 Use Marigold V2 for **directional dodge and burn** and **colour selections that are less sensitive to lighting**. Estimate a map once through your existing AI connector, then adjust the effect in RapidRAW without running the model again.
 
 These optional source-build features are disabled by default. The Masks panel and MCP use the same native renderer for previews and exports. Maps are saved with the edit and included in portable sessions. Local depth, generative editing and Marigold depth remain independently available.
+
+For the photographer-facing workflow, read [Shape light, colour and depth](../docs/creative-selections.md).
 
 ## Two useful starting points
 
@@ -43,11 +45,11 @@ One connector worker serializes generation, depth, normals and albedo requests. 
 
 ## Use in RapidRAW
 
-1. Complete the server setup above. In **Settings**, enable **Optional Marigold directional light and colour**, confirm the shared AI connector address, then choose **Check normals and albedo setup**.
-2. Open a photo. In **Masks → Add New Mask**, choose **Marigold Directional Light** or **Marigold Colour**. A new component generates its map once. The controls also provide **Generate map**, **Regenerate map** and **Discard result** while a request is pending.
-3. For directional light, set the direction and dodge/burn strength. **0°** lights from the right and **90°** from above. Positive strength brightens facing surfaces and darkens opposing surfaces; negative strength reverses that effect. Zero strength adds no lighting. The overlay shows the facing selection, while the photo shows both sides of the effect.
-4. For colour, choose **Choose colour on albedo map** and click the material colour. Adjust **Colour range**, choose **Recolour to**, then raise **Recolour amount**. It starts at zero. At zero, the selection can still drive ordinary local adjustments. Black has no recolouring effect because it has no chromaticity; use exposure for darkening.
-5. Intersect with an existing subject mask or brush region to protect similar colours or unrelated surfaces. Use one surface component per adjustment mask. The renderer has 32 mask slots; directional light uses two, other masks one.
+1. Complete the server setup above. In **Settings**, enable **Shape Light and Surface Colour**, confirm the shared AI connector address, then choose **Check light and colour setup**.
+2. In **Masks → Add New Mask**, choose **Shape Light** or **Surface Colour**. A new component analyses the photo once. Use **Update analysis** to refresh it or **Discard result** while a request is pending.
+3. For Shape Light, choose a direction and adjust **Strength**. New desktop edits begin with light from above at 0.25 EV; the strength control spans 0–1.5 EV. Zero adds no lighting. Saved negative strengths retain their effect and display as the equivalent opposing direction. **Analysis details** provides the exact angle and normals map.
+4. For Surface Colour, click the colour on the photograph, refine **Colour range**, then use ordinary local adjustments. For recolouring, expand **Recolour (optional)**, choose **Recolour to** and raise **Recolour amount**. It starts at zero. Black has no recolouring effect because it has no chromaticity; use exposure for darkening.
+5. Choose **Limit with a brush** and paint the area to keep, or use the existing Intersect menu with a subject selection. Keep one surface component per adjustment mask. The renderer has 32 mask slots; directional light uses two, other masks one.
 
 The map viewer shows analysis geometry before display rotation and crop. Display rotation, flips and crop follow the saved map without another request. Lens/perspective changes and retouch changes make the surface mask inactive until regeneration or undo. Regenerating replaces the stored map only after success; a discarded, failed or outdated request preserves the previous map.
 

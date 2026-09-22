@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { invoke } from '@tauri-apps/api/core';
 import debounce from 'lodash.debounce';
+import { preparePreviewAdjustments, preparePreviewSubMasks } from '../../utils/previewPipeline';
 
 import { ImageDimensions, RenderSize, useImageRenderSize } from '../../hooks/useImageRenderSize';
 import { Adjustments, AiPatch, MaskContainer, INITIAL_ADJUSTMENTS, pickAdjustments } from '../../utils/adjustments';
@@ -184,7 +185,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const transformStateRef = useRef<TransformState>(transformState);
-  transformStateRef.current = transformState;
+  const syncWgpuRef = useRef<() => void>(() => {});
   const [isPanningState, setIsPanningState] = useState(false);
   const isClickAnimating = useRef(false);
   const clickAnimationTime = 250;
@@ -195,7 +196,10 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
   const isTransitioningRef = useRef(false);
   const [toolbarOverflowVisible, setToolbarOverflowVisible] = useState(!isFullScreen);
   const isGeneratingOverlayRef = useRef(false);
+  const overlayGenerationRef = useRef(0);
+  const overlayMaskIdRef = useRef<string | null>(null);
   const pendingOverlayRequestRef = useRef<{
+    generation: number;
     maskDef: OverlayMask | AiPatch | null;
     renderSize: RenderSize;
     jsAdjustments: Adjustments;
@@ -490,6 +494,9 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
       if (contentRef.current) {
         contentRef.current.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
       }
+      // The photo is on a native surface; move it with the DOM masks without
+      // waiting for a React commit, passive effect and another animation frame.
+      syncWgpuRef.current();
 
       if (!isTransitioningRef.current) {
         if (scale > 1.01) {
@@ -1298,10 +1305,18 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
     return () => clearTimeout(timer);
   }, [imageRenderSize, transformState.scale, handleDisplaySizeChange]);
 
+  useEffect(() => {
+    setMaskOverlayUrl(null);
+    return () => {
+      overlayGenerationRef.current += 1;
+      pendingOverlayRequestRef.current = null;
+    };
+  }, [selectedImage?.path]);
+
   const processOverlayQueue = useCallback(async () => {
     if (isGeneratingOverlayRef.current || !pendingOverlayRequestRef.current) return;
 
-    const { maskDef, renderSize, jsAdjustments } = pendingOverlayRequestRef.current;
+    const { generation, maskDef, renderSize, jsAdjustments } = pendingOverlayRequestRef.current;
     pendingOverlayRequestRef.current = null;
 
     if (!maskDef || !maskDef.visible || renderSize.width === 0) {
@@ -1315,26 +1330,11 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
 
       const { patchesSentToBackend } = useEditorStore.getState();
 
-      const stripSubMasks = (subMasks: SubMask[]) => {
-        if (!Array.isArray(subMasks)) return;
-        subMasks.forEach((sm) => {
-          if (sm.id && sm.parameters && patchesSentToBackend.has(sm.id)) {
-            if (sm.parameters.mask_data_base64 !== undefined) sm.parameters.mask_data_base64 = null;
-            if (sm.parameters.maskDataBase64 !== undefined) sm.parameters.maskDataBase64 = null;
-          }
-        });
+      const { payload: strippedAdjustments } = preparePreviewAdjustments(jsAdjustments, patchesSentToBackend);
+      const strippedMaskDef = {
+        ...maskDef,
+        subMasks: preparePreviewSubMasks(maskDef.subMasks, patchesSentToBackend),
       };
-
-      const strippedAdjustments = structuredClone(jsAdjustments);
-      if (strippedAdjustments.masks) {
-        strippedAdjustments.masks.forEach((m) => stripSubMasks(m.subMasks));
-      }
-      if (strippedAdjustments.aiPatches) {
-        strippedAdjustments.aiPatches.forEach((p) => stripSubMasks(p.subMasks));
-      }
-
-      const strippedMaskDef = structuredClone(maskDef);
-      stripSubMasks(strippedMaskDef.subMasks);
 
       const dataUrl: string = await invoke(Invokes.GenerateMaskOverlay, {
         cropOffset,
@@ -1345,26 +1345,41 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
         jsAdjustments: strippedAdjustments,
       });
 
-      if (dataUrl) {
-        setMaskOverlayUrl(dataUrl);
-      } else {
-        setMaskOverlayUrl(null);
+      if (generation === overlayGenerationRef.current) {
+        setMaskOverlayUrl(dataUrl || null);
       }
     } catch (e) {
       console.error('Failed to generate live mask overlay:', e);
-      setMaskOverlayUrl(null);
+      if (generation === overlayGenerationRef.current) setMaskOverlayUrl(null);
     } finally {
       isGeneratingOverlayRef.current = false;
       if (pendingOverlayRequestRef.current) {
-        requestAnimationFrame(processOverlayQueue);
+        void processOverlayQueue();
       }
     }
   }, []);
 
   const requestMaskOverlay = useCallback(
     (maskDef: OverlayMask | AiPatch | null, renderSize: RenderSize, currentAdjustments: Adjustments) => {
-      pendingOverlayRequestRef.current = { maskDef, renderSize, jsAdjustments: currentAdjustments };
-      processOverlayQueue();
+      const maskId = maskDef?.id ?? null;
+      if (maskId !== overlayMaskIdRef.current) {
+        overlayMaskIdRef.current = maskId;
+        overlayGenerationRef.current += 1;
+        setMaskOverlayUrl(null);
+      }
+      if (!maskDef?.visible || renderSize.width === 0) {
+        overlayGenerationRef.current += 1;
+        pendingOverlayRequestRef.current = null;
+        setMaskOverlayUrl(null);
+        return;
+      }
+      pendingOverlayRequestRef.current = {
+        generation: overlayGenerationRef.current,
+        maskDef,
+        renderSize,
+        jsAdjustments: currentAdjustments,
+      };
+      void processOverlayQueue();
     },
     [processOverlayQueue],
   );
@@ -1399,9 +1414,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
     bgPrimary: [24 / 255, 24 / 255, 24 / 255, 1.0],
     bgSecondary: [35 / 255, 35 / 255, 35 / 255, 1.0],
   });
-  const syncWgpuRef = useRef<() => void>(() => {});
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     const rootStyle = getComputedStyle(document.documentElement);
     const bgPrimaryStr = rootStyle.getPropertyValue('--app-bg-primary') || 'rgb(24, 24, 24)';
     const bgSecondaryStr = rootStyle.getPropertyValue('--app-bg-secondary') || 'rgb(35, 35, 35)';
@@ -1429,7 +1442,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
     finalPreviewUrl,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     syncWgpuRef.current();
   }, [
     appSettings?.useWgpuRenderer,
@@ -1582,7 +1595,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
       }
     };
 
-    syncWgpuRef.current = scheduleSync;
+    syncWgpuRef.current = syncWgpu;
     syncWgpu();
 
     const container = imageContainerRef.current;
@@ -1594,6 +1607,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
 
     return () => {
       isEffectActive = false;
+      syncWgpuRef.current = () => {};
       if (wgpuSyncRef.current !== null) {
         cancelAnimationFrame(wgpuSyncRef.current);
         wgpuSyncRef.current = null;
@@ -1701,6 +1715,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
     requestMaskOverlay(maskDefForOverlay, imageRenderSize, adjustments);
   }, [
     overlayTriggerHash,
+    selectedImage?.path,
     requestMaskOverlay,
     activePanel,
     activeMaskContainerId,

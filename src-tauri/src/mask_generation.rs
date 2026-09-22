@@ -11,6 +11,7 @@ use std::f32::consts::PI;
 use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::sync::Arc;
+use tauri::Manager;
 
 use crate::app_state::AppState;
 use crate::get_cached_full_warped_image;
@@ -85,6 +86,8 @@ pub struct AiPatchDefinition {
     pub prompt: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation_options: Option<crate::ai_connector::GenerationOptions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub removal_options: Option<crate::inpainting::removal::RemovalOptions>,
     #[serde(default)]
     pub patch_data: Option<PatchData>,
     #[serde(default = "default_opacity")]
@@ -1464,7 +1467,33 @@ pub fn generate_mask_bitmap(
 }
 
 #[tauri::command]
-pub fn generate_mask_overlay(
+pub async fn generate_mask_overlay(
+    mask_def: serde_json::Value,
+    width: u32,
+    height: u32,
+    scale: f32,
+    crop_offset: (f32, f32),
+    js_adjustments: Option<serde_json::Value>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    // Rasterization, optional image warping and PNG encoding must not block
+    // the window event loop while the photographer pans or zooms.
+    tauri::async_runtime::spawn_blocking(move || {
+        generate_mask_overlay_inner(
+            mask_def,
+            width,
+            height,
+            scale,
+            crop_offset,
+            js_adjustments,
+            app_handle.state::<AppState>(),
+        )
+    })
+    .await
+    .map_err(|error| format!("Mask overlay worker failed: {error}"))?
+}
+
+fn generate_mask_overlay_inner(
     mut mask_def: serde_json::Value,
     width: u32,
     height: u32,

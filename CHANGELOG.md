@@ -4,6 +4,49 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+## 0.3.0 — 2026-09-22
+
+Release tag: `fork-v0.3.0`. See the [release notes](docs/releases/0.3.0.md).
+
+### Inpaint studio
+
+- Generate 1–4 variations from a fixed source and selection, then click a result to apply it or click again to disable it. Basic inpaint generates one candidate.
+- Keep generation history scoped to each edit in the sidecar across restarts, reuse settings, delete unwanted candidates, and stop a batch after its running variation finishes.
+- Add up to four reference images in a separate collapsible section for Qwen Image 2.1 and supporting Klein edit workflows. Keep Variations in its own row. Unsupported workflows reject references rather than silently ignoring them.
+
+### Development checks
+
+- Exclude generated Python virtual environments and pytest caches from Prettier checks. Allow unused Linux runtime helpers on other platforms while keeping strict Clippy checks on their supported targets.
+
+### Editor responsiveness
+
+- Keep the latest pending slider preview and avoid copying cached mask and repair images on each edit. Normal live previews use at most 1,920 pixels on the long edge while dragging, then restore the requested preview resolution on release; the Full quality setting keeps its requested resolution.
+- Send pan and zoom transforms directly to the native renderer, and redraw mask controls with their resized canvas to prevent a delayed jump after zooming.
+- Generate mask overlays on a background worker and discard outdated overlay responses when the selection or photograph changes.
+
+### Automatic repair colour matching
+
+- Match small generated colour differences to surrounding source pixels before RapidRAW composites Klein and Qwen repairs. Preserve the original mask and record skipped corrections in generation receipts.
+- On uniform grainy surfaces, let Qwen repairs borrow fine texture from a nearby source area that passes colour and texture checks. Record the decision in the private receipt.
+
+### Qwen Image 2.1 workflow
+
+- When references are attached, identify the source photo as the image to edit and the uploads as auxiliary references in the Qwen prompt. Keep the original user prompt and the effective model instruction in the generation receipt.
+
+- Add a discoverable Qwen Image 2.1 connector profile with 1 MP and 2 MP options, native reference conditioning and a 30-step sampling starting default. Keep the existing default workflow.
+- Add a separate Qwen Remove workflow for brush-selected cleanup without a typed prompt. Send literal prompts in the ordinary Qwen workflow when no references are attached and record the removal instruction in the private receipt.
+
+### Native removal coverage
+
+- Add opt-in source-pixel removal expansion and outward feathering to desktop and MCP local/generative retouch. Apply subtractive and intersection protection after expansion; preserve existing masks when controls are omitted or zero.
+- Preview the effective mask without generating or changing the session. Save removal settings with native patches for regeneration, recipe validation and portable sessions.
+
+### Photographer-facing light, colour and depth tools
+
+- Present optional Marigold analysis as Shape Light, Surface Colour and Depth Selection, with a [photographer guide](docs/creative-selections.md) and matching setup labels.
+- Add light-direction buttons, a strength control and a gentle starting edit; pick surface colours on the photograph through crop, rotation and flips; add Near/Middle/Far depth starting ranges and a direct brush-intersection action for light and colour.
+- Keep technical light/colour maps under Analysis details and recolouring optional. Preserve existing saved maps, MCP parameters and offline rendering.
+
 ### Desktop mask geometry
 
 - Preserve existing local and AI-backed mask placement when rotating, fine-rotating, flipping or straightening an image.
@@ -92,6 +135,7 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 ### Fixed
 
 - macOS packages now receive a complete ad-hoc bundle signature, preventing the invalid-signature “damaged” error caused by an executable-only linker signature. CI checks the complete bundle signature. A scoped library-loading entitlement preserves bundled ONNX Runtime and optional camera-library loading under the hardened runtime. These builds are still not notarized and may require approval in macOS Privacy & Security.
+- Double-clicking empty custom title-bar space now toggles maximize/restore through the normal window state instead of entering fullscreen on macOS; single-press dragging and the close/minimize/green-button behavior are unchanged.
 
 ## 0.1.0-beta.1 — 2026-09-14
 

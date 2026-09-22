@@ -447,6 +447,14 @@ pub struct AiGenerationProfile {
     #[serde(alias = "default_megapixels")]
     default_megapixels: f64,
     megapixels: Vec<f64>,
+    #[serde(default = "prompt_required_by_default", alias = "requires_prompt")]
+    requires_prompt: bool,
+    #[serde(default, alias = "reference_image")]
+    reference_image: bool,
+}
+
+fn prompt_required_by_default() -> bool {
+    true
 }
 
 fn parse_generation_capabilities(
@@ -555,7 +563,14 @@ mod generation_capabilities_tests {
         assert_eq!(output["defaultProfile"], "balanced");
         assert_eq!(output["profiles"][0]["label"], "Balanced editing");
         assert_eq!(output["profiles"][0]["defaultMegapixels"], 1.0);
+        assert_eq!(output["profiles"][0]["requiresPrompt"], true);
         assert_eq!(output["profiles"][0]["megapixels"], json!([1.0, 2.0]));
+        let remove = json!({"protocol_version":2,"generation":{"seed":true,"default_profile":"qwen21-remove-v1",
+            "profiles":[{"id":"qwen21-remove-v1","label":"Qwen Remove","default_megapixels":1,
+                         "megapixels":[1,2],"requires_prompt":false}]}});
+        let output =
+            serde_json::to_value(parse_generation_capabilities(remove).unwrap().unwrap()).unwrap();
+        assert_eq!(output["profiles"][0]["requiresPrompt"], false);
         assert!(
             parse_generation_capabilities(json!({"protocol_version":1}))
                 .unwrap()

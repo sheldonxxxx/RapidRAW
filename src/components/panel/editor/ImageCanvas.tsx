@@ -1,7 +1,7 @@
 import Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { MaskParameters } from '../right/Masks';
-import { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, memo, useMemo, useLayoutEffect } from 'react';
 import ReactCrop from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { Stage, Layer, Ellipse, Line, Transformer, Group, Circle, Rect, Arrow } from 'react-konva';
@@ -19,6 +19,7 @@ import type { OverlayMode } from '../right/CropPanel';
 import CompositionOverlays from './overlays/CompositionOverlays';
 import { calculateStraightenAngle } from '../../../utils/cropUtils';
 import { toast } from 'react-toastify';
+import { photoPointToSurface, surfacePointToPhoto } from '../../../utils/surfaceEditing';
 
 type CanvasInputEvent = KonvaEventObject<MouseEvent | TouchEvent>;
 
@@ -1347,6 +1348,29 @@ export const MaskOverlay = memo(
       );
     }
 
+    if (subMask.type === Mask.AiAlbedo && p.surfaceArtifact && isSelected) {
+      const swapped = (adjustments.orientationSteps || 0) % 2 !== 0;
+      const point = surfacePointToPhoto(
+        { x: p.surfacePointX ?? 0.5, y: p.surfacePointY ?? 0.5 },
+        swapped ? imageHeight : imageWidth,
+        swapped ? imageWidth : imageHeight,
+        adjustments,
+      );
+      return (
+        <Circle
+          x={(point.x - cropX) * scale}
+          y={(point.y - cropY) * scale}
+          radius={6}
+          stroke="#0ea5e9"
+          strokeWidth={2}
+          listening={false}
+          shadowColor="black"
+          shadowBlur={3}
+          shadowOpacity={0.8}
+        />
+      );
+    }
+
     if (subMask.type === Mask.Color || subMask.type === Mask.Luminance) {
       const { targetX, targetY } = p;
       if (targetX !== undefined && targetX >= 0 && targetY !== undefined && targetY >= 0) {
@@ -1519,6 +1543,7 @@ const ImageCanvas = memo(
     const groupOffsetX = paddingX;
     const groupOffsetY = paddingY;
 
+    const maskStageRef = useRef<Konva.Stage | null>(null);
     const [settledScale, setSettledScale] = useState(transformState.scale);
     useEffect(() => {
       const timer = setTimeout(() => {
@@ -1529,6 +1554,13 @@ const ImageCanvas = memo(
 
     const maxDimension = Math.max(stageWidth, stageHeight, 1);
     const maxSafeScale = Math.max(1, Math.min(settledScale, 4092 / maxDimension));
+
+    // Resize the backing canvas and paint its new coordinates in the same frame
+    // as the inverse CSS scale. Konva's deferred draw otherwise shows a stale
+    // mask for a frame after zoom settles.
+    useLayoutEffect(() => {
+      maskStageRef.current?.draw();
+    }, [maxSafeScale, stageWidth, stageHeight]);
 
     const getCanvasPointer = useCallback(
       (stage: Konva.Stage | null) => {
@@ -1773,9 +1805,15 @@ const ImageCanvas = memo(
       (activeSubMask?.type === Mask.AiSubject || activeSubMask?.type === Mask.QuickEraser);
     const isParametricActive =
       (isMasking || isAiEditing) && (activeSubMask?.type === Mask.Color || activeSubMask?.type === Mask.Luminance);
+    const isSurfaceColourActive =
+      isMasking &&
+      activeSubMask?.type === Mask.AiAlbedo &&
+      !!activeSubMask.parameters.surfaceArtifact &&
+      !!activeSubMask.parameters.maskDataBase64;
     const isInitialDrawing = (isMasking || isAiEditing) && activeSubMask?.parameters?.isInitialDraw === true;
 
-    const isToolActive = isBrushActive || isAiSubjectActive || isInitialDrawing || isParametricActive;
+    const isToolActive =
+      isBrushActive || isAiSubjectActive || isInitialDrawing || isParametricActive || isSurfaceColourActive;
 
     useEffect(() => {
       if (maskOverlayUrl && (isMasking || isAiEditing)) {
@@ -2197,6 +2235,34 @@ const ImageCanvas = memo(
           return;
         }
 
+        if (isSurfaceColourActive && activeSubMask) {
+          const pos = getCanvasPointer(e.target.getStage());
+          if (
+            !pos ||
+            imageRenderSize.scale <= 0 ||
+            pos.x < 0 ||
+            pos.y < 0 ||
+            pos.x > imageRenderSize.width ||
+            pos.y > imageRenderSize.height
+          )
+            return;
+          const point = photoPointToSurface(
+            { x: pos.x / imageRenderSize.scale + cropX, y: pos.y / imageRenderSize.scale + cropY },
+            selectedImage.width,
+            selectedImage.height,
+            adjustments,
+          );
+          if (point)
+            updateSubMask(activeSubMask.id, {
+              parameters: {
+                ...activeSubMask.parameters,
+                surfacePointX: point.x,
+                surfacePointY: point.y,
+              },
+            });
+          return;
+        }
+
         if (isParametricActive && activeSubMask) {
           const pos = getCanvasPointer(e.target.getStage());
           if (!pos) return;
@@ -2402,6 +2468,9 @@ const ImageCanvas = memo(
         activeLineFlow,
         isAiSubjectActive,
         isParametricActive,
+        isSurfaceColourActive,
+        selectedImage.width,
+        selectedImage.height,
         brushSettings,
         onSelectMask,
         onSelectAiSubMask,
@@ -3014,7 +3083,7 @@ const ImageCanvas = memo(
     const effectiveCursor = useMemo(() => {
       if (isGuidedPerspectiveActive && isCropping) return 'crosshair';
       if (isWbPickerActive) return 'crosshair';
-      if (isParametricActive) return 'crosshair';
+      if (isParametricActive || isSurfaceColourActive) return 'crosshair';
       if (isInitialDrawing) return 'crosshair';
 
       if (isBrushActive && !isCloneOrHealActive) return 'none';
@@ -3047,6 +3116,7 @@ const ImageCanvas = memo(
       activeSubMask,
       isAiSubjectActive,
       isParametricActive,
+      isSurfaceColourActive,
       cursorStyle,
       isCtrlPressed,
     ]);
@@ -3284,6 +3354,7 @@ const ImageCanvas = memo(
               }}
             >
               <Stage
+                ref={maskStageRef}
                 width={stageWidth * maxSafeScale}
                 height={stageHeight * maxSafeScale}
                 onMouseDown={handleStart}

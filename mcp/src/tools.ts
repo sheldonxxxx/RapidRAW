@@ -614,9 +614,31 @@ export const toolDefinitions: ToolDefinition[] = [
       name: z.string().max(200).optional(),
       sub_masks: z.array(subMask).min(1).max(64),
       source_point: point.optional(),
-      prompt: z.string().max(10000).optional(),
+      prompt: z
+        .string()
+        .max(10000)
+        .optional()
+        .describe(
+          'Required for generative edits; omit for the qwen21-remove-v1 workflow, which supplies a general removal instruction.',
+        ),
       token: z.string().max(4096).optional(),
       generation_options: generationOptions.optional(),
+      removal_options: z
+        .object({
+          expandPixels: z.number().int().min(0).max(256).optional(),
+          featherPixels: z.number().int().min(0).max(256).optional(),
+        })
+        .strict()
+        .optional()
+        .describe(
+          'Native inpaint/generative mask controls in source pixels. Nonzero values expand the >=50% core and feather outward; subtractive/intersection components constrain the final mask.',
+        ),
+      preview_only: z
+        .boolean()
+        .optional()
+        .describe(
+          'Inpaint/generative only: return the effective mask without generation, model downloads, or a session edit.',
+        ),
     },
     false,
     { network: true },

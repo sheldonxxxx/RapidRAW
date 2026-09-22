@@ -55,7 +55,7 @@ function rotateAroundCenter(point: Coord, width: number, height: number, degrees
   };
 }
 
-function mapDisplayPoint(
+export function mapDisplayPoint(
   point: Coord,
   imageWidth: number,
   imageHeight: number,

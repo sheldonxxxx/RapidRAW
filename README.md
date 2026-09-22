@@ -366,13 +366,13 @@ _Desktop screenshot from upstream RapidRAW. The MCP interface is an addition mai
 
 **[AI editing test report](docs/ai-editing-experiments.md):** what we tested on a 16 GB GPU and how we chose the current workflows.
 
+**Removal coverage and protection:** desktop and MCP removal controls separate core expansion from the outer blend. Preview the effective mask before running local inpaint or generative editing, and use subtractive components to protect retained details. The same native mask is used for generation and final compositing. See the [removal workflow](skills/rapidraw-mcp/references/generative-editing.md#native-removal-coverage-and-protection).
+
 **[ComfyUI integration guide](docs/comfyui.md):** one connector for generative editing and optional depth, tested ComfyUI revisions, GPU memory guidance and [downloadable chosen workflows](ai-connector/workflows/README.md).
 
 For repeated MCP editing and test runs, see [storage and model-cache guidance](mcp/README.md#runtime-contract).
 
-**Optional Marigold depth masks:** [set up depth selections](ai-connector/MARIGOLD.md) using the same AI connector and ComfyUI as generative editing. This source-build feature is disabled by default and keeps built-in depth and lens blur available.
-
-**Optional Marigold tools:** [directional light and colour selections](ai-connector/SURFACES.md) use normals and albedo through the same connector. Adjust light direction, select surface colours and recolour while retaining source texture. Saved maps work offline in native previews and exports.
+**Shape light, colour and depth:** [three optional editing tools](docs/creative-selections.md) help you shape directional light, select surface colours across light and shadow, and adjust nearer or more distant parts of a photo. Pick colours on the photograph, choose a light direction or a depth starting range, then refine the edit with local controls. Saved analysis works offline in native previews and exports. These source-build tools use Marigold through the [shared AI connector](ai-connector/MARIGOLD.md) and are disabled by default.
 
 ## Choose your starting point
 
@@ -401,7 +401,9 @@ Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0 fo
 
 The desktop AI panel and MCP also offer [local mask and detail enhancement](docs/local-enhancement.md): learned edge refinement, scene and portrait-part masks, experimental motion deblur and conservative 2× enlargement. Optional model assets run locally, with profiles for smaller computers and Linux NVIDIA servers.
 
-Compatible AI Connectors also expose workflow, AI resolution and seed choices in the desktop AI panel and generative MCP retouch. Actual generation dimensions stay with the patch when the provider supplies them. Set up the included [Comfy Connector](ai-connector/README.md) and see the [generative editing controls](docs/desktop-guide.md#generative-editing-controls) for resolution and compatibility details. These controls require a current build of this fork.
+The desktop **Inpaint studio** offers 1–4 variations, click-to-apply results, persistent history for each edit, and up to four reference images with supporting Qwen Image 2.1 and Klein edit workflows. Compatible AI Connectors also expose workflow, AI resolution and seed choices in the desktop AI panel and generative MCP retouch. Actual generation dimensions stay with the patch when the provider supplies them. Set up the included [Comfy Connector](ai-connector/README.md) and see the [generative editing controls](docs/desktop-guide.md#generative-editing-controls) for resolution and compatibility details. These controls require a current build of this fork.
+
+The optional AI Connector automatically [matches small repair colour differences at selection boundaries](ai-connector/README.md#automatic-repair-colour-matching) and also supports the **Qwen Image 2.1** removal workflow; see its [model and node requirements](ai-connector/README.md#qwen-image-21).
 
 For removal, recolouring, adding objects and lettering, follow the [AI editing workflows](docs/ai-editing-workflows.md). Start with Klein 4B at 1 MP and compare the rendered result before changing models or resolution.
 

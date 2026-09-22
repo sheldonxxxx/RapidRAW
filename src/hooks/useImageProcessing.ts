@@ -12,7 +12,7 @@ import { debouncedSave } from './useEditorActions';
 import { globalImageCache } from '../utils/ImageLRUCache';
 
 import type { AppNavigationProps } from './useAppNavigation';
-import type { SubMask } from '../components/panel/right/Masks';
+import { PreviewPipeline, preparePreviewAdjustments, interactivePreviewResolution } from '../utils/previewPipeline';
 
 export function useImageProcessing(
   transformWrapperRef: AppNavigationProps['refs']['transformWrapperRef'],
@@ -44,16 +44,17 @@ export function useImageProcessing(
   const uncroppedJobIdRef = useRef(0);
   const latestUncroppedJobIdRef = useRef(0);
 
-  const inFlightCountRef = useRef(0);
   const lastAnalyticsTimeRef = useRef<number>(0);
-  const pendingApplyRef = useRef<{ adjustments: Adjustments; targetRes?: number } | null>(null);
   const dragIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeWaveformChannelRef = useRef(activeWaveformChannel);
   activeWaveformChannelRef.current = activeWaveformChannel;
 
   const selectedImagePathRef = useRef<string | null>(null);
+  const imageGenerationRef = useRef(0);
   useEffect(() => {
     selectedImagePathRef.current = selectedImage?.path ?? null;
+    imageGenerationRef.current += 1;
+    pipelineRef.current?.clear();
   }, [selectedImage?.path]);
 
   const calculateROI = useCallback(() => {
@@ -116,11 +117,12 @@ export function useImageProcessing(
     async (currentAdjustments: Adjustments, dragging: boolean = false, targetRes?: number) => {
       const currentPath = selectedImage?.path;
       if (!currentPath) return;
+      const generation = imageGenerationRef.current;
 
       let shouldRequestAnalytics = false;
       if (dragging) {
         const now = performance.now();
-        if (now - lastAnalyticsTimeRef.current > 33.33) {
+        if (now - lastAnalyticsTimeRef.current > 100) {
           shouldRequestAnalytics = true;
           lastAnalyticsTimeRef.current = now;
         }
@@ -129,50 +131,8 @@ export function useImageProcessing(
         lastAnalyticsTimeRef.current = 0;
       }
 
-      const payload = structuredClone(currentAdjustments);
       const { patchesSentToBackend } = useEditorStore.getState();
-      const newlySentPatches = new Set<string>();
-
-      const processSubMasks = (subMasks: SubMask[]) => {
-        if (!Array.isArray(subMasks)) return;
-        subMasks.forEach((sm) => {
-          if (sm.id && sm.parameters) {
-            const keys = ['mask_data_base64', 'maskDataBase64'] as const;
-            let foundMaskData = false;
-
-            for (const key of keys) {
-              if (sm.parameters[key] !== undefined && sm.parameters[key] !== null) {
-                foundMaskData = true;
-                if (patchesSentToBackend.has(sm.id)) {
-                  sm.parameters[key] = null;
-                }
-              }
-            }
-            if (foundMaskData && !patchesSentToBackend.has(sm.id)) {
-              newlySentPatches.add(sm.id);
-            }
-          }
-        });
-      };
-
-      if (payload.aiPatches && Array.isArray(payload.aiPatches)) {
-        payload.aiPatches.forEach((p) => {
-          if (p.id && p.patchData && !p.isLoading) {
-            if (patchesSentToBackend.has(p.id)) {
-              p.patchData = null;
-            } else {
-              newlySentPatches.add(p.id);
-            }
-          }
-          if (p.subMasks) processSubMasks(p.subMasks);
-        });
-      }
-
-      if (payload.masks && Array.isArray(payload.masks)) {
-        payload.masks.forEach((container) => {
-          if (container.subMasks) processSubMasks(container.subMasks);
-        });
-      }
+      const { payload, sentAssets } = preparePreviewAdjustments(currentAdjustments, patchesSentToBackend);
 
       const jobId = ++previewJobIdRef.current;
       const roi = calculateROI();
@@ -188,11 +148,8 @@ export function useImageProcessing(
           activeWaveformChannel: activeWaveformChannelRef.current || null,
         });
 
-        if (newlySentPatches.size > 0) {
-          newlySentPatches.forEach((id) => patchesSentToBackend.add(id));
-        }
-
-        if (currentPath !== selectedImagePathRef.current) return;
+        if (currentPath !== selectedImagePathRef.current || generation !== imageGenerationRef.current) return;
+        sentAssets.forEach((id) => patchesSentToBackend.add(id));
 
         if (buffer && buffer.byteLength > 0 && jobId >= latestRenderedJobIdRef.current) {
           latestRenderedJobIdRef.current = jobId;
@@ -262,6 +219,7 @@ export function useImageProcessing(
           }
         }
       } catch (err) {
+        if (currentPath !== selectedImagePathRef.current || generation !== imageGenerationRef.current) return;
         if (err !== 'Superseded or worker failed') {
           console.error('Failed to apply adjustments:', err);
         }
@@ -276,36 +234,44 @@ export function useImageProcessing(
     [selectedImage?.path, calculateROI, isWaveformVisible, setEditor, previewJobIdRef, latestRenderedJobIdRef],
   );
 
-  const flushPipeline = useCallback(() => {
-    if (inFlightCountRef.current >= 3) return;
-    if (!pendingApplyRef.current) return;
-
-    const { adjustments, targetRes } = pendingApplyRef.current;
-    pendingApplyRef.current = null;
-
-    inFlightCountRef.current += 1;
-
-    executeApplyAdjustments(adjustments, true, targetRes).finally(() => {
-      inFlightCountRef.current -= 1;
-      if (pendingApplyRef.current) {
-        requestAnimationFrame(() => flushPipeline());
-      }
+  const executeRef = useRef(executeApplyAdjustments);
+  executeRef.current = executeApplyAdjustments;
+  const pipelineRef = useRef<PreviewPipeline<{
+    adjustments: Adjustments;
+    dragging: boolean;
+    targetRes?: number;
+    path: string;
+  }> | null>(null);
+  if (!pipelineRef.current) {
+    pipelineRef.current = new PreviewPipeline(async (request) => {
+      const image = useEditorStore.getState().selectedImage;
+      if (!image?.isReady || request.path !== image.path) return;
+      await executeRef.current(request.adjustments, request.dragging, request.targetRes);
     });
-  }, [executeApplyAdjustments]);
+  }
+
+  useEffect(
+    () => () => {
+      pipelineRef.current?.clear();
+      selectedImagePathRef.current = null;
+      imageGenerationRef.current += 1;
+    },
+    [],
+  );
 
   const applyAdjustments = useCallback(
     (currentAdjustments: Adjustments, dragging: boolean = false, targetRes?: number) => {
-      if (!selectedImage?.isReady) return;
-
-      if (dragging) {
-        pendingApplyRef.current = { adjustments: currentAdjustments, targetRes };
-        flushPipeline();
-      } else {
-        pendingApplyRef.current = null;
-        executeApplyAdjustments(currentAdjustments, false, targetRes);
-      }
+      const image = useEditorStore.getState().selectedImage;
+      if (!image?.isReady) return;
+      const quality = useSettingsStore.getState().appSettings?.livePreviewQuality;
+      pipelineRef.current!.enqueue({
+        adjustments: currentAdjustments,
+        dragging,
+        targetRes: dragging && targetRes ? interactivePreviewResolution(targetRes, quality) : targetRes,
+        path: image.path,
+      });
     },
-    [selectedImage?.isReady, flushPipeline, executeApplyAdjustments],
+    [],
   );
 
   const throttledUncroppedPreview = useMemo(
@@ -388,7 +354,7 @@ export function useImageProcessing(
           const renderAdjustments = previewOverride ?? adjustments;
           applyAdjustments(renderAdjustments, false, targetRes);
         }
-      }, 50),
+      }, 250),
     [applyAdjustments, currentResRef],
   );
 
@@ -436,11 +402,9 @@ export function useImageProcessing(
         applyAdjustments(renderAdjustments, true, targetRes);
       }
     } else {
+      currentResRef.current = targetRes;
+      applyAdjustments(renderAdjustments, false, targetRes);
       dragIdleTimer.current = setTimeout(() => {
-        currentResRef.current = targetRes;
-
-        applyAdjustments(renderAdjustments, false, targetRes);
-
         if (previewOverride) return;
 
         const prev = prevAdjustmentsRef.current;

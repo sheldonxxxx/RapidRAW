@@ -12,7 +12,7 @@ const stubs = {
   react: `export const memo = fn => fn;
     export const useState = value => [typeof value === 'function' ? value() : value, () => {}];
     export const useRef = current => ({ current });
-    export const useEffect = () => {};
+    export const useEffect = () => {}; export const useLayoutEffect = () => {};
     export const useCallback = fn => fn;
     export const useMemo = fn => fn();`,
   'react/jsx-runtime': `export const Fragment = 'Fragment';

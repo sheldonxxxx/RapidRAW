@@ -5,6 +5,7 @@ import DepthMapPreview from './DepthMapPreview';
 import { applyLinearFalloffSelection, applyMaskAdjustmentUpdate, insertCreatedSubMask } from './maskInteractions';
 import { buildPresetMenu } from './presetMenu';
 interface SettingsPanelProps {
+  onLimitWithBrush: () => void;
   container: MaskContainer | null;
   activeSubMask: SubMask | null;
   aiModelDownloadStatus: string | null;
@@ -597,6 +598,10 @@ export default function MasksPanel() {
       subMask.parameters.maxFade = 15;
       subMask.parameters.feather = 10;
     }
+    if (type === Mask.AiNormals) {
+      subMask.parameters.normalAngle = 90;
+      subMask.parameters.normalAmount = 0.25;
+    }
     return subMask;
   };
 
@@ -604,7 +609,7 @@ export default function MasksPanel() {
     const subMask = createMaskLogic(type);
     if (depthProvider) {
       subMask.parameters.depthProvider = depthProvider;
-      subMask.name = t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' });
+      subMask.name = t('editor.masks.marigold.newMask', { defaultValue: 'Depth Selection' });
     }
     const count = (adjustments.masks?.length || 0) + 1;
     const newContainer = {
@@ -640,7 +645,7 @@ export default function MasksPanel() {
     const subMask = createMaskLogic(type, mode);
     if (depthProvider) {
       subMask.parameters.depthProvider = depthProvider;
-      subMask.name = t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' });
+      subMask.name = t('editor.masks.marigold.newMask', { defaultValue: 'Depth Selection' });
     }
     setAdjustments((prev: Adjustments) => ({
       ...prev,
@@ -685,7 +690,7 @@ export default function MasksPanel() {
     ...(appSettings?.marigoldDepthEnabled
       ? [
           {
-            label: t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' }),
+            label: t('editor.masks.marigold.newMask', { defaultValue: 'Depth Selection' }),
             icon: MASK_ICON_MAP[Mask.AiDepth],
             disabled: isGeneratingAiMask,
             onClick: () => {
@@ -699,8 +704,8 @@ export default function MasksPanel() {
       ? [Mask.AiNormals, Mask.AiAlbedo].map((type) => ({
           label:
             type === Mask.AiNormals
-              ? t('masks.types.normals', { defaultValue: 'Marigold Directional Light' })
-              : t('masks.types.albedo', { defaultValue: 'Marigold Colour' }),
+              ? t('masks.types.normals', { defaultValue: 'Shape Light' })
+              : t('masks.types.albedo', { defaultValue: 'Surface Colour' }),
           icon: MASK_ICON_MAP[type],
           disabled:
             isGeneratingAiMask ||
@@ -1229,7 +1234,7 @@ export default function MasksPanel() {
                           disabled={isGeneratingAiMask}
                           onClick={() => handleAddMaskContainer(Mask.AiDepth, 'marigold')}
                         >
-                          {t('editor.masks.marigold.newMask', { defaultValue: 'Marigold Depth' })}
+                          {t('editor.masks.marigold.newMask', { defaultValue: 'Depth Selection' })}
                         </button>
                       )}
                       {appSettings?.marigoldSurfaceEnabled &&
@@ -1241,8 +1246,8 @@ export default function MasksPanel() {
                             onClick={() => handleAddMaskContainer(type)}
                           >
                             {type === Mask.AiNormals
-                              ? t('masks.types.normals', { defaultValue: 'Marigold Directional Light' })
-                              : t('masks.types.albedo', { defaultValue: 'Marigold Colour' })}
+                              ? t('masks.types.normals', { defaultValue: 'Shape Light' })
+                              : t('masks.types.albedo', { defaultValue: 'Surface Colour' })}
                           </button>
                         ))}
                     </div>
@@ -1371,6 +1376,10 @@ export default function MasksPanel() {
                       {t('editor.masks.maskAdjustmentsTitle')}
                     </Text>
                     <SettingsPanel
+                      onLimitWithBrush={() => {
+                        if (activeMaskContainerId)
+                          handleAddSubMask(activeMaskContainerId, Mask.Brush, SubMaskMode.Intersect);
+                      }}
                       container={activeContainer ?? null}
                       activeSubMask={activeSubMaskData || null}
                       aiModelDownloadStatus={aiModelDownloadStatus}
@@ -2071,6 +2080,7 @@ function SubMaskRow({
 }
 
 function SettingsPanel({
+  onLimitWithBrush,
   container,
   activeSubMask,
   aiModelDownloadStatus,
@@ -2350,6 +2360,7 @@ function SettingsPanel({
                   generate={handleGenerateSurfaceMask}
                   updateSubMask={updateSubMask}
                   onDragStateChange={onDragStateChange}
+                  onLimitWithBrush={onLimitWithBrush}
                 />
               )}
               {activeSubMask.type === Mask.AiDepth &&
@@ -2359,6 +2370,7 @@ function SettingsPanel({
                     subMask={activeSubMask}
                     enabled={appSettings?.marigoldDepthEnabled ?? false}
                     generate={handleGenerateAiDepthMask}
+                    updateSubMask={updateSubMask}
                   />
                 )}
               {activeSubMask.type === Mask.AiDepth && (

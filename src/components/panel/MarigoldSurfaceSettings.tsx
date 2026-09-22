@@ -18,7 +18,7 @@ export default function MarigoldSurfaceSettings({
   return (
     <section className="mt-6 space-y-3 rounded-lg border border-border-color p-4">
       <Switch
-        label={t('settings.surface.enable', { defaultValue: 'Optional Marigold directional light and colour' })}
+        label={t('settings.surface.enable', { defaultValue: 'Shape Light and Surface Colour' })}
         checked={settings.marigoldSurfaceEnabled ?? false}
         onChange={(value) => {
           void onChange({ ...settings, marigoldSurfaceEnabled: value });
@@ -27,7 +27,7 @@ export default function MarigoldSurfaceSettings({
       <p className="text-sm text-text-secondary">
         {t('settings.surface.description', {
           defaultValue:
-            'Use surface normals for directional dodge and burn, and albedo for colour selections and recolouring. Uses the same AI connector and ComfyUI as your other AI tools. Saved maps work offline.',
+            'Shape light across a face or object, or select similar colours across light and shadow. Powered by Marigold through your AI connector and ComfyUI. Saved analysis works offline.',
         })}
       </p>
       {settings.marigoldSurfaceEnabled && (
@@ -71,7 +71,7 @@ export default function MarigoldSurfaceSettings({
                 });
                 setStatus(
                   t('settings.surface.taskStatus', {
-                    defaultValue: 'Normals: {{normals}}. Albedo: {{albedo}}.',
+                    defaultValue: 'Shape Light: {{normals}}. Surface Colour: {{albedo}}.',
                     normals: result.tasks?.normals?.ready ? ready : missing,
                     albedo: result.tasks?.albedo?.ready ? ready : missing,
                   }),
@@ -85,7 +85,7 @@ export default function MarigoldSurfaceSettings({
           >
             {checking
               ? t('settings.marigold.checking', { defaultValue: 'Checking models…' })
-              : t('settings.surface.check', { defaultValue: 'Check normals and albedo setup' })}
+              : t('settings.surface.check', { defaultValue: 'Check light and colour setup' })}
           </button>
           <p role="status" className="text-sm break-words">
             {checkedAddress === settings.aiConnectorAddress ? status : ''}

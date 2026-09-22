@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class Profile(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
     id: str = Field(pattern=r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
-    family: Literal['klein', 'boogu']
+    family: Literal['klein', 'boogu', 'qwen21']
     model: str
     text_encoder: str
     vae: str
@@ -21,9 +21,10 @@ class Profile(BaseModel):
     cfg: float = Field(ge=0, le=30)
     megapixels: float = Field(ge=.0625, le=16)
     mode: Literal['masked', 'context'] = 'masked'
+    task: Literal['edit', 'remove'] = 'edit'
     margin_fraction: float = Field(default=.5, ge=0, le=4)
     min_margin: int = Field(default=64, ge=16, le=8192)
-    dimension_multiple: Literal[16] = 16
+    dimension_multiple: Literal[16, 32] = 16
     kv_cache: bool = False
     shift: float | None = Field(default=None, ge=0, le=100)
     sampler: Literal['euler', 'lcm'] = 'euler'
@@ -32,6 +33,9 @@ class Profile(BaseModel):
     weight_dtype: Literal['default', 'fp8_e4m3fn', 'fp8_e5m2'] = 'default'
     encoder_device: Literal['default', 'cpu'] = 'default'
     negative_prompt: str = Field(default='', max_length=20000)
+    # Experimental Klein native-edit variant. Defaults to the frozen
+    # production behavior; production configs leave it unset.
+    pure_noise_output: bool = False
 
     @model_validator(mode='after')
     def validate_model_names(self):
@@ -41,6 +45,12 @@ class Profile(BaseModel):
                 raise ValueError('Model names must be relative .safetensors paths')
         if self.kv_cache and self.family != 'klein':
             raise ValueError('KV cache requires a Klein profile')
+        if self.pure_noise_output and self.family != 'klein':
+            raise ValueError('Pure-noise native edit requires a Klein profile')
+        if self.family == 'qwen21' and (self.mode != 'context' or self.dimension_multiple != 32):
+            raise ValueError('Qwen Image 2.1 requires context mode and 32-pixel dimensions')
+        if self.task == 'remove' and self.family != 'qwen21':
+            raise ValueError('Prompt-free removal requires a Qwen Image 2.1 profile')
         return self
 
 

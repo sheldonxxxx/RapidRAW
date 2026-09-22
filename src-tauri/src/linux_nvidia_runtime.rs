@@ -13,6 +13,14 @@
 //! `exec` call stay at the thin [`maybe_activate`] boundary so the whole
 //! matrix is unit-testable without spawning or replacing the test process.
 
+#![cfg_attr(
+    not(all(target_os = "linux", target_arch = "x86_64")),
+    allow(
+        dead_code,
+        reason = "Runtime activation is Linux x86_64-only; its planner is unit-testable on all platforms"
+    )
+)]
+
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
