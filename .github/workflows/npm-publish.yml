@@ -113,5 +113,18 @@ jobs:
       - name: Verify publication and fresh install
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          npm view "@sheldonxxxx/rapidraw-mcp@${VERSION}" version dist.tarball
+          for attempt in $(seq 1 18); do
+            if npm view "@sheldonxxxx/rapidraw-mcp@${VERSION}" version dist.tarball >/dev/null 2>&1; then
+              npm view "@sheldonxxxx/rapidraw-mcp@${VERSION}" version dist.tarball
+              break
+            fi
+            if [ "$attempt" -eq 18 ]; then
+              echo "${VERSION} did not become visible in the npm registry within 180 seconds" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          VERIFY_DIR="$(mktemp -d)"
+          trap 'rm -rf "$VERIFY_DIR"' EXIT
+          cd "$VERIFY_DIR"
           npx -y "@sheldonxxxx/rapidraw-mcp@${VERSION}" --help
