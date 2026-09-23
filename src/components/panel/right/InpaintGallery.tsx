@@ -20,15 +20,19 @@ export default function InpaintGallery({
   const path = useEditorStore((state) => state.selectedImage?.path);
   const { setAdjustments } = useEditorActions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const candidates = (adjustments.inpaintHistory ?? []).filter((candidate) => candidate.patch.id === editId);
   const selected = candidates.find((entry) => entry.id === selectedId) ?? candidates.at(-1);
   const compatible = selected?.spatialKey === inpaintSpatialKey(adjustments);
 
   useEffect(() => {
     setSelectedId(null);
-    setConfirmDelete(false);
+    setConfirmDeleteId(null);
   }, [path, editId]);
+
+  useEffect(() => {
+    if (disabled) setConfirmDeleteId(null);
+  }, [disabled]);
 
   if (!editId) return null;
   if (!selected) return <p className="text-xs text-text-secondary">{t('editor.ai.studio.empty')}</p>;
@@ -57,7 +61,7 @@ export default function InpaintGallery({
               useEditorStore.getState().patchesSentToBackend.clear();
               setAdjustments((current) => toggleInpaintCandidate(current, candidate));
               setSelectedId(candidate.id);
-              setConfirmDelete(false);
+              setConfirmDeleteId(null);
             }}
             className={`rounded-md overflow-hidden border-2 ${adjustments.aiPatches.some((patch) => patch.appliedCandidateId === candidate.id && patch.visible) ? 'border-accent' : 'border-transparent'} focus-visible:outline focus-visible:outline-2`}
           >
@@ -90,37 +94,50 @@ export default function InpaintGallery({
         </p>
       )}
       <div className="grid grid-cols-2 gap-2">
-        <Button className="bg-surface text-text-primary text-sm" disabled={disabled} onClick={() => onReuse(selected)}>
-          {t('editor.ai.studio.reuse')}
-        </Button>
         <Button
           className="bg-surface text-text-primary text-sm"
           disabled={disabled}
-          onClick={() => setConfirmDelete(true)}
+          onClick={() => {
+            setConfirmDeleteId(null);
+            onReuse(selected);
+          }}
         >
-          {t('editor.ai.studio.delete')}
+          {t('editor.ai.studio.reuse')}
+        </Button>
+        <Button
+          className={`bg-surface text-sm ${confirmDeleteId === selected.id ? 'text-red-400' : 'text-text-primary'}`}
+          disabled={disabled}
+          aria-label={
+            confirmDeleteId === selected.id
+              ? `${t('editor.ai.studio.confirmDelete')}: ${t('editor.ai.studio.result', { number: candidates.indexOf(selected) + 1 })}`
+              : undefined
+          }
+          aria-describedby={confirmDeleteId === selected.id ? `delete-result-${selected.id}` : undefined}
+          onClick={() => {
+            if (confirmDeleteId !== selected.id) {
+              setConfirmDeleteId(selected.id);
+              return;
+            }
+            setAdjustments((current) => ({
+              ...current,
+              inpaintHistory: current.inpaintHistory?.filter((entry) => entry.id !== selected.id),
+            }));
+            setSelectedId(null);
+            setConfirmDeleteId(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setConfirmDeleteId(null);
+          }}
+          onBlur={() => setConfirmDeleteId(null)}
+          aria-live="polite"
+        >
+          {confirmDeleteId === selected.id ? t('editor.ai.studio.confirmDelete') : t('editor.ai.studio.delete')}
         </Button>
       </div>
-      {confirmDelete && (
-        <div className="space-y-2 text-xs" role="alert">
-          <p>{t('editor.ai.studio.deleteConfirm')}</p>
-          <div className="flex gap-2">
-            <Button
-              disabled={disabled}
-              onClick={() => {
-                setAdjustments((current) => ({
-                  ...current,
-                  inpaintHistory: current.inpaintHistory?.filter((entry) => entry.id !== selected.id),
-                }));
-                setSelectedId(null);
-                setConfirmDelete(false);
-              }}
-            >
-              {t('editor.ai.studio.delete')}
-            </Button>
-            <Button onClick={() => setConfirmDelete(false)}>{t('editor.ai.studio.cancel')}</Button>
-          </div>
-        </div>
+      {confirmDeleteId === selected.id && (
+        <p id={`delete-result-${selected.id}`} role="status" className="text-xs text-text-secondary">
+          {t('editor.ai.studio.deleteConfirm')}
+        </p>
       )}
     </section>
   );

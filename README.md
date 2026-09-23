@@ -374,6 +374,8 @@ For repeated MCP editing and test runs, see [storage and model-cache guidance](m
 
 **Shape light, colour and depth:** [three optional editing tools](docs/creative-selections.md) help you shape directional light, select surface colours across light and shadow, and adjust nearer or more distant parts of a photo. Pick colours on the photograph, choose a light direction or a depth starting range, then refine the edit with local controls. Saved analysis works offline in native previews and exports. These source-build tools use Marigold through the [shared AI connector](ai-connector/MARIGOLD.md) and are disabled by default.
 
+**Local Edits:** manage masked repairs and adjustments together, refine each selection, and copy supported selections between edit types while keeping the edits independent. Shape Light and Surface Colour selections are adjustment-only. Generative repairs use the active crop and return to the original photo geometry.
+
 ## Choose your starting point
 
 | You want to…                                                      | Start here                                                                                                                                                                                   |
@@ -401,7 +403,7 @@ Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0 fo
 
 The desktop AI panel and MCP also offer [local mask and detail enhancement](docs/local-enhancement.md): learned edge refinement, scene and portrait-part masks, experimental motion deblur and conservative 2× enlargement. Optional model assets run locally, with profiles for smaller computers and Linux NVIDIA servers.
 
-The desktop **Inpaint studio** offers 1–4 variations, click-to-apply results, persistent history for each edit, and up to four reference images with supporting Qwen Image 2.1 and Klein edit workflows. Compatible AI Connectors also expose workflow, AI resolution and seed choices in the desktop AI panel and generative MCP retouch. Actual generation dimensions stay with the patch when the provider supplies them. Set up the included [Comfy Connector](ai-connector/README.md) and see the [generative editing controls](docs/desktop-guide.md#generative-editing-controls) for resolution and compatibility details. These controls require a current build of this fork.
+The desktop **Inpaint studio** offers 1–4 variations, automatically applies the final result when a full batch finishes, and keeps click-to-apply history for each edit. It accepts up to four reference images with supporting Qwen Image 2.1 and Klein edit workflows. Compatible AI Connectors also expose workflow, AI resolution and seed choices in Local Edits and generative MCP retouch. Actual generation dimensions stay with the patch when the provider supplies them. Set up the included [Comfy Connector](ai-connector/README.md) and see the [generative editing controls](docs/desktop-guide.md#generative-editing-controls) for resolution and compatibility details. These controls require a current build of this fork.
 
 The optional AI Connector automatically [matches small repair colour differences at selection boundaries](ai-connector/README.md#automatic-repair-colour-matching) and also supports the **Qwen Image 2.1** removal workflow; see its [model and node requirements](ai-connector/README.md#qwen-image-21).
 

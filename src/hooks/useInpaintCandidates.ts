@@ -6,8 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { Invokes } from '../components/ui/AppProperties';
 import { useEditorStore } from '../store/useEditorStore';
 import { debouncedSave } from './useEditorActions';
-import type { AiPatchData, GenerationOptions, InpaintCandidate } from '../utils/adjustments';
-import { inpaintSpatialKey, MAX_INPAINT_BATCH, variationOptions } from '../utils/inpaintHistory';
+import type { Adjustments, AiPatchData, GenerationOptions, InpaintCandidate } from '../utils/adjustments';
+import { applyInpaintCandidate, inpaintSpatialKey, MAX_INPAINT_BATCH, variationOptions } from '../utils/inpaintHistory';
 import { globalImageCache } from '../utils/ImageLRUCache';
 
 export function useInpaintCandidates() {
@@ -43,6 +43,7 @@ export function useInpaintCandidates() {
     start.setEditor({ isGeneratingAi: true, previewOverride: null });
     setProgress({ completed, total });
     let latestAdjustments = start.adjustments;
+    let lastCandidate: InpaintCandidate | null = null;
     const unsubscribe = useEditorStore.subscribe((state) => {
       if (state.selectedImage?.path !== path) cancelled.current = true;
       else latestAdjustments = state.adjustments;
@@ -76,6 +77,7 @@ export function useInpaintCandidates() {
             name: basic ? 'Inpaint' : prompt.trim() || patch.name,
           },
         };
+        lastCandidate = candidate;
         latestAdjustments = {
           ...latestAdjustments,
           inpaintHistory: [...(latestAdjustments.inpaintHistory ?? []), candidate],
@@ -94,6 +96,30 @@ export function useInpaintCandidates() {
         if (cached) globalImageCache.set(path, { ...cached, adjustments: latestAdjustments });
         completed++;
         setProgress({ completed, total });
+      }
+      if (completed === total && !cancelled.current && lastCandidate) {
+        const current = useEditorStore.getState();
+        if (current.selectedImage?.path === path) {
+          let appliedAdjustments: Adjustments | null = null;
+          try {
+            appliedAdjustments = applyInpaintCandidate(latestAdjustments, lastCandidate);
+          } catch (error) {
+            toast.error(`The final result could not be applied automatically: ${String(error)}`);
+          }
+          if (appliedAdjustments) {
+            latestAdjustments = appliedAdjustments;
+            current.patchesSentToBackend.clear();
+            current.setEditor({ adjustments: latestAdjustments });
+            try {
+              await debouncedSave.flush();
+              await invoke(Invokes.SaveMetadataAndUpdateThumbnail, { path, adjustments: latestAdjustments });
+              const cached = globalImageCache.get(path);
+              if (cached) globalImageCache.set(path, { ...cached, adjustments: latestAdjustments });
+            } catch (error) {
+              toast.error(`The applied result could not be saved: ${String(error)}`);
+            }
+          }
+        }
       }
     } catch (error) {
       toast.error(`Generation stopped after ${completed}/${total} results: ${String(error)}`);

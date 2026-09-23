@@ -4,6 +4,21 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Local editing
+
+- Add a unified **Local Edits** workspace for named repairs and local adjustments. Create, reorder, hide, remove and refine edits, then copy supported selections between a repair and an adjustment while keeping each copy independent. Shape Light and Surface Colour selections remain adjustment-only.
+- Bring selection and effect controls into the local edit workflow, including clear guidance when an analysis needs the AI Connector.
+
+### Generative editing
+
+- Send the visible crop and its matching selection to compatible AI Connectors, then map the generated result back through the photo's crop and orientation.
+- Apply the final inpaint result automatically after a complete batch. Stopped or failed batches keep completed candidates in history without applying one; make candidate deletion a two-step action.
+
+### Mask and preview correctness
+
+- Reduce stale mask reuse and repeated preview work with content-sensitive image and patch cache keys and a byte-bounded mask bitmap cache.
+- Keep cached Marigold surface components reusable while preserving subsequent subtractive and intersection mask edits.
+
 ## 0.3.0 — 2026-09-22
 
 Release tag: `fork-v0.3.0`. See the [release notes](docs/releases/0.3.0.md).

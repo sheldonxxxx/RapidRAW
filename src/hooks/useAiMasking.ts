@@ -16,7 +16,7 @@ export const discardMarigoldResult = (id: string) => {
   if (request) request.cancelled = true;
 };
 
-const getTransformAdjustments = (adj: Adjustments) => ({
+export const getTransformAdjustments = (adj: Adjustments) => ({
   transformDistortion: adj.transformDistortion,
   transformVertical: adj.transformVertical,
   transformHorizontal: adj.transformHorizontal,
@@ -34,6 +34,11 @@ const getTransformAdjustments = (adj: Adjustments) => ({
   lensDistortionEnabled: adj.lensDistortionEnabled,
   lensTcaEnabled: adj.lensTcaEnabled,
   lensVignetteEnabled: adj.lensVignetteEnabled,
+});
+
+export const getSubjectInferenceAdjustments = (adj: Adjustments) => ({
+  ...getTransformAdjustments(adj),
+  aiPatches: adj.aiPatches,
 });
 
 export function useAiMasking() {
@@ -187,7 +192,7 @@ export function useAiMasking() {
       }));
 
       try {
-        const transformAdjustments = getTransformAdjustments(adjustments);
+        const transformAdjustments = getSubjectInferenceAdjustments(adjustments);
         const newMaskParams: MaskParameters = await invoke(Invokes.GenerateAiSubjectMask, {
           jsAdjustments: transformAdjustments,
           endPoint: [endPoint.x, endPoint.y],
@@ -302,7 +307,7 @@ export function useAiMasking() {
     setEditor({ isGeneratingAiMask: true });
 
     try {
-      const transformAdjustments = getTransformAdjustments(adjustments);
+      const transformAdjustments = getSubjectInferenceAdjustments(adjustments);
       const newParameters = await invoke<MaskParameters>(Invokes.GenerateAiSubjectMask, {
         jsAdjustments: transformAdjustments,
         endPoint: [endPoint.x, endPoint.y],
@@ -318,6 +323,7 @@ export function useAiMasking() {
         ?.flatMap((p: AiPatch) => p.subMasks)
         .find((sm: SubMask) => sm.id === subMaskId);
       const mergedParameters = { ...(subMask?.parameters || {}), ...newParameters };
+      delete mergedParameters.sam21Selection;
       patchesSentToBackend.delete(subMaskId);
       updateSubMask(subMaskId, { parameters: mergedParameters });
     } catch (error) {
@@ -401,7 +407,7 @@ export function useAiMasking() {
         const subMask = [...current.adjustments.masks, ...(current.adjustments.aiPatches || [])]
           .flatMap((m) => m.subMasks)
           .find((sm) => sm.id === subMaskId);
-        if (!subMask) return;
+        if (!subMask || subMask.parameters.depthProvider !== 'marigold') return;
         current.patchesSentToBackend.delete(subMaskId);
         updateSubMask(subMaskId, { parameters: { ...subMask.parameters, ...generated } });
       } catch (error) {
@@ -415,6 +421,7 @@ export function useAiMasking() {
 
     const { selectedImage, adjustments, patchesSentToBackend } = useEditorStore.getState();
     if (!selectedImage?.path) return;
+    const geometry = JSON.stringify(getTransformAdjustments(adjustments));
     setEditor({ isGeneratingAiMask: true });
 
     try {
@@ -433,10 +440,19 @@ export function useAiMasking() {
         rotation: adjustments.rotation,
       });
 
-      const subMask = adjustments.aiPatches
-        ?.flatMap((p: AiPatch) => p.subMasks)
+      const current = useEditorStore.getState();
+      if (
+        !shouldApply() ||
+        current.selectedImage !== selectedImage ||
+        JSON.stringify(getTransformAdjustments(current.adjustments)) !== geometry
+      )
+        return;
+      const subMask = [...(current.adjustments.masks || []), ...(current.adjustments.aiPatches || [])]
+        .flatMap((p: AiPatch | MaskContainer) => p.subMasks)
         .find((sm: SubMask) => sm.id === subMaskId);
-      const mergedParameters = { ...(subMask?.parameters || {}), ...newParameters };
+      if (!subMask || subMask.parameters.depthProvider === 'marigold') return;
+      const mergedParameters = { ...subMask.parameters, ...newParameters, depthProvider: 'builtin' as const };
+      delete mergedParameters.depthArtifact;
       patchesSentToBackend.delete(subMaskId);
       updateSubMask(subMaskId, { parameters: mergedParameters });
     } catch (error) {
@@ -509,7 +525,7 @@ export function useAiMasking() {
       adjustments?.aiPatches?.flatMap((p: AiPatch) => p.subMasks).find((sm: SubMask) => sm.id === activeAiSubMaskId);
 
     if (activeSubMask?.type === 'ai-subject' && selectedImage?.path) {
-      const transformAdjustments = getTransformAdjustments(adjustments);
+      const transformAdjustments = getSubjectInferenceAdjustments(adjustments);
       invoke('precompute_ai_subject_mask', {
         jsAdjustments: transformAdjustments,
         path: selectedImage.path,

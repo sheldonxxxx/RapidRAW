@@ -457,6 +457,60 @@ mod tests {
     }
 
     #[test]
+    fn cached_surface_components_preserve_subtract_brush_and_opposing_lobes() {
+        for kind in ["normals", "albedo"] {
+            let p = parameters(
+                kind,
+                vec![
+                    65535,
+                    32768,
+                    32768,
+                    if kind == "albedo" { 65535 } else { 0 },
+                    32768,
+                    32768,
+                ],
+                2,
+                1,
+                &json!({}),
+            );
+            let mut def: MaskDefinition = serde_json::from_value(mask(p, kind)).unwrap();
+            let base =
+                crate::mask_generation::generate_mask_bitmap(&def, 2, 1, 1.0, (0.0, 0.0), None)
+                    .unwrap();
+            assert!(base.as_raw().iter().any(|v| *v > 0), "{kind}");
+            // Warm the component cache before adding a subtract stroke.
+            assert_eq!(
+                crate::mask_generation::generate_mask_bitmap(&def, 2, 1, 1.0, (0.0, 0.0), None),
+                Some(base.clone())
+            );
+            def.sub_masks.push(serde_json::from_value(json!({"id":"b","type":"brush","visible":true,"mode":"subtractive","parameters":{"lines":[{"tool":"brush","brushSize":8,"feather":0,"points":[{"x":0,"y":0}]}]}})).unwrap());
+            let subtracted =
+                crate::mask_generation::generate_mask_bitmap(&def, 2, 1, 1.0, (0.0, 0.0), None)
+                    .unwrap();
+            assert!(
+                subtracted
+                    .as_raw()
+                    .iter()
+                    .zip(base.as_raw())
+                    .any(|(a, b)| a < b)
+            );
+            def.sub_masks.pop();
+            if kind == "normals" {
+                def.sub_masks[0].parameters["normalOpposing"] = json!(true);
+                let opposing =
+                    crate::mask_generation::generate_mask_bitmap(&def, 2, 1, 1.0, (0.0, 0.0), None)
+                        .unwrap();
+                assert_ne!(base, opposing);
+            }
+            def.sub_masks[0].parameters["maskDataBase64"] = json!("corrupt");
+            let invalid =
+                crate::mask_generation::generate_mask_bitmap(&def, 2, 1, 1.0, (0.0, 0.0), None)
+                    .unwrap();
+            assert!(invalid.as_raw().iter().all(|v| *v == 0));
+        }
+    }
+
+    #[test]
     fn rgb16_provenance_rejects_corruption_and_keeps_low_bits() {
         let p = parameters("normals", vec![32769, 32770, 65535], 1, 1, &json!({}));
         let a: SurfaceArtifact = serde_json::from_value(p["surfaceArtifact"].clone()).unwrap();

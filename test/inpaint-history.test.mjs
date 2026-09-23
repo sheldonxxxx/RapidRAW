@@ -37,6 +37,7 @@ const { variationOptions, inpaintSpatialKey, applyInpaintCandidate, toggleInpain
   'src/utils/inpaintHistory.ts',
   'history',
 );
+const { maskOverlayForEditing } = await bundled('src/utils/maskOverlay.ts', 'mask-overlay');
 test('batch seeds remain distinct at the exact safe integer boundary and preserve references', () => {
   const options = Object.freeze({ seed: Number.MAX_SAFE_INTEGER, referenceImagesBase64: ['reference'] });
   assert.deepEqual(
@@ -47,15 +48,27 @@ test('batch seeds remain distinct at the exact safe integer boundary and preserv
   assert.equal(variationOptions(undefined, 2), undefined);
   assert.deepEqual(variationOptions({ profile: 'edit' }, 1), { profile: 'edit' });
 });
-test('applying a saved result restores its own mask without overwriting unrelated patches', () => {
-  const adjustments = { aiPatches: [{ id: 'one', patchData: null }, { id: 'other' }], orientationSteps: 0 };
+test('applying a saved result keeps the current mask and other patch edits', () => {
+  const currentPatch = {
+    id: 'one',
+    name: 'My repair',
+    subMasks: ['refined selection'],
+    removalOptions: { featherPixels: 8 },
+    patchData: null,
+  };
+  const adjustments = { aiPatches: [currentPatch, { id: 'other' }], orientationSteps: 0 };
   const candidate = {
+    id: 'result',
     spatialKey: inpaintSpatialKey(adjustments),
     patch: { id: 'one', subMasks: ['saved selection'], patchData: { color: 'result' } },
   };
   const updated = applyInpaintCandidate(adjustments, candidate);
   assert.equal(adjustments.aiPatches[0].patchData, null);
-  assert.deepEqual(updated.aiPatches[0].subMasks, ['saved selection']);
+  assert.deepEqual(updated.aiPatches[0].subMasks, ['refined selection']);
+  assert.equal(updated.aiPatches[0].name, 'My repair');
+  assert.deepEqual(updated.aiPatches[0].removalOptions, { featherPixels: 8 });
+  assert.deepEqual(updated.aiPatches[0].patchData, { color: 'result' });
+  assert.equal(updated.aiPatches[0].appliedCandidateId, 'result');
   assert.equal(updated.aiPatches[1], adjustments.aiPatches[1]);
   assert.throws(() => applyInpaintCandidate({ ...adjustments, orientationSteps: 1 }, candidate));
   assert.throws(() => applyInpaintCandidate({ ...adjustments, transformDistortion: 4 }, candidate));
@@ -82,6 +95,7 @@ function environment() {
       selectedImage: { path: 'photo.raw' },
       adjustments: { aiPatches: [{ id: 'one', subMasks: ['mask'], patchData: { color: 'applied' } }] },
       isGeneratingAi: false,
+      patchesSentToBackend: new Set(['one']),
     },
   };
   env.state.setEditor = (value) => {
@@ -95,7 +109,7 @@ function environment() {
   globalThis.__inpaint = env;
   return env;
 }
-test('batch uses an immutable source and saves all results without applying any', async () => {
+test('batch uses an immutable source, saves all results, and applies the last one', async () => {
   const env = environment();
   const source = env.state.adjustments;
   await useInpaintCandidates().generate('one', 'repair', false, { seed: 7 }, 3);
@@ -106,10 +120,31 @@ test('batch uses an immutable source and saves all results without applying any'
     [7, 8, 9],
   );
   assert.ok(calls.every((entry) => entry.payload.currentAdjustments === calls[0].payload.currentAdjustments));
-  assert.equal(env.state.adjustments.aiPatches, source.aiPatches);
+  assert.notEqual(env.state.adjustments.aiPatches, source.aiPatches);
   assert.equal(env.state.adjustments.inpaintHistory.length, 3);
-  assert.equal(env.calls.filter((entry) => entry.name === 'save').length, 3);
+  assert.equal(env.state.adjustments.aiPatches[0].appliedCandidateId, env.state.adjustments.inpaintHistory[2].id);
+  assert.deepEqual(env.state.adjustments.aiPatches[0].subMasks, ['mask']);
+  assert.equal(env.state.patchesSentToBackend.size, 0);
+  assert.equal(env.calls.filter((entry) => entry.name === 'save').length, 4);
   assert.equal(env.state.isGeneratingAi, false);
+});
+test('a single completed inpaint result applies automatically', async () => {
+  const env = environment();
+  await useInpaintCandidates().generate('one', '', true, undefined, 1);
+  assert.equal(env.state.adjustments.aiPatches[0].appliedCandidateId, env.state.adjustments.inpaintHistory[0].id);
+  assert.equal(env.calls.filter((entry) => entry.name === 'save').length, 2);
+});
+test('changing the photo geometry during generation keeps the result without applying it', async () => {
+  const env = environment();
+  const invoke = env.invoke;
+  env.invoke = async (...args) => {
+    if (args[0] === 'generate') env.state.setEditor({ adjustments: { ...env.state.adjustments, orientationSteps: 1 } });
+    return invoke(...args);
+  };
+  await useInpaintCandidates().generate('one', 'repair', false, undefined, 1);
+  assert.equal(env.state.adjustments.inpaintHistory.length, 1);
+  assert.equal(env.state.adjustments.aiPatches[0].appliedCandidateId, undefined);
+  assert.match(env.errors[0], /could not be applied automatically/);
 });
 test('stop after current retains the running result and never submits remaining variations', async () => {
   const env = environment();
@@ -121,6 +156,7 @@ test('stop after current retains the running result and never submits remaining 
   };
   await hook.generate('one', 'repair', false, undefined, 4);
   assert.equal(env.state.adjustments.inpaintHistory.length, 1);
+  assert.equal(env.state.adjustments.aiPatches[0].appliedCandidateId, undefined);
 });
 test('partial failures preserve completed candidates and release the generation lock', async () => {
   const env = environment();
@@ -132,6 +168,7 @@ test('partial failures preserve completed candidates and release the generation 
   };
   await useInpaintCandidates().generate('one', 'repair', false, undefined, 4);
   assert.equal(env.state.adjustments.inpaintHistory.length, 1);
+  assert.equal(env.state.adjustments.aiPatches[0].appliedCandidateId, undefined);
   assert.equal(env.state.isGeneratingAi, false);
   assert.match(env.errors[0], /1\/4/);
 });
@@ -145,6 +182,7 @@ test('changing photos saves the running result to its original photo without con
   };
   await useInpaintCandidates().generate('one', 'repair', false, undefined, 3);
   assert.equal(env.state.adjustments.inpaintHistory, undefined);
+  assert.equal(env.state.adjustments.aiPatches.length, 0);
   const save = env.calls.find((entry) => entry.name === 'save');
   assert.equal(save.payload.path, 'photo.raw');
   assert.equal(save.payload.adjustments.inpaintHistory.length, 1);
@@ -163,4 +201,33 @@ test('result clicks apply, disable, and reapply without changing unrelated edits
   assert.equal(undone.exposure, 2);
   assert.equal(toggleInpaintCandidate(undone, candidate).aiPatches[1].visible, true);
   assert.equal(toggleInpaintCandidate({ ...applied, rotation: 90 }, candidate).aiPatches[1].visible, false);
+});
+
+test('switching inpaint results and undoing one keeps the current selection available for editing', () => {
+  const original = { aiPatches: [], orientationSteps: 0 };
+  const first = {
+    id: 'first',
+    spatialKey: inpaintSpatialKey(original),
+    patch: { id: 'repair', subMasks: [{ id: 'first-selection' }], patchData: { color: 'first' } },
+  };
+  const second = {
+    id: 'second',
+    spatialKey: inpaintSpatialKey(original),
+    patch: { id: 'repair', subMasks: [{ id: 'second-selection' }], patchData: { color: 'second' } },
+  };
+  const applied = toggleInpaintCandidate(original, first);
+  const refined = {
+    ...applied,
+    aiPatches: [{ ...applied.aiPatches[0], subMasks: [{ id: 'refined-selection' }] }],
+  };
+  const switched = toggleInpaintCandidate(refined, second);
+  const undone = toggleInpaintCandidate(switched, second);
+
+  assert.equal(undone.aiPatches[0].visible, false);
+  assert.equal(switched.aiPatches[0].patchData.color, 'second');
+  assert.equal(switched.aiPatches[0].subMasks[0].id, 'refined-selection');
+  assert.equal(undone.aiPatches[0].subMasks[0].id, 'refined-selection');
+  assert.equal(maskOverlayForEditing(undone.aiPatches[0], true).visible, true);
+  assert.equal(maskOverlayForEditing(undone.aiPatches[0], false).visible, false);
+  assert.equal(undone.aiPatches[0].visible, false);
 });

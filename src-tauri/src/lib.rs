@@ -320,7 +320,18 @@ pub fn get_cached_full_warped_image(
     }
 
     let (base_arc, is_raw) = get_original_image(state)?;
-    let mut cow_image = Cow::Borrowed(base_arc.as_ref());
+    let mut cow_image = if js_adjustments
+        .get("aiPatches")
+        .and_then(|patches| patches.as_array())
+        .is_some_and(|patches| !patches.is_empty())
+    {
+        Cow::Owned(
+            composite_patches_on_image(base_arc.as_ref(), js_adjustments)
+                .map_err(|e| format!("Failed to composite AI patches: {e}"))?,
+        )
+    } else {
+        Cow::Borrowed(base_arc.as_ref())
+    };
 
     if is_raw {
         apply_cpu_default_raw_processing(cow_image.to_mut());
@@ -2148,6 +2159,8 @@ pub fn run() {
             app_settings::save_settings,
             app_settings::is_tethering_supported,
             ai_commands::generate_ai_subject_mask,
+            ai_commands::generate_sam21_subject_proposals,
+            ai_commands::finish_sam21_subject_mask,
             ai_commands::precompute_ai_subject_mask,
             ai_commands::generate_ai_foreground_mask,
             ai_commands::generate_ai_sky_mask,

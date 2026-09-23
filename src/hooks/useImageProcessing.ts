@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import debounce from 'lodash.debounce';
-import throttle from 'lodash.throttle';
 import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -41,9 +40,6 @@ export function useImageProcessing(
   const appSettings = useSettingsStore((state) => state.appSettings);
   const multiSelectedPaths = useLibraryStore((state) => state.multiSelectedPaths);
 
-  const uncroppedJobIdRef = useRef(0);
-  const latestUncroppedJobIdRef = useRef(0);
-
   const lastAnalyticsTimeRef = useRef<number>(0);
   const dragIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeWaveformChannelRef = useRef(activeWaveformChannel);
@@ -55,6 +51,7 @@ export function useImageProcessing(
     selectedImagePathRef.current = selectedImage?.path ?? null;
     imageGenerationRef.current += 1;
     pipelineRef.current?.clear();
+    uncroppedPipeline.clear();
   }, [selectedImage?.path]);
 
   const calculateROI = useCallback(() => {
@@ -274,39 +271,44 @@ export function useImageProcessing(
     [],
   );
 
-  const throttledUncroppedPreview = useMemo(
+  const uncroppedPipeline = useMemo(
     () =>
-      throttle(
-        (adj: Adjustments) => {
-          if (!useEditorStore.getState().selectedImage?.isReady) return;
-          const jobId = ++uncroppedJobIdRef.current;
-          invoke<string>(Invokes.GenerateUncroppedPreview, { jsAdjustments: adj })
-            .then((dataUrl) => {
-              if (jobId >= latestUncroppedJobIdRef.current) {
-                latestUncroppedJobIdRef.current = jobId;
-                useEditorStore.getState().setEditor({ uncroppedAdjustedPreviewUrl: dataUrl });
-              }
-            })
-            .catch(console.error);
-        },
-        30,
-        { leading: true, trailing: true },
-      ),
+      new PreviewPipeline<{ adjustments: Adjustments; path: string; generation: number }>(async (request) => {
+        const isCurrent = () =>
+          request.path === selectedImagePathRef.current && request.generation === imageGenerationRef.current;
+        if (!isCurrent()) return;
+        try {
+          const dataUrl = await invoke<string>(Invokes.GenerateUncroppedPreview, {
+            jsAdjustments: request.adjustments,
+          });
+          if (isCurrent()) useEditorStore.getState().setEditor({ uncroppedAdjustedPreviewUrl: dataUrl });
+        } catch (error) {
+          if (isCurrent()) console.error(error);
+        }
+      }),
     [],
   );
 
+  useEffect(() => () => uncroppedPipeline.clear(), [uncroppedPipeline]);
+
   const generateUncroppedPreview = useCallback(
     (currentAdjustments: Adjustments) => {
-      throttledUncroppedPreview(currentAdjustments);
+      const image = useEditorStore.getState().selectedImage;
+      if (!image?.isReady) return;
+      uncroppedPipeline.enqueue({
+        adjustments: currentAdjustments,
+        path: image.path,
+        generation: imageGenerationRef.current,
+      });
     },
-    [throttledUncroppedPreview],
+    [uncroppedPipeline],
   );
 
   useEffect(() => {
     if (activeView === 'editor' && activePanel === Panel.Crop && selectedImage?.isReady) {
       generateUncroppedPreview(adjustments);
     }
-  }, [activeView, adjustments, activePanel, selectedImage?.isReady, generateUncroppedPreview]);
+  }, [activeView, adjustments, activePanel, selectedImage?.path, selectedImage?.isReady, generateUncroppedPreview]);
 
   const calculateTargetRes = useCallback(() => {
     const baseTargetRes = appSettings?.editorPreviewResolution || 1920;

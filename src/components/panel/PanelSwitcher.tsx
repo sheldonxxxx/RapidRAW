@@ -34,8 +34,8 @@ const PANEL_TITLES = {
   [Panel.Metadata]: 'editor.switcher.tooltips.info',
   [Panel.Adjustments]: 'editor.switcher.tooltips.adjust',
   [Panel.Crop]: 'editor.switcher.tooltips.crop',
-  [Panel.Masks]: 'editor.switcher.tooltips.masks',
-  [Panel.Ai]: 'editor.switcher.tooltips.inpaint',
+  [Panel.Masks]: 'editor.localEdits.title',
+  [Panel.Ai]: 'editor.localEdits.toolsTitle',
   [Panel.Presets]: 'editor.switcher.tooltips.presets',
   [Panel.Export]: 'editor.switcher.tooltips.export',
   [Panel.FolderTree]: 'library.folders.sourcesTitle',
@@ -83,6 +83,7 @@ function PanelTab({ panel, region, side }: { panel: Panel; region: PanelRegion; 
       )}
       onClick={handleClick}
       data-tooltip={t(PANEL_TITLES[panel])}
+      aria-label={t(PANEL_TITLES[panel])}
       style={{ touchAction: 'none' }}
     >
       {isActive && (

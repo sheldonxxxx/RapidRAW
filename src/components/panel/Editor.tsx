@@ -5,6 +5,7 @@ import clsx from 'clsx';
 import { invoke } from '@tauri-apps/api/core';
 import debounce from 'lodash.debounce';
 import { preparePreviewAdjustments, preparePreviewSubMasks } from '../../utils/previewPipeline';
+import { maskOverlayForEditing } from '../../utils/maskOverlay';
 
 import { ImageDimensions, RenderSize, useImageRenderSize } from '../../hooks/useImageRenderSize';
 import { Adjustments, AiPatch, MaskContainer, INITIAL_ADJUSTMENTS, pickAdjustments } from '../../utils/adjustments';
@@ -128,11 +129,13 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
   const activeMaskId = useEditorStore((s) => s.activeMaskId);
   const activeAiPatchContainerId = useEditorStore((s) => s.activeAiPatchContainerId);
   const activeAiSubMaskId = useEditorStore((s) => s.activeAiSubMaskId);
+  const activeLocalEditKind = useEditorStore((s) => s.activeLocalEditKind);
   const isMaskControlHovered = useEditorStore((s) => s.isMaskControlHovered);
   const hasRenderedFirstFrame = useEditorStore((s) => s.hasRenderedFirstFrame);
 
   const setEditor = useEditorStore((s) => s.setEditor);
   const toggleFullScreen = useUIStore((s) => s.toggleFullScreen);
+  const setPanel = useUIStore((s) => s.setPanel);
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
   const goToHistoryIndex = useEditorStore((s) => s.goToHistoryIndex);
@@ -389,8 +392,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
   }, [isFullScreen]);
 
   const isCropping = activePanel === Panel.Crop;
-  const isMasking = activePanel === Panel.Masks;
-  const isAiEditing = activePanel === Panel.Ai;
+  const isMasking = activePanel === Panel.Masks && activeLocalEditKind === 'adjustment';
+  const isAiEditing = activePanel === Panel.Ai || (activePanel === Panel.Masks && activeLocalEditKind === 'repair');
 
   const croppedDimensions = useMemo<ImageDimensions | null>(() => {
     if (!selectedImage?.width || !selectedImage?.height) {
@@ -1361,14 +1364,13 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
 
   const requestMaskOverlay = useCallback(
     (maskDef: OverlayMask | AiPatch | null, renderSize: RenderSize, currentAdjustments: Adjustments) => {
+      overlayGenerationRef.current += 1;
       const maskId = maskDef?.id ?? null;
       if (maskId !== overlayMaskIdRef.current) {
         overlayMaskIdRef.current = maskId;
-        overlayGenerationRef.current += 1;
         setMaskOverlayUrl(null);
       }
       if (!maskDef?.visible || renderSize.width === 0) {
-        overlayGenerationRef.current += 1;
         pendingOverlayRequestRef.current = null;
         setMaskOverlayUrl(null);
         return;
@@ -1394,9 +1396,13 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
           opacity: 100,
         };
       }
-      requestMaskOverlay(normalizedDef, imageRenderSize, adjustments);
+      requestMaskOverlay(
+        normalizedDef ? maskOverlayForEditing(normalizedDef, isAiEditing) : null,
+        imageRenderSize,
+        adjustments,
+      );
     },
-    [imageRenderSize, adjustments, requestMaskOverlay],
+    [isAiEditing, imageRenderSize, adjustments, requestMaskOverlay],
   );
 
   const croppedDimensionsRef = useRef(croppedDimensions);
@@ -1619,9 +1625,9 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
 
   const overlayTriggerHash = useMemo(() => {
     let activeMaskDef = null;
-    if (activePanel === Panel.Masks && activeMaskContainerId) {
+    if (isMasking && activeMaskContainerId) {
       activeMaskDef = adjustments.masks?.find((c: MaskContainer) => c.id === activeMaskContainerId);
-    } else if (activePanel === Panel.Ai && activeAiPatchContainerId) {
+    } else if (isAiEditing && activeAiPatchContainerId) {
       activeMaskDef = adjustments.aiPatches?.find((p: AiPatch) => p.id === activeAiPatchContainerId);
     }
 
@@ -1683,6 +1689,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
     });
   }, [
     activePanel,
+    isMasking,
+    isAiEditing,
     activeMaskContainerId,
     activeAiPatchContainerId,
     adjustments,
@@ -1693,7 +1701,7 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
   useEffect(() => {
     let maskDefForOverlay = null;
 
-    if (activePanel === Panel.Masks && activeMaskContainerId) {
+    if (isMasking && activeMaskContainerId) {
       const activeMask = adjustments.masks?.find((c: MaskContainer) => c.id === activeMaskContainerId);
       if (activeMask) {
         maskDefForOverlay = {
@@ -1701,14 +1709,17 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
           adjustments: {},
         };
       }
-    } else if (activePanel === Panel.Ai && activeAiPatchContainerId) {
+    } else if (isAiEditing && activeAiPatchContainerId) {
       const activePatch = adjustments.aiPatches?.find((p: AiPatch) => p.id === activeAiPatchContainerId);
       if (activePatch) {
-        maskDefForOverlay = {
-          ...activePatch,
-          adjustments: {},
-          opacity: 100,
-        };
+        maskDefForOverlay = maskOverlayForEditing(
+          {
+            ...activePatch,
+            adjustments: {},
+            opacity: 100,
+          },
+          true,
+        );
       }
     }
 
@@ -1718,6 +1729,8 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
     selectedImage?.path,
     requestMaskOverlay,
     activePanel,
+    isMasking,
+    isAiEditing,
     activeMaskContainerId,
     activeAiPatchContainerId,
     imageRenderSize,
@@ -2343,8 +2356,29 @@ export default function Editor({ onBackToLibrary, onContextMenu, onImageSelect, 
             isSliderDragging={isSliderDragging}
             maskOverlayUrl={maskOverlayUrl}
             onGenerateAiMask={handleGenerateAiMask}
-            onSelectAiPatchContainer={(id) => setEditor({ activeAiPatchContainerId: id })}
-            onSelectMaskContainer={(id) => setEditor({ activeMaskContainerId: id })}
+            onSelectAiPatchContainer={(id) => {
+              const direct = adjustments.aiPatches
+                .find((patch) => patch.id === id)
+                ?.subMasks.some((part) => [Mask.Clone, Mask.Heal, Mask.Liquify, Mask.Retouch].includes(part.type));
+              setEditor({
+                activeAiPatchContainerId: id,
+                activeAiSubMaskId: null,
+                activeMaskContainerId: null,
+                activeMaskId: null,
+                activeLocalEditKind: direct ? null : 'repair',
+              });
+              setPanel(direct ? Panel.Ai : Panel.Masks);
+            }}
+            onSelectMaskContainer={(id) => {
+              setEditor({
+                activeMaskContainerId: id,
+                activeMaskId: null,
+                activeAiPatchContainerId: null,
+                activeAiSubMaskId: null,
+                activeLocalEditKind: 'adjustment',
+              });
+              setPanel(Panel.Masks);
+            }}
             onLiveMaskPreview={handleLiveMaskPreview}
             onDirectPatch={handleDirectPatch}
             onQuickErase={handleQuickErase}

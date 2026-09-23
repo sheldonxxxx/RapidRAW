@@ -5,6 +5,8 @@ import DepthMapPreview from './DepthMapPreview';
 import { applyLinearFalloffSelection, applyMaskAdjustmentUpdate, insertCreatedSubMask } from './maskInteractions';
 import { buildPresetMenu } from './presetMenu';
 interface SettingsPanelProps {
+  selectionOnly?: boolean;
+  effectOnly?: boolean;
   onLimitWithBrush: () => void;
   container: MaskContainer | null;
   activeSubMask: SubMask | null;
@@ -592,6 +594,7 @@ export default function MasksPanel() {
 
     if (type === Mask.AiDepth) {
       if (!subMask.parameters) subMask.parameters = {};
+      subMask.parameters.depthProvider = 'builtin';
       subMask.parameters.minDepth = 20;
       subMask.parameters.maxDepth = 80;
       subMask.parameters.minFade = 15;
@@ -690,7 +693,7 @@ export default function MasksPanel() {
     ...(appSettings?.marigoldDepthEnabled
       ? [
           {
-            label: t('editor.masks.marigold.newMask', { defaultValue: 'Depth Selection' }),
+            label: `${t('editor.masks.marigold.newMask', { defaultValue: 'Depth Selection' })} · ${t('editor.masks.marigold.requiresConnector', { defaultValue: 'Requires AI Connector for analysis' })}`,
             icon: MASK_ICON_MAP[Mask.AiDepth],
             disabled: isGeneratingAiMask,
             onClick: () => {
@@ -1234,7 +1237,14 @@ export default function MasksPanel() {
                           disabled={isGeneratingAiMask}
                           onClick={() => handleAddMaskContainer(Mask.AiDepth, 'marigold')}
                         >
-                          {t('editor.masks.marigold.newMask', { defaultValue: 'Depth Selection' })}
+                          <span className="block">
+                            {t('editor.masks.marigold.newMask', { defaultValue: 'Depth Selection' })}
+                          </span>
+                          <span className="block text-xs text-text-secondary">
+                            {t('editor.masks.marigold.requiresConnector', {
+                              defaultValue: 'Requires AI Connector for analysis',
+                            })}
+                          </span>
                         </button>
                       )}
                       {appSettings?.marigoldSurfaceEnabled &&
@@ -1375,7 +1385,7 @@ export default function MasksPanel() {
                     <Text variant={TextVariants.heading} className="mb-2">
                       {t('editor.masks.maskAdjustmentsTitle')}
                     </Text>
-                    <SettingsPanel
+                    <MaskSettingsPanel
                       onLimitWithBrush={() => {
                         if (activeMaskContainerId)
                           handleAddSubMask(activeMaskContainerId, Mask.Brush, SubMaskMode.Intersect);
@@ -2079,7 +2089,9 @@ function SubMaskRow({
   );
 }
 
-function SettingsPanel({
+export function MaskSettingsPanel({
+  selectionOnly = false,
+  effectOnly = false,
   onLimitWithBrush,
   container,
   activeSubMask,
@@ -2270,101 +2282,105 @@ function SettingsPanel({
       className={`space-y-2 transition-opacity duration-300 ${!isActive ? 'opacity-50 pointer-events-none' : ''}`}
       onClick={(e) => e.stopPropagation()}
     >
-      <CollapsibleSection
-        title={
-          isComponentMode
-            ? t('editor.masks.settings.componentPropertiesTitle', { name: getSubMaskName(activeSubMask) })
-            : t('editor.masks.settings.maskPropertiesTitle')
-        }
-        isOpen={isSettingsSectionOpen}
-        onToggle={() => {
-          const isOpening = !isSettingsSectionOpen;
-          setSettingsSectionOpen(isOpening);
-          if (appSettings?.enableFocusMode && isOpening) {
-            setCollapsibleState((prev) => {
-              const newState = { ...prev };
-              Object.keys(newState).forEach((key) => {
-                newState[key] = false;
-              });
-              return newState;
-            });
+      {!effectOnly && (
+        <CollapsibleSection
+          title={
+            isComponentMode
+              ? t('editor.masks.settings.componentPropertiesTitle', { name: getSubMaskName(activeSubMask) })
+              : t('editor.masks.settings.maskPropertiesTitle')
           }
-        }}
-        canToggleVisibility={false}
-        isContentVisible={true}
-      >
-        <div className="space-y-4 pt-2">
-          <Switch
-            checked={!!(isComponentMode ? activeSubMask.invert : displayContainer.invert)}
-            label={isComponentMode ? t('editor.masks.settings.invertComponent') : t('editor.masks.settings.invertMask')}
-            onChange={(v) =>
-              isComponentMode ? updateSubMask(activeSubMask.id, { invert: v }) : handleMaskPropertyChange('invert', v)
+          isOpen={isSettingsSectionOpen}
+          onToggle={() => {
+            const isOpening = !isSettingsSectionOpen;
+            setSettingsSectionOpen(isOpening);
+            if (appSettings?.enableFocusMode && isOpening) {
+              setCollapsibleState((prev) => {
+                const newState = { ...prev };
+                Object.keys(newState).forEach((key) => {
+                  newState[key] = false;
+                });
+                return newState;
+              });
             }
-          />
+          }}
+          canToggleVisibility={false}
+          isContentVisible={true}
+        >
+          <div className="space-y-4 pt-2">
+            <Switch
+              checked={!!(isComponentMode ? activeSubMask.invert : displayContainer.invert)}
+              label={
+                isComponentMode ? t('editor.masks.settings.invertComponent') : t('editor.masks.settings.invertMask')
+              }
+              onChange={(v) =>
+                isComponentMode ? updateSubMask(activeSubMask.id, { invert: v }) : handleMaskPropertyChange('invert', v)
+              }
+            />
 
-          {!isComponentMode && (
-            <div className="flex justify-between items-center">
-              <Text variant={TextVariants.label} className="select-none">
-                {t('editor.masks.settings.applyPreset')}
-              </Text>
-              <button
-                ref={presetButtonRef}
-                onClick={handlePresetSelectClick}
-                className="text-sm text-text-primary text-right select-none cursor-pointer hover:text-accent transition-colors"
-                data-tooltip={t('editor.masks.settings.selectPresetTooltip')}
-              >
-                {t('editor.masks.settings.select')}
-              </button>
-            </div>
-          )}
-
-          <Slider
-            defaultValue={100}
-            label={t('editor.masks.settings.opacity')}
-            max={100}
-            min={0}
-            value={(isComponentMode ? activeSubMask.opacity : displayContainer.opacity) ?? 100}
-            onChange={(e) =>
-              isComponentMode
-                ? updateSubMask(activeSubMask.id, { opacity: Number(e.target.value) })
-                : handleMaskPropertyChange('opacity', Number(e.target.value))
-            }
-            step={1}
-            fillOrigin="min"
-            onDragStateChange={onDragStateChange}
-          />
-
-          {isComponentMode && (
-            <>
-              {isAiMask && aiModelDownloadStatus && (
-                <Text
-                  as="div"
-                  variant={TextVariants.small}
-                  color={TextColors.accent}
-                  weight={TextWeights.medium}
-                  className="p-3 bg-card-active rounded-md border border-surface flex items-center gap-3"
-                >
-                  <Loader2 size={16} className="animate-spin shrink-0" />
-                  <div className="leading-relaxed">
-                    <Text variant={TextVariants.small}>{t('editor.masks.settings.aiModelDownloading')}</Text>
-                    <span>{aiModelDownloadStatus}</span>
-                  </div>
+            {!selectionOnly && !isComponentMode && (
+              <div className="flex justify-between items-center">
+                <Text variant={TextVariants.label} className="select-none">
+                  {t('editor.masks.settings.applyPreset')}
                 </Text>
-              )}
+                <button
+                  ref={presetButtonRef}
+                  onClick={handlePresetSelectClick}
+                  className="text-sm text-text-primary text-right select-none cursor-pointer hover:text-accent transition-colors"
+                  data-tooltip={t('editor.masks.settings.selectPresetTooltip')}
+                >
+                  {t('editor.masks.settings.select')}
+                </button>
+              </div>
+            )}
 
-              {(activeSubMask.type === Mask.AiNormals || activeSubMask.type === Mask.AiAlbedo) && (
-                <MarigoldSurfaceControls
-                  key={activeSubMask.id}
-                  subMask={activeSubMask}
-                  enabled={appSettings?.marigoldSurfaceEnabled ?? false}
-                  generate={handleGenerateSurfaceMask}
-                  updateSubMask={updateSubMask}
-                  onDragStateChange={onDragStateChange}
-                  onLimitWithBrush={onLimitWithBrush}
-                />
-              )}
-              {activeSubMask.type === Mask.AiDepth &&
-                (appSettings?.marigoldDepthEnabled || activeSubMask.parameters.depthProvider === 'marigold') && (
+            {(isComponentMode || !selectionOnly) && (
+              <Slider
+                defaultValue={100}
+                label={t('editor.masks.settings.opacity')}
+                max={100}
+                min={0}
+                value={(isComponentMode ? activeSubMask.opacity : displayContainer.opacity) ?? 100}
+                onChange={(e) =>
+                  isComponentMode
+                    ? updateSubMask(activeSubMask.id, { opacity: Number(e.target.value) })
+                    : handleMaskPropertyChange('opacity', Number(e.target.value))
+                }
+                step={1}
+                fillOrigin="min"
+                onDragStateChange={onDragStateChange}
+              />
+            )}
+
+            {isComponentMode && (
+              <>
+                {isAiMask && aiModelDownloadStatus && (
+                  <Text
+                    as="div"
+                    variant={TextVariants.small}
+                    color={TextColors.accent}
+                    weight={TextWeights.medium}
+                    className="p-3 bg-card-active rounded-md border border-surface flex items-center gap-3"
+                  >
+                    <Loader2 size={16} className="animate-spin shrink-0" />
+                    <div className="leading-relaxed">
+                      <Text variant={TextVariants.small}>{t('editor.masks.settings.aiModelDownloading')}</Text>
+                      <span>{aiModelDownloadStatus}</span>
+                    </div>
+                  </Text>
+                )}
+
+                {(activeSubMask.type === Mask.AiNormals || activeSubMask.type === Mask.AiAlbedo) && (
+                  <MarigoldSurfaceControls
+                    key={activeSubMask.id}
+                    subMask={activeSubMask}
+                    enabled={appSettings?.marigoldSurfaceEnabled ?? false}
+                    generate={handleGenerateSurfaceMask}
+                    updateSubMask={updateSubMask}
+                    onDragStateChange={onDragStateChange}
+                    onLimitWithBrush={onLimitWithBrush}
+                  />
+                )}
+                {activeSubMask.type === Mask.AiDepth && activeSubMask.parameters.depthProvider === 'marigold' && (
                   <MarigoldDepthControls
                     key={activeSubMask.id}
                     subMask={activeSubMask}
@@ -2373,146 +2389,149 @@ function SettingsPanel({
                     updateSubMask={updateSubMask}
                   />
                 )}
-              {activeSubMask.type === Mask.AiDepth && (
-                <DepthMapPreview key={`depth-preview-${activeSubMask.id}`} subMask={activeSubMask} />
-              )}
-              {activeSubMask.type === Mask.AiDepth && (
-                <DepthRangePicker
-                  minDepth={100 - (activeSubMask.parameters?.maxDepth ?? 100)}
-                  maxDepth={100 - (activeSubMask.parameters?.minDepth ?? 0)}
-                  minFade={activeSubMask.parameters?.maxFade ?? 15}
-                  maxFade={activeSubMask.parameters?.minFade ?? 15}
-                  defaultMinDepth={20}
-                  defaultMaxDepth={80}
-                  defaultMinFade={15}
-                  defaultMaxFade={15}
-                  onChange={handleDepthRangeChange}
-                  onDragStateChange={onDragStateChange}
-                />
-              )}
-
-              {activeSubMask.type === Mask.Linear && (
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between gap-2 text-sm">
-                    {t('editor.masks.params.falloff', { defaultValue: 'Fade curve' })}
-                    <select
-                      className="bg-surface rounded px-2 py-1"
-                      value={activeSubMask.parameters.falloff ?? 'linear'}
-                      onChange={(e) => applyLinearFalloffSelection(e.target.value, handleSubMaskParametersChange)}
-                    >
-                      <option value="linear">
-                        {t('editor.masks.params.linearFalloff', { defaultValue: 'Linear' })}
-                      </option>
-                      <option value="smoothstep">
-                        {t('editor.masks.params.smoothFalloff', { defaultValue: 'Smooth' })}
-                      </option>
-                      <option value="smootherstep">
-                        {t('editor.masks.params.smootherFalloff', { defaultValue: 'Extra smooth' })}
-                      </option>
-                    </select>
-                  </label>
-                  {(['fadeBefore', 'fadeAfter'] as const).map((key) => (
-                    <Slider
-                      key={key}
-                      label={
-                        key === 'fadeBefore'
-                          ? t('editor.masks.params.fadeBefore', { defaultValue: 'Zero edge distance' })
-                          : t('editor.masks.params.fadeAfter', { defaultValue: 'Full edge distance' })
-                      }
-                      min={0}
-                      max={Math.max(10000, activeSubMask.parameters[key] ?? 0)}
-                      step={1}
-                      defaultValue={activeSubMask.parameters.range ?? 50}
-                      value={activeSubMask.parameters[key] ?? activeSubMask.parameters.range ?? 50}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        handleSubMaskParametersChange({ [key]: Number(e.target.value) })
-                      }
-                      fillOrigin="min"
-                      onDragStateChange={onDragStateChange}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {subMaskConfig.parameters?.map((param) => (
-                <Slider
-                  key={param.key}
-                  label={
-                    param.key === 'feather' && activeSubMask.type === Mask.AiDepth
-                      ? t('editor.masks.params.globalFeather')
-                      : t(`editor.masks.params.${param.key}`, { defaultValue: param.key })
-                  }
-                  min={param.min}
-                  max={param.max}
-                  step={param.step}
-                  defaultValue={param.defaultValue}
-                  value={(activeSubMask.parameters[param.key] || 0) * (param.multiplier || 1)}
-                  onChange={(e) =>
-                    handleSubMaskParametersChange({ [param.key]: Number(e.target.value) / (param.multiplier || 1) })
-                  }
-                  {...(param.key !== 'grow' && { fillOrigin: 'min' })}
-                  onDragStateChange={onDragStateChange}
-                />
-              ))}
-
-              {subMaskConfig.showBrushTools &&
-                brushSettings &&
-                (activeSubMask.type === Mask.Flow ? (
-                  <FlowBrushTool
-                    flow={activeSubMask.parameters?.flow ?? 10}
-                    onFlowChange={(flow: number) => handleSubMaskParametersChange({ flow })}
-                    settings={brushSettings}
-                    onSettingsChange={setBrushSettings}
+                {activeSubMask.type === Mask.AiDepth && (
+                  <DepthMapPreview key={`depth-preview-${activeSubMask.id}`} subMask={activeSubMask} />
+                )}
+                {activeSubMask.type === Mask.AiDepth && (
+                  <DepthRangePicker
+                    minDepth={100 - (activeSubMask.parameters?.maxDepth ?? 100)}
+                    maxDepth={100 - (activeSubMask.parameters?.minDepth ?? 0)}
+                    minFade={activeSubMask.parameters?.maxFade ?? 15}
+                    maxFade={activeSubMask.parameters?.minFade ?? 15}
+                    defaultMinDepth={20}
+                    defaultMaxDepth={80}
+                    defaultMinFade={15}
+                    defaultMaxFade={15}
+                    onChange={handleDepthRangeChange}
                     onDragStateChange={onDragStateChange}
                   />
-                ) : (
-                  <BrushTools
-                    settings={brushSettings}
-                    onSettingsChange={setBrushSettings}
+                )}
+
+                {activeSubMask.type === Mask.Linear && (
+                  <div className="space-y-3">
+                    <label className="flex items-center justify-between gap-2 text-sm">
+                      {t('editor.masks.params.falloff', { defaultValue: 'Fade curve' })}
+                      <select
+                        className="bg-surface rounded px-2 py-1"
+                        value={activeSubMask.parameters.falloff ?? 'linear'}
+                        onChange={(e) => applyLinearFalloffSelection(e.target.value, handleSubMaskParametersChange)}
+                      >
+                        <option value="linear">
+                          {t('editor.masks.params.linearFalloff', { defaultValue: 'Linear' })}
+                        </option>
+                        <option value="smoothstep">
+                          {t('editor.masks.params.smoothFalloff', { defaultValue: 'Smooth' })}
+                        </option>
+                        <option value="smootherstep">
+                          {t('editor.masks.params.smootherFalloff', { defaultValue: 'Extra smooth' })}
+                        </option>
+                      </select>
+                    </label>
+                    {(['fadeBefore', 'fadeAfter'] as const).map((key) => (
+                      <Slider
+                        key={key}
+                        label={
+                          key === 'fadeBefore'
+                            ? t('editor.masks.params.fadeBefore', { defaultValue: 'Zero edge distance' })
+                            : t('editor.masks.params.fadeAfter', { defaultValue: 'Full edge distance' })
+                        }
+                        min={0}
+                        max={Math.max(10000, activeSubMask.parameters[key] ?? 0)}
+                        step={1}
+                        defaultValue={activeSubMask.parameters.range ?? 50}
+                        value={activeSubMask.parameters[key] ?? activeSubMask.parameters.range ?? 50}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                          handleSubMaskParametersChange({ [key]: Number(e.target.value) })
+                        }
+                        fillOrigin="min"
+                        onDragStateChange={onDragStateChange}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {subMaskConfig.parameters?.map((param) => (
+                  <Slider
+                    key={param.key}
+                    label={
+                      param.key === 'feather' && activeSubMask.type === Mask.AiDepth
+                        ? t('editor.masks.params.globalFeather')
+                        : t(`editor.masks.params.${param.key}`, { defaultValue: param.key })
+                    }
+                    min={param.min}
+                    max={param.max}
+                    step={param.step}
+                    defaultValue={param.defaultValue}
+                    value={(activeSubMask.parameters[param.key] || 0) * (param.multiplier || 1)}
+                    onChange={(e) =>
+                      handleSubMaskParametersChange({ [param.key]: Number(e.target.value) / (param.multiplier || 1) })
+                    }
+                    {...(param.key !== 'grow' && { fillOrigin: 'min' })}
                     onDragStateChange={onDragStateChange}
                   />
                 ))}
-            </>
-          )}
-        </div>
-      </CollapsibleSection>
 
-      <div
-        onMouseEnter={() => setIsMaskControlHovered(true)}
-        onMouseLeave={() => setIsMaskControlHovered(false)}
-        className="flex flex-col gap-2"
-      >
-        {(['basic', 'curves', 'color', 'details', 'effects'] as const).map((sectionName) => {
-          const SectionComponent = {
-            basic: BasicAdjustments,
-            curves: CurveGraph,
-            color: ColorPanel,
-            details: DetailsPanel,
-            effects: EffectsPanel,
-          }[sectionName];
-          const title = t(`editor.adjustments.sections.${sectionName}`);
-          return (
-            <CollapsibleSection
-              key={sectionName}
-              title={title}
-              isOpen={collapsibleState[sectionName]}
-              isContentVisible={sectionVisibility[sectionName]}
-              onToggle={() => handleToggleSection(sectionName)}
-              onToggleVisibility={() => handleToggleVisibility(sectionName)}
-              onContextMenu={(e) => handleSectionContextMenu(e, sectionName)}
-            >
-              <SectionComponent
-                adjustments={{ ...INITIAL_ADJUSTMENTS, ...displayContainer.adjustments }}
-                setAdjustments={setMaskContainerAdjustments}
-                histogram={histogram}
-                isForMask={true}
-                appSettings={appSettings}
-                onDragStateChange={onDragStateChange}
-              />
-            </CollapsibleSection>
-          );
-        })}
-      </div>
+                {subMaskConfig.showBrushTools &&
+                  brushSettings &&
+                  (activeSubMask.type === Mask.Flow ? (
+                    <FlowBrushTool
+                      flow={activeSubMask.parameters?.flow ?? 10}
+                      onFlowChange={(flow: number) => handleSubMaskParametersChange({ flow })}
+                      settings={brushSettings}
+                      onSettingsChange={setBrushSettings}
+                      onDragStateChange={onDragStateChange}
+                    />
+                  ) : (
+                    <BrushTools
+                      settings={brushSettings}
+                      onSettingsChange={setBrushSettings}
+                      onDragStateChange={onDragStateChange}
+                    />
+                  ))}
+              </>
+            )}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {!selectionOnly && (
+        <div
+          onMouseEnter={() => setIsMaskControlHovered(true)}
+          onMouseLeave={() => setIsMaskControlHovered(false)}
+          className="flex flex-col gap-2"
+        >
+          {(['basic', 'curves', 'color', 'details', 'effects'] as const).map((sectionName) => {
+            const SectionComponent = {
+              basic: BasicAdjustments,
+              curves: CurveGraph,
+              color: ColorPanel,
+              details: DetailsPanel,
+              effects: EffectsPanel,
+            }[sectionName];
+            const title = t(`editor.adjustments.sections.${sectionName}`);
+            return (
+              <CollapsibleSection
+                key={sectionName}
+                title={title}
+                isOpen={collapsibleState[sectionName]}
+                isContentVisible={sectionVisibility[sectionName]}
+                onToggle={() => handleToggleSection(sectionName)}
+                onToggleVisibility={() => handleToggleVisibility(sectionName)}
+                onContextMenu={(e) => handleSectionContextMenu(e, sectionName)}
+              >
+                <SectionComponent
+                  adjustments={{ ...INITIAL_ADJUSTMENTS, ...displayContainer.adjustments }}
+                  setAdjustments={setMaskContainerAdjustments}
+                  histogram={histogram}
+                  isForMask={true}
+                  appSettings={appSettings}
+                  onDragStateChange={onDragStateChange}
+                />
+              </CollapsibleSection>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

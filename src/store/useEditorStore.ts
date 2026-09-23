@@ -67,6 +67,7 @@ export interface EditorState {
   activeMaskId: string | null;
   activeAiPatchContainerId: string | null;
   activeAiSubMaskId: string | null;
+  activeLocalEditKind: 'adjustment' | 'repair' | null;
   isMaskControlHovered: boolean;
   showPatchMarkers: boolean;
   isGeneratingAiMask: boolean;
@@ -111,6 +112,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   activeMaskId: null,
   activeAiPatchContainerId: null,
   activeAiSubMaskId: null,
+  activeLocalEditKind: null,
 
   zoom: 1,
   displaySize: { width: 0, height: 0 },
