@@ -12,20 +12,18 @@ Use RapidRAW on its own, connect it to your preferred MCP client, or pair it wit
 
 > A beautiful, non-destructive, and GPU-accelerated RAW image editor built with performance in mind.
 
-RapidRAW is a modern, high-performance alternative to Adobe Lightroom®. It delivers a simple, beautiful editing experience in a lightweight package (under 20MB) for Windows, macOS, Linux, and Android.
-
-I started developing this project as a personal challenge when I was 18. My goal was to create a high-performance tool for my own photography workflow while deepening my understanding of React, WGSL and Rust.
+RapidRAW is a modern, high-performance alternative to Adobe Lightroom®. This fork ships standard packages for Apple Silicon and Intel Macs and Linux x86_64; each includes the native MCP bridge.
 
 <table width="100%">
   <tr>
     <td width="50%" valign="top" align="center">
       <br>
-      <a href="https://github.com/CyberTimon/RapidRAW/releases/latest">
+      <a href="https://github.com/sheldonxxxx/RapidRAW/releases/latest">
         <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/src-tauri/icons/full_res_original.png" alt="Download RapidRAW" height="96">
       </a>
       <h3>Download RapidRAW</h3>
-      <p>Get the latest release for Windows, macOS, Linux, and Android. Packaged and ready to run.</p>
-      <strong><a href="https://github.com/CyberTimon/RapidRAW/releases/latest">Download Latest Version →</a></strong>
+      <p>Download the latest fork release for macOS or Linux x86_64, with the native MCP bridge included.</p>
+      <strong><a href="https://github.com/sheldonxxxx/RapidRAW/releases/latest">Download RapidRAW + MCP →</a></strong>
       <br><br>
     </td>
     <td width="50%" valign="top" align="center">
@@ -380,8 +378,8 @@ For repeated MCP editing and test runs, see [storage and model-cache guidance](m
 
 | You want to…                                                      | Start here                                                                                                                                                                                   |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Edit photographs directly in a desktop application                | [Desktop guide](docs/desktop-guide.md) and [upstream application downloads](https://github.com/CyberTimon/RapidRAW/releases)                                                                 |
-| Let an AI agent use RapidRAW's native engine                      | Install a fork beta package and connect the pinned npm host with the [agent setup guide](AGENT_SETUP.md) (package-first normal path; source build is the fallback)                           |
+| Edit photographs directly in a desktop application                | [Desktop guide](docs/desktop-guide.md) and [fork application downloads](https://github.com/sheldonxxxx/RapidRAW/releases/latest)                                                             |
+| Let an AI agent use RapidRAW's native engine                      | Install a fork release package and connect the pinned npm host with the [agent setup guide](AGENT_SETUP.md) (package-first normal path; source build is the fallback)                        |
 | Give your agent an editing workflow and a place to review results | Start with [Lightweft](https://github.com/sheldonxxxx/lightweft), then add RapidRAW as an optional execution tool                                                                            |
 | Prepare saved Insta360 files before editing                       | Use the independent [Insta360 AI Toolkit](https://github.com/sheldonxxxx/insta360-ai-toolkit), then follow the [spherical handoff guide](skills/rapidraw-mcp/references/spherical-photos.md) |
 
@@ -413,7 +411,7 @@ The server exposes **65 MCP tools** over stdio. Local AI operations need their m
 
 ## Connect an agent
 
-1. Install a fork beta package and connect the pinned npm host using the [agent setup guide](AGENT_SETUP.md). Source builds via the [source-build fallback](mcp/README.md#build-and-connect) or the [Linux GPU server guide](docs/mcp/remote-ssh.md) remain the fallback for development or unsupported platforms.
+1. Install a fork release package and connect the pinned npm host using the [agent setup guide](AGENT_SETUP.md). Source builds via the [source-build fallback](mcp/README.md#build-and-connect) or the [Linux GPU server guide](docs/mcp/remote-ssh.md) remain the fallback for development or unsupported platforms.
 2. Optionally install the execution skill:
 
    ```sh
@@ -551,9 +549,9 @@ Tethering is powered by **[libgphoto2](http://gphoto.org/)** and supports over *
 Tethering is supported on **macOS** and **Linux**. Windows and Android are not supported.
 
 <details>
-<summary><strong>Why is Tethering a Separate Build?</strong></summary>
+<summary><strong>Why Does Tethering Require a Separate Build?</strong></summary>
 
-The tethering build dynamically links directly against `libgphoto2`. If these system libraries are not present on a machine, an executable linked against them will fail to launch entirely. To ensure standard RapidRAW builds remain dependency-free and start on any system without extra installation steps, tethering is distributed as a dedicated `_tethering` release.
+The tethering build dynamically links directly against `libgphoto2`. If these system libraries are not present on a machine, an executable linked against them will fail to launch entirely. This fork does not publish a tethering-enabled package; build from source with the `tethering` feature after installing the system dependencies below.
 
 </details>
 
@@ -566,7 +564,7 @@ The tethering build dynamically links directly against `libgphoto2`. If these sy
 
 #### Setting up the Tethering Build
 
-To run the `_tethering` release binaries (or build from source), you **must install `libgphoto2` on your machine first**.
+For a tethering-enabled source build, you **must install `libgphoto2` on your machine first**.
 
 <details>
 <summary><strong>How to install libgphoto2 dependencies</strong></summary>
@@ -598,7 +596,7 @@ sudo dnf install libgphoto2-devel pkgconf-pkg-config
 
 </details>
 
-After installing the system dependencies, download the corresponding `_tethering` build from the [Releases](https://github.com/CyberTimon/RapidRAW/releases) page, or run/build from source using the `tethering` feature flag.
+After installing the system dependencies, run/build from source using the `tethering` feature flag.
 
 ## Command Line Interface (CLI)
 
@@ -632,13 +630,13 @@ rapidraw export /path/to/photos --output /path/to/output_dir --adjustments /path
 
 ## System Requirements
 
-RapidRAW is built to be lightweight and cross-platform. The minimum (tested) requirements are:
+The RapidRAW 0.4.0 fork packages support these minimum operating systems:
 
-**Operating System:**
+- **Apple Silicon Mac:** macOS 14 or newer
+- **Intel Mac:** macOS 13 (Ventura) or newer
+- **Linux x86_64:** Ubuntu 22.04 or a compatible modern distribution
 
-- **Windows:** Windows 10 or newer
-- **macOS:** macOS 13 (Ventura) or newer
-- **Linux:** Ubuntu 22.04+ or a compatible modern distribution
+These requirements describe the fork's release packages. Source-build targets are a separate path; Windows packaged support and fresh-machine installation have not been verified for this fork.
 
 **Hardware Recommendations:**
 
