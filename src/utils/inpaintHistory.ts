@@ -44,7 +44,17 @@ export function applyInpaintCandidate(adjustments: Adjustments, candidate: Inpai
   return {
     ...adjustments,
     aiPatches: exists
-      ? adjustments.aiPatches.map((entry) => (entry.id === patch.id ? patch : entry))
+      ? adjustments.aiPatches.map((entry) =>
+          entry.id === patch.id
+            ? {
+                ...entry,
+                patchData: candidate.patch.patchData,
+                appliedCandidateId: candidate.id,
+                isLoading: false,
+                visible: true,
+              }
+            : entry,
+        )
       : [...adjustments.aiPatches, patch],
   };
 }

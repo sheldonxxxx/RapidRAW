@@ -861,6 +861,7 @@ export const MaskOverlay = memo(
     };
 
     if (subMask.type === Mask.AiSubject || subMask.type === Mask.QuickEraser) {
+      if (subMask.type === Mask.AiSubject && p.sam21Selection && p.maskDataBase64 && !p.isInitialDraw) return null;
       const { startX, startY, endX, endY } = p;
       if (startX !== undefined && startY !== undefined && endX !== undefined && endY !== undefined) {
         const isPoint = Math.abs(startX - endX) < 1e-6 && Math.abs(startY - endY) < 1e-6;

@@ -30,7 +30,7 @@ import { PANEL_ICONS } from './components/panel/PanelSwitcher';
 import Controls from './components/panel/right/ControlsPanel';
 import MetadataPanel from './components/panel/right/MetadataPanel';
 import CropPanel from './components/panel/right/CropPanel';
-import MasksPanel from './components/panel/right/MasksPanel';
+import LocalEditsPanel from './components/panel/right/LocalEditsPanel';
 import AIPanel from './components/panel/right/AIPanel';
 import PresetsPanel from './components/panel/right/PresetsPanel';
 import TetheringPanel from './components/panel/right/TetheringPanel';
@@ -515,7 +515,7 @@ function App() {
 
   useEffect(() => {
     if (
-      (activePanel !== Panel.Masks || !activeMaskContainerId) &&
+      (activePanel !== Panel.Masks || (!activeMaskContainerId && !activeAiPatchContainerId)) &&
       (activePanel !== Panel.Ai || !activeAiPatchContainerId)
     ) {
       setEditor({ isMaskControlHovered: false });
@@ -527,10 +527,18 @@ function App() {
       isWbPickerActive: false,
       isStraightenActive: false,
       isGuidedPerspectiveActive: false,
-      activeMaskId: null,
-      activeAiSubMaskId: null,
     });
   }, [activePanel, activeView, setEditor]);
+
+  useEffect(() => {
+    setEditor({ activeMaskId: null, activeAiSubMaskId: null });
+  }, [activeView, setEditor]);
+
+  useEffect(() => {
+    if (activePanel !== Panel.Masks && activePanel !== Panel.Ai) {
+      setEditor({ activeMaskId: null, activeAiSubMaskId: null });
+    }
+  }, [activePanel, setEditor]);
 
   useEffect(() => {
     const unlisten = listen<{ connected: boolean }>('ai-connector-status-update', (event) => {
@@ -748,7 +756,7 @@ function App() {
         case Panel.Crop:
           return <CropPanel />;
         case Panel.Masks:
-          return <MasksPanel />;
+          return <LocalEditsPanel />;
         case Panel.Ai:
           return <AIPanel />;
         case Panel.Presets:

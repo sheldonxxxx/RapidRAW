@@ -581,10 +581,30 @@ export const useKeyboardShortcuts = ({
           e.preventDefault();
           if (s.editor.isStraightenActive) s.editor.setEditor({ isStraightenActive: false });
           else if (s.ui.customEscapeHandler) s.ui.customEscapeHandler();
-          else if (s.editor.activeAiSubMaskId) s.editor.setEditor({ activeAiSubMaskId: null });
-          else if (s.editor.activeAiPatchContainerId) s.editor.setEditor({ activeAiPatchContainerId: null });
-          else if (s.editor.activeMaskId) s.editor.setEditor({ activeMaskId: null });
-          else if (s.editor.activeMaskContainerId) s.editor.setEditor({ activeMaskContainerId: null });
+          else if (
+            (s.ui.activePanel === Panel.Ai ||
+              (s.ui.activePanel === Panel.Masks && s.editor.activeLocalEditKind === 'repair')) &&
+            s.editor.activeAiSubMaskId
+          )
+            s.editor.setEditor({ activeAiSubMaskId: null });
+          else if (
+            (s.ui.activePanel === Panel.Ai ||
+              (s.ui.activePanel === Panel.Masks && s.editor.activeLocalEditKind === 'repair')) &&
+            s.editor.activeAiPatchContainerId
+          )
+            s.editor.setEditor({ activeAiPatchContainerId: null, activeLocalEditKind: null });
+          else if (
+            s.ui.activePanel === Panel.Masks &&
+            s.editor.activeLocalEditKind === 'adjustment' &&
+            s.editor.activeMaskId
+          )
+            s.editor.setEditor({ activeMaskId: null });
+          else if (
+            s.ui.activePanel === Panel.Masks &&
+            s.editor.activeLocalEditKind === 'adjustment' &&
+            s.editor.activeMaskContainerId
+          )
+            s.editor.setEditor({ activeMaskContainerId: null, activeLocalEditKind: null });
           else if (s.ui.activePanel === Panel.Crop) s.ui.setPanel(Panel.Adjustments);
           else if (s.ui.isFullScreen) s.ui.toggleFullScreen();
           else if (s.ui.activeView === 'editor') handleBackToLibrary();
@@ -594,11 +614,23 @@ export const useKeyboardShortcuts = ({
       {
         match: (e: KeyboardEvent, s: ShortcutState) => {
           const isDeleteKey = s.settings.osPlatform === 'macos' ? e.code === 'Backspace' : e.code === 'Delete';
-          return isDeleteKey && (!!s.editor.activeMaskContainerId || !!s.editor.activeAiPatchContainerId);
+          return (
+            isDeleteKey &&
+            ((s.ui.activePanel === Panel.Masks &&
+              s.editor.activeLocalEditKind === 'adjustment' &&
+              !!s.editor.activeMaskContainerId) ||
+              ((s.ui.activePanel === Panel.Ai ||
+                (s.ui.activePanel === Panel.Masks && s.editor.activeLocalEditKind === 'repair')) &&
+                !!s.editor.activeAiPatchContainerId))
+          );
         },
         execute: (e: KeyboardEvent, s: ShortcutState) => {
           e.preventDefault();
-          if (s.editor.activeMaskContainerId) {
+          if (
+            s.ui.activePanel === Panel.Masks &&
+            s.editor.activeLocalEditKind === 'adjustment' &&
+            s.editor.activeMaskContainerId
+          ) {
             s.editor.setEditor((state) => ({
               adjustments: {
                 ...state.adjustments,
@@ -606,6 +638,7 @@ export const useKeyboardShortcuts = ({
               },
               activeMaskContainerId: null,
               activeMaskId: null,
+              activeLocalEditKind: null,
             }));
           } else if (s.editor.activeAiPatchContainerId) {
             s.editor.setEditor((state) => ({
@@ -615,6 +648,7 @@ export const useKeyboardShortcuts = ({
               },
               activeAiPatchContainerId: null,
               activeAiSubMaskId: null,
+              activeLocalEditKind: null,
             }));
           }
         },

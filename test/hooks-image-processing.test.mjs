@@ -61,6 +61,7 @@ function environment(t) {
   const same = (a, b) => a?.length === b?.length && a?.every((value, i) => Object.is(value, b[i]));
   const state = {
     calls: [],
+    uncroppedCalls: [],
     Editor: {
       selectedImage: { path: 'a.png', isReady: true },
       adjustments: structuredClone(INITIAL_ADJUSTMENTS),
@@ -92,6 +93,8 @@ function environment(t) {
       }
     },
     invoke(command, payload) {
+      if (command === 'generate_uncropped_preview')
+        return new Promise((resolve, reject) => state.uncroppedCalls.push({ payload, resolve, reject }));
       if (command !== 'apply_adjustments') return Promise.resolve();
       return new Promise((resolve, reject) => state.calls.push({ payload, resolve, reject }));
     },
@@ -173,4 +176,33 @@ test('returning to the same filename cannot accept a response from the earlier p
   assert.equal(state.calls.length, 2);
   state.finish(1);
   await drain();
+});
+
+test('crop previews coalesce slow work and reject responses from an earlier image session', async (t) => {
+  const state = environment(t);
+  state.UI.activePanel = 'crop';
+  state.render();
+  await drain();
+  assert.equal(state.uncroppedCalls.length, 1);
+  for (const exposure of [0.25, 0.5, 0.75]) {
+    state.Editor.adjustments = { ...state.Editor.adjustments, exposure };
+    state.render();
+  }
+  assert.equal(state.uncroppedCalls.length, 1);
+  state.uncroppedCalls[0].resolve('first-preview');
+  await drain();
+  assert.equal(state.uncroppedCalls.length, 2);
+  assert.equal(state.uncroppedCalls[1].payload.jsAdjustments.exposure, 0.75);
+  state.Editor.selectedImage = { path: 'b.png', isReady: true };
+  state.render();
+  state.Editor.selectedImage = { path: 'a.png', isReady: true };
+  state.render();
+  state.Editor.uncroppedAdjustedPreviewUrl = 'reopened-preview';
+  state.uncroppedCalls[1].resolve('stale-preview');
+  await drain();
+  assert.equal(state.Editor.uncroppedAdjustedPreviewUrl, 'reopened-preview');
+  assert.equal(state.uncroppedCalls.length, 3);
+  state.uncroppedCalls[2].resolve('current-preview');
+  await drain();
+  assert.equal(state.Editor.uncroppedAdjustedPreviewUrl, 'current-preview');
 });

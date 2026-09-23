@@ -10,7 +10,10 @@ use crate::ai_processing;
 use crate::app_settings::load_settings;
 use crate::app_state::AppState;
 use crate::image_loader::composite_patches_on_image;
-use crate::image_processing::apply_linear_to_srgb;
+use crate::image_processing::{
+    Crop, apply_coarse_rotation, apply_flip, apply_geometry_warp, apply_linear_to_srgb,
+    apply_rotation, apply_unwarp_geometry,
+};
 use crate::mask_generation::{AiPatchDefinition, MaskDefinition, generate_mask_bitmap};
 use crate::resolve_warped_image_for_masks;
 
@@ -103,6 +106,205 @@ fn calculate_mask_bounds(
     }
 
     Ok((min_x, max_x, min_y, max_y))
+}
+
+struct ConnectorCropInput {
+    source: DynamicImage,
+    mask: image::GrayImage,
+    full_display_source: DynamicImage,
+    offset: (u32, u32),
+}
+
+fn prepare_connector_crop_input(
+    source: &DynamicImage,
+    display_mask: &image::GrayImage,
+    adjustments: &Value,
+) -> Result<Option<ConnectorCropInput>, String> {
+    let Some(crop_value) = adjustments.get("crop").filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let crop: Crop = serde_json::from_value(crop_value.clone())
+        .map_err(|_| "Invalid crop for AI Connector input".to_string())?;
+
+    let warped = apply_geometry_warp(source, adjustments);
+    let mut uncropped_adjustments = adjustments.clone();
+    uncropped_adjustments["crop"] = Value::Null;
+    let (full_display_source, _) =
+        crate::adjustment_utils::apply_spatial_transformations(warped, &uncropped_adjustments);
+    let full_display_source = full_display_source.into_owned();
+    let (width, height) = full_display_source.dimensions();
+    if display_mask.dimensions() != (width, height) {
+        return Err("AI selection does not match the cropped image geometry".to_string());
+    }
+
+    // Match apply_crop's pixel rounding and bounds clipping exactly.
+    let (x, y, crop_width, crop_height) = (
+        crop.x.round() as u32,
+        crop.y.round() as u32,
+        crop.width.round() as u32,
+        crop.height.round() as u32,
+    );
+    if crop_width == 0 || crop_height == 0 || x >= width || y >= height {
+        return Err("Invalid crop for AI Connector input".to_string());
+    }
+    let crop_width = crop_width.min(width - x);
+    let crop_height = crop_height.min(height - y);
+    let source = full_display_source.crop_imm(x, y, crop_width, crop_height);
+    let mask = image::imageops::crop_imm(display_mask, x, y, crop_width, crop_height).to_image();
+    calculate_mask_bounds(&mask)
+        .map_err(|_| "AI selection is outside the current crop".to_string())?;
+
+    Ok(Some(ConnectorCropInput {
+        source,
+        mask,
+        full_display_source,
+        offset: (x, y),
+    }))
+}
+
+fn restore_connector_crop_output(
+    input: ConnectorCropInput,
+    output: &RgbaImage,
+    adjustments: &Value,
+) -> Result<RgbaImage, String> {
+    if output.dimensions() != input.source.dimensions() {
+        return Err("AI Connector output does not match the cropped input".to_string());
+    }
+    let mut display = input.full_display_source.to_rgba8();
+    image::imageops::overlay(
+        &mut display,
+        output,
+        input.offset.0.into(),
+        input.offset.1.into(),
+    );
+
+    let rotation = adjustments["rotation"].as_f64().unwrap_or(0.0) as f32;
+    let unrotated = apply_rotation(DynamicImage::ImageRgba8(display), -rotation);
+    let unflipped = apply_flip(
+        unrotated,
+        adjustments["flipHorizontal"].as_bool().unwrap_or(false),
+        adjustments["flipVertical"].as_bool().unwrap_or(false),
+    );
+    let steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
+    let uncoarsened = apply_coarse_rotation(unflipped, (4 - steps % 4) % 4);
+    Ok(apply_unwarp_geometry(uncoarsened, adjustments)
+        .into_owned()
+        .to_rgba8())
+}
+
+fn clip_source_mask_to_connector_crop(
+    source_mask: &mut image::GrayImage,
+    crop: &ConnectorCropInput,
+    adjustments: &Value,
+) -> Result<(), String> {
+    let mut cropped_display_mask = image::GrayImage::new(
+        crop.full_display_source.width(),
+        crop.full_display_source.height(),
+    );
+    image::imageops::replace(
+        &mut cropped_display_mask,
+        &crop.mask,
+        crop.offset.0.into(),
+        crop.offset.1.into(),
+    );
+    let cropped_source_mask =
+        crate::image_processing::inverse_transform_mask(cropped_display_mask, adjustments);
+    if cropped_source_mask.dimensions() != source_mask.dimensions() {
+        return Err("AI selection does not match the source image geometry".to_string());
+    }
+    for (original, cropped) in source_mask
+        .as_mut()
+        .iter_mut()
+        .zip(cropped_source_mask.as_raw())
+    {
+        *original = (*original).min(*cropped);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod connector_crop_tests {
+    use super::*;
+    use image::{GrayImage, Luma, Rgba};
+
+    #[test]
+    fn cropped_connector_input_and_output_use_the_visible_pixels() {
+        let source = DynamicImage::ImageRgba8(RgbaImage::from_fn(8, 6, |x, y| {
+            Rgba([x as u8 * 20, y as u8 * 20, 7, 255])
+        }));
+        let mut mask = GrayImage::new(8, 6);
+        mask.put_pixel(3, 2, Luma([255]));
+        let adjustments = serde_json::json!({
+            "crop": {"x": 2, "y": 1, "width": 4, "height": 3}
+        });
+
+        let input = prepare_connector_crop_input(&source, &mask, &adjustments)
+            .unwrap()
+            .unwrap();
+        assert_eq!(input.source.dimensions(), (4, 3));
+        assert_eq!(input.source.get_pixel(0, 0), source.get_pixel(2, 1));
+        assert_eq!(input.mask.get_pixel(1, 1)[0], 255);
+        assert_eq!(input.mask.get_pixel(0, 0)[0], 0);
+
+        let mut output = RgbaImage::new(4, 3);
+        output.put_pixel(1, 1, Rgba([250, 40, 30, 255]));
+        let restored = restore_connector_crop_output(input, &output, &adjustments).unwrap();
+        assert_eq!(restored.dimensions(), (8, 6));
+        assert_eq!(restored.get_pixel(3, 2), &Rgba([250, 40, 30, 255]));
+        assert_eq!(restored.get_pixel(1, 1), &source.get_pixel(1, 1));
+    }
+
+    #[test]
+    fn cropped_connector_output_maps_back_through_orientation() {
+        let source = DynamicImage::ImageRgba8(RgbaImage::from_pixel(6, 4, Rgba([10, 20, 30, 255])));
+        let mut mask = GrayImage::new(4, 6);
+        mask.put_pixel(2, 3, Luma([255]));
+        let adjustments = serde_json::json!({
+            "orientationSteps": 1,
+            "crop": {"x": 1, "y": 2, "width": 2, "height": 3}
+        });
+        let input = prepare_connector_crop_input(&source, &mask, &adjustments)
+            .unwrap()
+            .unwrap();
+        assert_eq!(input.source.dimensions(), (2, 3));
+        assert_eq!(input.mask.get_pixel(1, 1)[0], 255);
+
+        let mut output = RgbaImage::new(2, 3);
+        output.put_pixel(1, 1, Rgba([200, 30, 20, 255]));
+        let restored = restore_connector_crop_output(input, &output, &adjustments).unwrap();
+        assert_eq!(restored.get_pixel(3, 1), &Rgba([200, 30, 20, 255]));
+    }
+
+    #[test]
+    fn connector_rejects_selection_outside_crop() {
+        let source = DynamicImage::ImageRgba8(RgbaImage::new(8, 6));
+        let mut mask = GrayImage::new(8, 6);
+        mask.put_pixel(0, 0, Luma([255]));
+        let adjustments = serde_json::json!({
+            "crop": {"x": 2, "y": 1, "width": 4, "height": 3}
+        });
+        let error = prepare_connector_crop_input(&source, &mask, &adjustments)
+            .err()
+            .unwrap();
+        assert_eq!(error, "AI selection is outside the current crop");
+    }
+
+    #[test]
+    fn connector_result_mask_excludes_selection_outside_crop() {
+        let source = DynamicImage::ImageRgba8(RgbaImage::new(8, 6));
+        let mut mask = GrayImage::new(8, 6);
+        mask.put_pixel(3, 2, Luma([255]));
+        mask.put_pixel(0, 0, Luma([255]));
+        let adjustments = serde_json::json!({
+            "crop": {"x": 2, "y": 1, "width": 4, "height": 3}
+        });
+        let input = prepare_connector_crop_input(&source, &mask, &adjustments)
+            .unwrap()
+            .unwrap();
+        clip_source_mask_to_connector_crop(&mut mask, &input, &adjustments).unwrap();
+        assert_eq!(mask.get_pixel(3, 2)[0], 255);
+        assert_eq!(mask.get_pixel(0, 0)[0], 0);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -492,7 +694,7 @@ pub async fn invoke_generative_replace_with_mask_def(
         std::slice::from_ref(&mask_def_for_generation),
     );
 
-    let mask_bitmap = generate_mask_bitmap(
+    let display_mask_bitmap = generate_mask_bitmap(
         &mask_def_for_generation,
         trans_w,
         trans_h,
@@ -502,10 +704,12 @@ pub async fn invoke_generative_replace_with_mask_def(
     )
     .ok_or("Failed to generate mask bitmap for AI replace")?;
 
-    let mask_bitmap =
-        crate::image_processing::inverse_transform_mask(mask_bitmap, &current_adjustments);
+    let mask_bitmap = crate::image_processing::inverse_transform_mask(
+        display_mask_bitmap.clone(),
+        &current_adjustments,
+    );
 
-    let mask_bitmap = if let Some(options) = patch_definition
+    let (mut mask_bitmap, connector_display_mask) = if let Some(options) = patch_definition
         .removal_options
         .as_ref()
         .filter(|o| o.enabled())
@@ -532,7 +736,7 @@ pub async fn invoke_generative_replace_with_mask_def(
             },
         );
         let raster = |definition: &MaskDefinition| -> Result<image::GrayImage, String> {
-            let bitmap = generate_mask_bitmap(
+            generate_mask_bitmap(
                 definition,
                 trans_w,
                 trans_h,
@@ -540,17 +744,26 @@ pub async fn invoke_generative_replace_with_mask_def(
                 (0.0, 0.0),
                 warped_image.as_deref(),
             )
-            .ok_or("Failed to rasterize removal selection or protection")?;
-            Ok(crate::image_processing::inverse_transform_mask(
-                bitmap,
-                &current_adjustments,
-            ))
+            .ok_or("Failed to rasterize removal selection or protection".to_string())
         };
-        removal::effective_mask(&raster(&selection)?, &raster(&constraints)?, options)?
+        let display_selection = raster(&selection)?;
+        let display_constraints = raster(&constraints)?;
+        let source_selection = crate::image_processing::inverse_transform_mask(
+            display_selection.clone(),
+            &current_adjustments,
+        );
+        let source_constraints = crate::image_processing::inverse_transform_mask(
+            display_constraints.clone(),
+            &current_adjustments,
+        );
+        (
+            removal::effective_mask(&source_selection, &source_constraints, options)?,
+            removal::effective_mask(&display_selection, &display_constraints, options)?,
+        )
     } else {
-        mask_bitmap
+        (mask_bitmap, display_mask_bitmap)
     };
-    let (min_x, max_x, min_y, max_y) = calculate_mask_bounds(&mask_bitmap)?;
+    let (mut min_x, mut max_x, mut min_y, mut max_y) = calculate_mask_bounds(&mask_bitmap)?;
     if preview_only {
         let mut bytes = Cursor::new(Vec::new());
         DynamicImage::ImageLuma8(mask_bitmap.clone())
@@ -691,8 +904,20 @@ pub async fn invoke_generative_replace_with_mask_def(
     {
         let base_url = format!("http://{}", address);
 
-        let mut rgba_mask = RgbaImage::new(img_w, img_h);
-        for (src_val, dst_chunk) in mask_bitmap.as_raw().iter().zip(rgba_mask.chunks_mut(4)) {
+        let connector_crop = prepare_connector_crop_input(
+            &source_image,
+            &connector_display_mask,
+            &current_adjustments,
+        )?;
+        let connector_source = connector_crop
+            .as_ref()
+            .map_or(&source_image, |crop| &crop.source);
+        let connector_mask = connector_crop
+            .as_ref()
+            .map_or(&mask_bitmap, |crop| &crop.mask);
+
+        let mut rgba_mask = RgbaImage::new(connector_source.width(), connector_source.height());
+        for (src_val, dst_chunk) in connector_mask.as_raw().iter().zip(rgba_mask.chunks_mut(4)) {
             let intensity = *src_val;
             dst_chunk[0] = intensity;
             dst_chunk[1] = intensity;
@@ -706,7 +931,7 @@ pub async fn invoke_generative_replace_with_mask_def(
         let output = ai_connector::process_inpainting(
             &base_url,
             &real_path_buf.to_string_lossy(),
-            &source_image,
+            connector_source,
             &mask_image_dynamic,
             patch_definition.prompt,
             None,
@@ -715,7 +940,13 @@ pub async fn invoke_generative_replace_with_mask_def(
         .await
         .map_err(|e| e.to_string())?;
         generation = output.generation;
-        output.image
+        if let Some(crop) = connector_crop {
+            clip_source_mask_to_connector_crop(&mut mask_bitmap, &crop, &current_adjustments)?;
+            (min_x, max_x, min_y, max_y) = calculate_mask_bounds(&mask_bitmap)?;
+            restore_connector_crop_output(crop, &output.image, &current_adjustments)?
+        } else {
+            output.image
+        }
     } else {
         return Err(
             "No generative backend configured or connection invalid. Please check your AI settings."

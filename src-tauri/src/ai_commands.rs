@@ -13,7 +13,7 @@ use crate::ai_processing::{
 };
 use crate::app_settings::load_settings;
 use crate::app_state::AppState;
-use crate::cache_utils::GEOMETRY_KEYS;
+use crate::cache_utils::{GEOMETRY_KEYS, calculate_geometry_hash};
 use crate::get_cached_full_warped_image;
 
 fn encode_to_base64_png(image: &GrayImage) -> Result<String, String> {
@@ -23,6 +23,48 @@ fn encode_to_base64_png(image: &GrayImage) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
     let base64_str = general_purpose::STANDARD.encode(buf.get_ref());
     Ok(format!("data:image/png;base64,{}", base64_str))
+}
+
+#[tauri::command]
+pub async fn generate_sam21_subject_proposals(
+    js_adjustments: serde_json::Value,
+    bbox: Option<[f32; 4]>,
+    points: Vec<crate::ai_processing::sam21::Point>,
+    prior_logits_base64: Option<String>,
+    expected_image_hash: Option<String>,
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<crate::ai_processing::sam21::ResultSet, String> {
+    let image = get_cached_full_warped_image(&state, &js_adjustments)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::ai_processing::sam21::propose(
+            &app_handle,
+            image.as_ref(),
+            bbox,
+            &points,
+            prior_logits_base64.as_deref(),
+            expected_image_hash.as_deref(),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn finish_sam21_subject_mask(
+    js_adjustments: serde_json::Value,
+    expected_image_hash: String,
+    logits_base64: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let image = get_cached_full_warped_image(&state, &js_adjustments)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::ai_processing::sam21::finish(image.as_ref(), &expected_image_hash, &logits_base64)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -227,14 +269,7 @@ pub async fn generate_ai_subject_mask(
     let path_hash = {
         let mut hasher = blake3::Hasher::new();
         hasher.update(path.as_bytes());
-        let mut geo_hasher = DefaultHasher::new();
-        for key in GEOMETRY_KEYS {
-            if let Some(val) = js_adjustments.get(key) {
-                key.hash(&mut geo_hasher);
-                val.to_string().hash(&mut geo_hasher);
-            }
-        }
-        hasher.update(&geo_hasher.finish().to_le_bytes());
+        hasher.update(&calculate_geometry_hash(&js_adjustments).to_le_bytes());
         hasher.finalize().to_hex().to_string()
     };
 
@@ -375,14 +410,7 @@ pub async fn precompute_ai_subject_mask(
     let path_hash = {
         let mut hasher = blake3::Hasher::new();
         hasher.update(path.as_bytes());
-        let mut geo_hasher = DefaultHasher::new();
-        for key in GEOMETRY_KEYS {
-            if let Some(val) = js_adjustments.get(key) {
-                key.hash(&mut geo_hasher);
-                val.to_string().hash(&mut geo_hasher);
-            }
-        }
-        hasher.update(&geo_hasher.finish().to_le_bytes());
+        hasher.update(&calculate_geometry_hash(&js_adjustments).to_le_bytes());
         hasher.finalize().to_hex().to_string()
     };
 

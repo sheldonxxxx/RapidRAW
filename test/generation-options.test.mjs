@@ -190,7 +190,9 @@ test('basic inpaint and legacy requests omit saved explicit options', async () =
 
 test('Marigold is explicit, merges current range controls, and never invokes the built-in command', async () => {
   const env = environment();
-  env.state.adjustments.masks = [{ id: 'depth', subMasks: [{ id: 'd1', parameters: { minDepth: 10, maxDepth: 90 } }] }];
+  env.state.adjustments.masks = [
+    { id: 'depth', subMasks: [{ id: 'd1', parameters: { depthProvider: 'marigold', minDepth: 10, maxDepth: 90 } }] },
+  ];
   let finish;
   env.invoke = (name) => {
     env.calls.push(name);
@@ -206,11 +208,55 @@ test('Marigold is explicit, merges current range controls, and never invokes the
   assert.equal(env.state.adjustments.masks[0].subMasks[0].parameters.minDepth, 25);
   assert.equal(env.state.adjustments.masks[0].subMasks[0].parameters.maskDataBase64, 'map16');
 });
-test('late Marigold results cannot overwrite switched photos, changed geometry, or cancelled masks', async () => {
-  for (const change of ['photo', 'geometry', 'cancel']) {
+test('Depth Selection and ordinary Depth keep separate analysis maps', async () => {
+  const env = environment();
+  env.state.adjustments.masks = [
+    {
+      id: 'depth',
+      subMasks: [
+        { id: 'marigold', parameters: { depthProvider: 'marigold' } },
+        { id: 'builtin', parameters: { depthProvider: 'builtin' } },
+      ],
+    },
+  ];
+  env.invoke = async (name) => {
+    env.calls.push(name);
+    return name === 'generate_marigold_depth_mask'
+      ? { depthProvider: 'marigold', maskDataBase64: 'map16', depthArtifact: { version: 1 } }
+      : { maskDataBase64: 'map8', minDepth: 20, maxDepth: 80 };
+  };
+  const masking = hook.useAiMasking();
+  await masking.handleGenerateAiDepthMask('marigold', { depthProvider: 'marigold' });
+  await masking.handleGenerateAiDepthMask('builtin', { depthProvider: 'builtin' });
+  assert.deepEqual(env.calls, ['generate_marigold_depth_mask', 'generate_ai_depth_mask']);
+  const [marigold, builtin] = env.state.adjustments.masks[0].subMasks;
+  assert.equal(marigold.parameters.maskDataBase64, 'map16');
+  assert.equal(marigold.parameters.depthArtifact.version, 1);
+  assert.equal(builtin.parameters.maskDataBase64, 'map8');
+  assert.equal(builtin.parameters.depthProvider, 'builtin');
+  assert.equal(builtin.parameters.depthArtifact, undefined);
+});
+test('late built-in depth cannot replace a mask changed to Depth Selection', async () => {
+  const env = environment();
+  env.state.adjustments.masks = [
+    { id: 'depth', subMasks: [{ id: 'd1', parameters: { depthProvider: 'builtin', maskDataBase64: 'old' } }] },
+  ];
+  let finish;
+  env.invoke = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  const pending = hook.useAiMasking().handleGenerateAiDepthMask('d1', { depthProvider: 'builtin' });
+  env.state.adjustments.masks[0].subMasks[0].parameters.depthProvider = 'marigold';
+  finish({ maskDataBase64: 'late' });
+  await pending;
+  assert.equal(env.state.adjustments.masks[0].subMasks[0].parameters.maskDataBase64, 'old');
+});
+test('late Marigold results cannot overwrite switched photos, changed geometry, providers, or cancelled masks', async () => {
+  for (const change of ['photo', 'geometry', 'provider', 'cancel']) {
     const env = environment();
     env.state.adjustments.masks = [
-      { id: 'depth', subMasks: [{ id: 'd1', parameters: { maskDataBase64: 'original' } }] },
+      { id: 'depth', subMasks: [{ id: 'd1', parameters: { depthProvider: 'marigold', maskDataBase64: 'original' } }] },
     ];
     let finish;
     env.invoke = () =>
@@ -220,6 +266,7 @@ test('late Marigold results cannot overwrite switched photos, changed geometry, 
     const pending = hook.useAiMasking().handleGenerateAiDepthMask('d1', { depthProvider: 'marigold' });
     if (change === 'photo') env.state.selectedImage = { path: '/fixture/other.raw' };
     if (change === 'geometry') env.state.adjustments.rotation = 5;
+    if (change === 'provider') env.state.adjustments.masks[0].subMasks[0].parameters.depthProvider = 'builtin';
     if (change === 'cancel') hook.discardMarigoldResult('d1');
     finish({ depthProvider: 'marigold', maskDataBase64: 'late' });
     await pending;

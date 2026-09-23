@@ -19,6 +19,7 @@ use tauri::Manager;
 use tokenizers::Tokenizer;
 use tokio::sync::Mutex as TokioMutex;
 
+pub(crate) mod sam21;
 #[cfg(feature = "mcp")]
 pub(crate) mod sam_refinement;
 
@@ -316,7 +317,7 @@ pub fn fast_guided_filter(
     GrayImage::from_raw(hr_w, hr_h, final_mask_raw).unwrap()
 }
 
-fn get_models_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf> {
+pub(crate) fn get_models_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf> {
     #[cfg(feature = "mcp")]
     if let Some(paths) = app_handle.try_state::<crate::mcp_bridge::WorkspacePaths>() {
         std::fs::create_dir_all(&paths.models)?;
@@ -393,7 +394,7 @@ async fn download_verified_model(url: &str, dest: &Path, expected_hash: &str) ->
 #[path = "ai_processing_download_tests.rs"]
 mod download_fault_tests;
 
-fn verify_sha256(path: &Path, expected_hash: &str) -> Result<bool> {
+pub(crate) fn verify_sha256(path: &Path, expected_hash: &str) -> Result<bool> {
     if !path.exists() {
         return Ok(false);
     }

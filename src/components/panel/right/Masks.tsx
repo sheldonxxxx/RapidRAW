@@ -76,6 +76,17 @@ export interface MaskLine {
 }
 
 export interface MaskParameters {
+  sam21Selection?: {
+    version: 1;
+    model: 'sam2.1-hiera-tiny';
+    imageHash: string;
+    geometrySnapshot: string;
+    box: [number, number, number, number] | null;
+    points: Array<{ x: number; y: number; include: boolean }>;
+    selectedProposalId: number;
+    score: number;
+    logitsBase64: string;
+  };
   surfaceArtifact?: {
     version: number;
     kind: 'normals' | 'albedo';

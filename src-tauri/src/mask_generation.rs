@@ -10,7 +10,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::f32::consts::PI;
 use std::hash::{Hash, Hasher};
 use std::io::Cursor;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::Manager;
 
 use crate::app_state::AppState;
@@ -1298,7 +1298,87 @@ fn generate_all_bitmap(width: u32, height: u32) -> GrayImage {
     GrayImage::from_pixel(width, height, Luma([255]))
 }
 
+#[derive(PartialEq, Eq)]
+struct ComponentBitmapKey {
+    mask_type: String,
+    parameters: [u8; 32],
+    geometry: [u32; 5],
+}
+
+static COMPONENT_MASK_CACHE: OnceLock<
+    Mutex<crate::cache_utils::MaskBitmapCache<ComponentBitmapKey>>,
+> = OnceLock::new();
+
+pub(crate) fn clear_component_mask_cache() {
+    if let Some(cache) = COMPONENT_MASK_CACHE.get() {
+        cache.lock().unwrap().clear();
+    }
+}
+
 fn generate_sub_mask_bitmap(
+    sub_mask: &SubMask,
+    width: u32,
+    height: u32,
+    scale: f32,
+    crop_offset: (f32, f32),
+    warped_image: Option<&DynamicImage>,
+) -> Option<GrayImage> {
+    if !sub_mask.visible {
+        return None;
+    }
+    // These components depend only on their saved map and parameters. Brush,
+    // colour and luminance masks remain outside this source-independent cache.
+    if !matches!(
+        sub_mask.mask_type.as_str(),
+        "ai-depth"
+            | "ai-normals"
+            | "ai-albedo"
+            | "ai-subject"
+            | "ai-foreground"
+            | "ai-sky"
+            | "quick-eraser"
+    ) {
+        return generate_sub_mask_bitmap_uncached(
+            sub_mask,
+            width,
+            height,
+            scale,
+            crop_offset,
+            warped_image,
+        );
+    }
+    use sha2::{Digest, Sha256};
+    let key = ComponentBitmapKey {
+        mask_type: sub_mask.mask_type.clone(),
+        parameters: Sha256::digest(serde_json::to_vec(&sub_mask.parameters).ok()?).into(),
+        geometry: [
+            width,
+            height,
+            scale.to_bits(),
+            crop_offset.0.to_bits(),
+            crop_offset.1.to_bits(),
+        ],
+    };
+    let cache = COMPONENT_MASK_CACHE
+        .get_or_init(|| Mutex::new(crate::cache_utils::MaskBitmapCache::new(64 * 1024 * 1024)));
+    let cached = cache.lock().unwrap().get(&key);
+    if let Some(image) = cached {
+        return Some((*image).clone());
+    }
+    let image = generate_sub_mask_bitmap_uncached(
+        sub_mask,
+        width,
+        height,
+        scale,
+        crop_offset,
+        warped_image,
+    )?;
+    let cached_image = Arc::new(image.clone());
+    cache.lock().unwrap().insert(key, cached_image);
+    Some(image)
+}
+
+fn generate_sub_mask_bitmap_uncached(
     sub_mask: &SubMask,
     width: u32,
     height: u32,
@@ -1561,15 +1641,14 @@ pub fn resolve_warped_image_for_masks(
     }
 }
 
-pub fn get_cached_or_generate_mask(
-    state: &tauri::State<AppState>,
+fn mask_bitmap_key(
     def: &MaskDefinition,
     width: u32,
     height: u32,
     scale: f32,
     crop_offset: (f32, f32),
-    adjustments: &serde_json::Value,
-) -> Option<GrayImage> {
+    adjustments: &Value,
+) -> u64 {
     let mut hasher = DefaultHasher::new();
 
     let mut def_for_hash = def.clone();
@@ -1583,12 +1662,27 @@ pub fn get_cached_or_generate_mask(
     crop_offset.0.to_bits().hash(&mut hasher);
     crop_offset.1.to_bits().hash(&mut hasher);
 
-    let key = hasher.finish();
+    if def.requires_warped_image() {
+        crate::cache_utils::calculate_geometry_hash(adjustments).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+pub fn get_cached_or_generate_mask(
+    state: &tauri::State<AppState>,
+    def: &MaskDefinition,
+    width: u32,
+    height: u32,
+    scale: f32,
+    crop_offset: (f32, f32),
+    adjustments: &serde_json::Value,
+) -> Option<GrayImage> {
+    let key = mask_bitmap_key(def, width, height, scale, crop_offset, adjustments);
 
     {
-        let cache = state.mask_cache.lock().unwrap();
-        if let Some(img) = cache.get(&key) {
-            return Some(img.clone());
+        let cached = state.mask_cache.lock().unwrap().get(&key);
+        if let Some(img) = cached {
+            return Some((*img).clone());
         }
     }
 
@@ -1605,11 +1699,8 @@ pub fn get_cached_or_generate_mask(
     );
 
     if let Some(img) = &generated {
-        let mut cache = state.mask_cache.lock().unwrap();
-        if cache.len() > 50 {
-            cache.clear();
-        }
-        cache.insert(key, img.clone());
+        let cached_image = Arc::new(img.clone());
+        state.mask_cache.lock().unwrap().insert(key, cached_image);
     }
 
     generated
@@ -1654,5 +1745,108 @@ mod linear_falloff_tests {
                 assert!(bitmap[(0, 50)][0] > 223);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod depth_bitmap_cache_tests {
+    use super::*;
+    fn generate_ai_depth_bitmap(
+        params: &Value,
+        width: u32,
+        height: u32,
+        scale: f32,
+        offset: (f32, f32),
+    ) -> Option<GrayImage> {
+        let sub = SubMask {
+            id: "depth".into(),
+            mask_type: "ai-depth".into(),
+            visible: true,
+            invert: false,
+            opacity: 100.0,
+            mode: SubMaskMode::Additive,
+            parameters: params.clone(),
+        };
+        generate_sub_mask_bitmap(&sub, width, height, scale, offset, None)
+    }
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn cached_depth_matches_uncached_and_invalidates_inputs() {
+        let depth =
+            image::ImageBuffer::<Luma<u16>, _>::from_raw(4, 1, vec![0, 20000, 40000, 65535])
+                .unwrap();
+        let mut png = Cursor::new(Vec::new());
+        depth.write_to(&mut png, ImageFormat::Png).unwrap();
+        let hash = Sha256::digest(png.get_ref())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        let mut params = serde_json::json!({
+            "depthProvider": "marigold",
+            "maskDataBase64": general_purpose::STANDARD.encode(png.get_ref()),
+            "depthArtifact": {
+                "version": 1, "profile": "marigold-v2-q4-v1",
+                "sourceWidth": 40, "sourceHeight": 10,
+                "sourceHash": "source", "geometryHash": "geometry",
+                "workflowHash": "workflow", "mapHash": hash
+            },
+            "minDepth": 20, "maxDepth": 80, "minFade": 0,
+            "maxFade": 0, "feather": 0
+        });
+        for (width, height, scale, offset) in [
+            (40, 10, 1.0, (0.0, 0.0)),
+            (20, 5, 0.5, (0.0, 0.0)),
+            (20, 5, 1.0, (5.0, 2.0)),
+        ] {
+            let expected = super::generate_ai_depth_bitmap(&params, width, height, scale, offset);
+            assert!(expected.is_some());
+            for _ in 0..2 {
+                assert_eq!(
+                    generate_ai_depth_bitmap(&params, width, height, scale, offset),
+                    expected
+                );
+            }
+        }
+        params["minDepth"] = serde_json::json!(60);
+        assert_eq!(
+            generate_ai_depth_bitmap(&params, 40, 10, 1.0, (0.0, 0.0)),
+            super::generate_ai_depth_bitmap(&params, 40, 10, 1.0, (0.0, 0.0)),
+        );
+        params["depthArtifact"]["sourceWidth"] = serde_json::json!(6000);
+        params["depthArtifact"]["sourceHeight"] = serde_json::json!(4000);
+        let start = std::time::Instant::now();
+        let expected = super::generate_ai_depth_bitmap(&params, 1200, 800, 0.2, (0.0, 0.0));
+        let cold = start.elapsed();
+        assert!(expected.is_some());
+        assert_eq!(
+            generate_ai_depth_bitmap(&params, 1200, 800, 0.2, (0.0, 0.0)),
+            expected
+        );
+        let start = std::time::Instant::now();
+        assert_eq!(
+            generate_ai_depth_bitmap(&params, 1200, 800, 0.2, (0.0, 0.0)),
+            expected
+        );
+        eprintln!(
+            "Synthetic 24MP depth component: uncached {cold:?}, cached {:?}",
+            start.elapsed()
+        );
+        params["maskDataBase64"] = serde_json::json!("corrupt");
+        assert!(generate_ai_depth_bitmap(&params, 40, 10, 1.0, (0.0, 0.0)).is_none());
+    }
+}
+
+#[cfg(test)]
+mod composite_cache_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn image_dependent_masks_invalidate_on_warp_but_not_exposure() {
+        let def: MaskDefinition = serde_json::from_value(json!({"id":"m","name":"m","visible":true,"invert":false,"adjustments":{},
+            "subMasks":[{"id":"s","type":"color","visible":true,"mode":"additive","parameters":{}}]})).unwrap();
+        let key = |a: Value| mask_bitmap_key(&def, 100, 100, 1.0, (0.0, 0.0), &a);
+        assert_ne!(key(json!({})), key(json!({"transformScale":1.5})));
+        assert_eq!(key(json!({})), key(json!({"exposure":1.5})));
     }
 }

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 
-use image::{DynamicImage, GrayImage};
+use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 use sysinfo::Disks;
 use tokio::sync::Mutex as TokioMutex;
@@ -160,7 +160,7 @@ pub struct AppState {
     pub thumbnail_progress: Mutex<ThumbnailProgressTracker>,
     pub preview_worker_tx: Mutex<Option<Sender<PreviewJob>>>,
     pub analytics_worker_tx: Mutex<Option<Sender<AnalyticsJob>>>,
-    pub mask_cache: Mutex<HashMap<u64, GrayImage>>,
+    pub mask_cache: Mutex<crate::cache_utils::MaskBitmapCache<u64>>,
     pub patch_cache: Mutex<HashMap<String, serde_json::Value>>,
     pub geometry_cache: Mutex<HashMap<u64, DynamicImage>>,
     pub thumbnail_geometry_cache: Mutex<HashMap<String, ThumbnailGeometryEntry>>,
@@ -205,7 +205,7 @@ impl Default for AppState {
             }),
             preview_worker_tx: Mutex::new(None),
             analytics_worker_tx: Mutex::new(None),
-            mask_cache: Mutex::new(HashMap::new()),
+            mask_cache: Mutex::new(crate::cache_utils::MaskBitmapCache::new(128 * 1024 * 1024)),
             patch_cache: Mutex::new(HashMap::new()),
             geometry_cache: Mutex::new(HashMap::new()),
             thumbnail_geometry_cache: Mutex::new(HashMap::new()),

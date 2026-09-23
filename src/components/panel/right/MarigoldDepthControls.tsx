@@ -53,6 +53,9 @@ export default function MarigoldDepthControls({
     <div className="space-y-2 rounded border border-border-color p-3 text-sm">
       <p className="font-medium">{t('editor.masks.marigold.newMask', { defaultValue: 'Depth Selection' })}</p>
       <p className="text-text-secondary">
+        {t('editor.masks.marigold.requiresConnector', { defaultValue: 'Requires AI Connector for analysis' })}
+      </p>
+      <p className="text-text-secondary">
         {t('editor.masks.marigold.purpose', {
           defaultValue:
             'Choose a distance range, then adjust its exposure, colour or contrast with the local controls.',

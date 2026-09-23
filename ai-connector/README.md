@@ -63,7 +63,7 @@ Klein 4B, the experimental Klein native edit and both Qwen Image 2.1 profiles ex
 
 The generated crop is resized back to the native context dimensions. This preserves output canvas size and alignment; it does not recover original RAW detail in regenerated pixels. Inspect fine textures and boundaries at native size. Klein uses masked latent sampling with a reference image; Boogu's example regenerates the context, then RapidRAW reveals only the original selection. Klein's conditioning uses a zeroed negative branch, so negative prompt text has no effect for these Klein profiles. Boogu receives the negative prompt.
 
-RapidRAW currently prepares the AI source from its original image plus existing AI patches, converting RAW linear RGB to sRGB. Global tone, denoise and style adjustments are applied later during normal rendering, so the conditioning image can differ from the displayed developed photo.
+RapidRAW prepares the AI source from its original image plus existing AI patches, converting RAW linear RGB to sRGB. When a crop is active, it sends the cropped source and matching selection mask. Global tone, denoise and style adjustments are applied later during normal rendering, so the conditioning image can differ from the displayed developed photo.
 
 ## Request protocol and private receipts
 

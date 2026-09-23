@@ -6,9 +6,10 @@ import { useTranslation } from 'react-i18next';
 import { Download, FolderOpen, Loader2, Sparkles, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useEditorStore } from '../../../store/useEditorStore';
+import { useUIStore } from '../../../store/useUIStore';
 import { debouncedSetHistory, useEditorActions } from '../../../hooks/useEditorActions';
 import { INITIAL_MASK_ADJUSTMENTS, type Adjustments } from '../../../utils/adjustments';
-import { Invokes } from '../../ui/AppProperties';
+import { Invokes, Panel } from '../../ui/AppProperties';
 import Button from '../../ui/Button';
 
 type Operation = 'refine_mask' | 'semantic_mask' | 'deblur' | 'upscale';
@@ -242,9 +243,14 @@ export default function EnhancementPanel() {
           ),
         });
         debouncedSetHistory.flush();
-        useEditorStore
-          .getState()
-          .setEditor({ activeMaskContainerId: response.mask_id || null, activeMaskId: response.sub_mask_id || null });
+        useEditorStore.getState().setEditor({
+          activeLocalEditKind: 'adjustment',
+          activeMaskContainerId: response.mask_id || null,
+          activeMaskId: response.sub_mask_id || null,
+          activeAiPatchContainerId: null,
+          activeAiSubMaskId: null,
+        });
+        useUIStore.getState().setPanel(Panel.Masks);
         setNotice(label('maskApplied', 'Mask saved. Use local adjustments to edit the selected area.'));
       } else {
         setNotice(label('imageSaved', 'A separate 16-bit TIFF is ready, with your current edits included.'));
