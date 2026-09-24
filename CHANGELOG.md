@@ -4,6 +4,10 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Generative editing
+
+- Add **Qwen remove PE** as a separate 1 MP workflow. PE expands a short removal request from the crop and selection guide without referring to the guide; Qwen receives the PE instruction unchanged and only the photo crop as an image input. RapidRAW still composites through the original selection.
+
 ### Release process
 
 - Build packages for code pull requests and tagged releases, while skipping documentation-only pull requests and duplicate `main` package builds. Stop duplicate MCP runs on `codex/**` branch pushes and require the release tag commit to be on `main`.

@@ -21,7 +21,8 @@ class Profile(BaseModel):
     cfg: float = Field(ge=0, le=30)
     megapixels: float = Field(ge=.0625, le=16)
     mode: Literal['masked', 'context'] = 'masked'
-    task: Literal['edit', 'remove'] = 'edit'
+    task: Literal['edit', 'remove', 'remove_pe'] = 'edit'
+    pe_encoder: str | None = None
     margin_fraction: float = Field(default=.5, ge=0, le=4)
     min_margin: int = Field(default=64, ge=16, le=8192)
     dimension_multiple: Literal[16, 32] = 16
@@ -39,7 +40,9 @@ class Profile(BaseModel):
 
     @model_validator(mode='after')
     def validate_model_names(self):
-        for name in (self.model, self.text_encoder, self.vae):
+        for name in (self.model, self.text_encoder, self.vae, self.pe_encoder):
+            if name is None:
+                continue
             path = Path(name)
             if path.is_absolute() or '..' in path.parts or '\\' in name or not name.endswith('.safetensors'):
                 raise ValueError('Model names must be relative .safetensors paths')
@@ -51,6 +54,8 @@ class Profile(BaseModel):
             raise ValueError('Qwen Image 2.1 requires context mode and 32-pixel dimensions')
         if self.task == 'remove' and self.family != 'qwen21':
             raise ValueError('Prompt-free removal requires a Qwen Image 2.1 profile')
+        if self.task == 'remove_pe' and (self.family != 'qwen21' or not self.pe_encoder):
+            raise ValueError('PE removal requires Qwen Image 2.1 and a PE encoder')
         return self
 
 

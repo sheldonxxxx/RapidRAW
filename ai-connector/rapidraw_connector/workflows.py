@@ -23,7 +23,49 @@ def qwen_reference_prompt(prompt, count):
 
 
 def supports_reference(config):
-    return config['family'] in ('klein', 'qwen21') and config.get('task') != 'remove'
+    return config['family'] in ('klein', 'qwen21') and config.get('task') not in ('remove', 'remove_pe')
+
+
+PE_SYSTEM_PROMPT = '''You rewrite image-editing requests for a Qwen image editor. The first image is the source photograph. The second image is an aligned black-and-white selection guide: white indicates the area to repair and black indicates content to retain. Use this guide to identify the requested objects, but write an instruction that describes the edit directly from the photograph. Preserve the scene, viewpoint, lighting, and all untargeted subjects. Describe a natural replacement for removed content that matches its surroundings. Do not mention the guide, a mask, selection, image numbers, white or black regions, or pixels in the rewritten instruction. Do not add objects or invent a different edit. Return only a JSON object with keys "rewritten_prompt", "wh_ratio", and "ratio_follow". Set "wh_ratio" to "" and "ratio_follow" to "<image1>".'''
+
+
+def pe_instruction(prompt):
+    return ('Image 1 is the source photograph. Image 2 is the aligned selection guide for the requested removal. '
+            'Use image 2 only to locate the edit. The rewritten prompt must not mention a mask, selection aid, '
+            'image number, white or black regions, or pixel-level masking. Describe the requested edit directly '
+            'from the photograph in one concise image-editing prompt.\n\nRequested removal: ' + prompt)
+
+
+def build_pe_workflow(source_name, mask_name, prompt, geometry, config):
+    if config.get('task') != 'remove_pe':
+        raise ValueError('PE graph requires a PE removal profile')
+    g = geometry
+    workflow = {}
+
+    def node(number, kind, **inputs):
+        workflow[str(number)] = {'class_type': kind, 'inputs': inputs}
+        return [str(number), 0]
+
+    source = node(30, 'LoadImage', image=source_name)
+    node(47, 'LoadImage', image=mask_name)
+    mask = node(48, 'InvertMask', mask=['47', 1])
+    crop = node(50, 'ImageCrop', image=source, x=g['x'], y=g['y'], width=g['width'], height=g['height'])
+    pixels = node(51, 'ImageScale', image=crop, upscale_method='lanczos', width=g['gen_width'], height=g['gen_height'], crop='disabled')
+    mask_image = node(52, 'MaskToImage', mask=mask)
+    mask_crop = node(53, 'ImageCrop', image=mask_image, x=g['x'], y=g['y'], width=g['width'], height=g['height'])
+    mask_scaled = node(54, 'ImageScale', image=mask_crop, upscale_method='bilinear', width=g['gen_width'], height=g['gen_height'], crop='disabled')
+    images = node(7, 'ImageBatch', image1=pixels, image2=mask_scaled)
+    clip = node(1, 'CLIPLoader', clip_name=config['pe_encoder'], type='qwen_image', device=config.get('encoder_device', 'default'))
+    wrapped = ('<|im_start|>system\n' + PE_SYSTEM_PROMPT + '<|im_end|>\n<|im_start|>user\n'
+               '<|vision_start|><|image_pad|><|vision_end|>\n<|vision_start|><|image_pad|><|vision_end|>\n'
+               + pe_instruction(prompt) + '<|im_end|>\n<|im_start|>assistant\n')
+    generated = node(2, 'TextGenerate', clip=clip, prompt=wrapped, max_length=4096, thinking=True,
+                     use_default_template=False, mtp='off', sampling_mode='on',
+                     **{'sampling_mode.temperature': 1, 'sampling_mode.top_k': 20,
+                        'sampling_mode.top_p': .95, 'sampling_mode.min_p': 0,
+                        'sampling_mode.repetition_penalty': 1, 'sampling_mode.seed': 42}, image=images)
+    node(3, 'PreviewAny', source=generated)
+    return dict(workflow=workflow, output_node='3')
 
 
 def build_workflow(source_name, mask_name, prompt, seed, geometry, config, reference_names=None):

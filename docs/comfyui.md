@@ -62,20 +62,21 @@ The connector has no authentication or TLS. Keep its loopback binding and use th
 
 ## Workflow and model inventory
 
-The repository includes ten chosen connector workflows:
+The repository includes eleven chosen connector workflows:
 
-| Workflow                  | Public graph                                                                                                 | Runtime configuration                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| Klein 4B                  | [API example](../ai-connector/workflows/klein4-v1.api.json)                                                  | [1 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-v1.json)        |
-| Klein 4B closer context   | [API example](../ai-connector/workflows/klein4-tight2mp.api.json)                                            | [2 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-tight2mp.json)  |
-| Klein 9B KV               | [API example](../ai-connector/workflows/klein9-kv.api.json)                                                  | [1 MP](../ai-connector/profiles/configs/klein9-kv.json)                           |
-| Boogu Edit Turbo          | [API example](../ai-connector/workflows/boogu-turbo4-context.api.json)                                       | [1 MP](../ai-connector/profiles/configs/boogu-turbo4-context.json)                |
-| Klein 4B native edit      | Runtime graph builder only; no standalone API example                                                        | [Experimental, 1 or 2 MP](../ai-connector/profiles/configs/klein4-native-v1.json) |
-| Qwen Image 2.1            | Runtime graph builder only; no standalone API example                                                        | [1 or 2 MP](../ai-connector/profiles/configs/qwen21-v1.json)                      |
-| Qwen Image 2.1 Remove     | Runtime graph builder only; no standalone API example                                                        | [Removal, 1 or 2 MP](../ai-connector/profiles/configs/qwen21-remove-v1.json)      |
-| Marigold V2 Q4 shared GPU | [Actual connector template](../ai-connector/rapidraw_connector/depth_profiles/marigold-v2-q4.json)           | [Optional depth setup](../ai-connector/MARIGOLD.md)                               |
-| Marigold V2 normals Q4    | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json) | [Optional surface setup](../ai-connector/SURFACES.md)                             |
-| Marigold V2 albedo Q4     | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json)  | [Optional surface setup](../ai-connector/SURFACES.md)                             |
+| Workflow                  | Public graph                                                                                                 | Runtime configuration                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Klein 4B                  | [API example](../ai-connector/workflows/klein4-v1.api.json)                                                  | [1 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-v1.json)                 |
+| Klein 4B closer context   | [API example](../ai-connector/workflows/klein4-tight2mp.api.json)                                            | [2 MP default, 1 or 2 MP](../ai-connector/profiles/configs/klein4-tight2mp.json)           |
+| Klein 9B KV               | [API example](../ai-connector/workflows/klein9-kv.api.json)                                                  | [1 MP](../ai-connector/profiles/configs/klein9-kv.json)                                    |
+| Boogu Edit Turbo          | [API example](../ai-connector/workflows/boogu-turbo4-context.api.json)                                       | [1 MP](../ai-connector/profiles/configs/boogu-turbo4-context.json)                         |
+| Klein 4B native edit      | Runtime graph builder only; no standalone API example                                                        | [Experimental, 1 or 2 MP](../ai-connector/profiles/configs/klein4-native-v1.json)          |
+| Qwen Image 2.1            | Runtime graph builder only; no standalone API example                                                        | [1 or 2 MP](../ai-connector/profiles/configs/qwen21-v1.json)                               |
+| Qwen Image 2.1 Remove     | Runtime graph builder only; no standalone API example                                                        | [Removal, 1 or 2 MP](../ai-connector/profiles/configs/qwen21-remove-v1.json)               |
+| Qwen remove PE            | Runtime graph builder only; no standalone API example                                                        | [Prompt-enhanced removal, 1 MP](../ai-connector/profiles/configs/qwen21-remove-pe-v1.json) |
+| Marigold V2 Q4 shared GPU | [Actual connector template](../ai-connector/rapidraw_connector/depth_profiles/marigold-v2-q4.json)           | [Optional depth setup](../ai-connector/MARIGOLD.md)                                        |
+| Marigold V2 normals Q4    | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json) | [Optional surface setup](../ai-connector/SURFACES.md)                                      |
+| Marigold V2 albedo Q4     | [Actual connector template](../ai-connector/rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json)  | [Optional surface setup](../ai-connector/SURFACES.md)                                      |
 
 The [download guide](../ai-connector/workflows/README.md) explains API format, input/mask conventions and the difference between a standalone crop output and RapidRAW's native composite. The four Klein and Boogu generative examples are exported from the tested runtime graph builder with neutral input names, a replacement prompt and example geometry. The native-edit and Qwen profiles are runtime-builder-only. The Marigold link points directly to the template used by the connector.
 

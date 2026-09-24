@@ -174,7 +174,7 @@ class RetainedNativeProfile(unittest.TestCase):
             labels = {name: item['label'] for name, item in load_catalog(settings)['profiles'].items()}
             with TestClient(service.create_app(settings)) as client:
                 profiles = {item['id']: item for item in client.get('/capabilities').json()['generation']['profiles']}
-                self.assertEqual(set(profiles), {*PRODUCTION, RETAINED, 'qwen21-v1', 'qwen21-remove-v1'})
+                self.assertEqual(set(profiles), {*PRODUCTION, RETAINED, 'qwen21-v1', 'qwen21-remove-v1', 'qwen21-remove-pe-v1'})
             for name in REMOVED_PROFILES:
                 self.assertNotIn(name, profiles)
             self.assertEqual(profiles[RETAINED]['megapixels'], [1, 2])
