@@ -372,7 +372,7 @@ For repeated MCP editing and test runs, see [storage and model-cache guidance](m
 
 **Shape light, colour and depth:** [three optional editing tools](docs/creative-selections.md) help you shape directional light, select surface colours across light and shadow, and adjust nearer or more distant parts of a photo. Pick colours on the photograph, choose a light direction or a depth starting range, then refine the edit with local controls. Saved analysis works offline in native previews and exports. These source-build tools use Marigold through the [shared AI connector](ai-connector/MARIGOLD.md) and are disabled by default.
 
-**Local Edits:** manage masked repairs and adjustments together, refine each selection, and copy supported selections between edit types while keeping the edits independent. Shape Light and Surface Colour selections are adjustment-only. Generative repairs use the active crop and return to the original photo geometry.
+**Local Edits:** manage masked repairs and adjustments together, refine each selection, rename/duplicate/copy/paste edits and selection components, and copy supported selections between edit types while keeping the edits independent. Shape Light and Surface Colour selections are adjustment-only. Generative repairs use the active crop and return to the original photo geometry.
 
 ## Choose your starting point
 

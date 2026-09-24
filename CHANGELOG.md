@@ -4,6 +4,10 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Local editing
+
+- Add rename, duplicate, duplicate-and-invert, copy/paste, reset, and delete actions for Local Edits and their selection components through context menus. Duplicated repairs discard generated pixels and candidate state while keeping independent selection geometry.
+
 ### Generative editing
 
 - Add **Qwen remove PE** as a separate 1 MP workflow. PE expands a short removal request from the crop and selection guide without referring to the guide; Qwen receives the PE instruction unchanged and only the photo crop as an image input. RapidRAW still composites through the original selection.
