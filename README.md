@@ -12,7 +12,7 @@ Use RapidRAW on its own, connect it to your preferred MCP client, or pair it wit
 
 > A beautiful, non-destructive, and GPU-accelerated RAW image editor built with performance in mind.
 
-RapidRAW is a modern, high-performance alternative to Adobe Lightroom®. This fork ships standard packages for Apple Silicon and Intel Macs and Linux x86_64; each includes the native MCP bridge.
+RapidRAW is a modern, high-performance alternative to Adobe Lightroom®. The fork release workflow packages Apple Silicon and Linux x86_64, each with the native MCP bridge. The published 0.4.0 release also includes Intel Mac packages.
 
 <table width="100%">
   <tr>
@@ -385,7 +385,7 @@ For repeated MCP editing and test runs, see [storage and model-cache guidance](m
 
 **Fork packages include the native MCP bridge.** Choose a matching asset from the [fork releases](https://github.com/sheldonxxxx/RapidRAW/releases), then connect the pinned npm host [`@sheldonxxxx/rapidraw-mcp@0.2.0`](AGENT_SETUP.md) without cloning this repository. Upstream application downloads do not contain this fork's bridge. Fresh-machine acceptance of packaged MCP downloads has not been established; the source-build workflows retain their recorded test boundaries. The server uses your MCP client's model; it does not include a language model or a hosted editing service.
 
-Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0 for local AI inference. Intel Mac builds retain the existing runtime. See the [runtime and hardware guide](docs/local-enhancement.md#apple-silicon-runtime).
+Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0 for local AI inference. The published 0.4.0 Intel Mac packages retain the existing runtime; subsequent releases no longer package Intel Macs. See the [runtime and hardware guide](docs/local-enhancement.md#apple-silicon-runtime).
 
 **Apple Silicon Beta 1 installation:** the published package has an incomplete bundle signature and can be reported as damaged. See the [installation troubleshooting guide](docs/desktop-guide.md#macos-beta-1-signature-error).
 
@@ -637,6 +637,8 @@ The RapidRAW 0.4.0 fork packages support these minimum operating systems:
 - **Linux x86_64:** Ubuntu 22.04 or a compatible modern distribution
 
 These requirements describe the fork's release packages. Source-build targets are a separate path; Windows packaged support and fresh-machine installation have not been verified for this fork.
+
+Intel Mac support above applies to the published 0.4.0 packages. The release workflow no longer builds Intel Mac packages for subsequent versions.
 
 **Hardware Recommendations:**
 

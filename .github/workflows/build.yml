@@ -219,7 +219,7 @@ jobs:
           gh release upload "$tag_name" "$RUNNER_TEMP"/android-release-assets/* --clobber
 
       - name: Upload Android Artifacts
-        if: ${{ inputs.mobile == 'android' && inputs.release-id == '' }}
+        if: ${{ inputs.mobile == 'android' && inputs.release-id == '' && inputs.upload-artifacts }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.asset-prefix }}_android${{ inputs.target && format('_{0}', inputs.target) || '' }}_artifacts
@@ -231,7 +231,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload Windows Artifacts
-        if: ${{ startsWith(inputs.platform, 'windows') && inputs.release-id == '' && inputs.mobile == '' }}
+        if: ${{ startsWith(inputs.platform, 'windows') && inputs.release-id == '' && inputs.mobile == '' && inputs.upload-artifacts }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.asset-prefix }}_${{ inputs.platform }}${{ inputs.target && format('_{0}', inputs.target) || '' }}_artifacts
@@ -243,7 +243,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload Linux/macOS Artifacts
-        if: ${{ !startsWith(inputs.platform, 'windows') && inputs.release-id == '' && inputs.mobile == '' }}
+        if: ${{ !startsWith(inputs.platform, 'windows') && inputs.release-id == '' && inputs.mobile == '' && inputs.upload-artifacts }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.asset-prefix }}_${{ inputs.platform }}${{ inputs.target && format('_{0}', inputs.target) || '' }}${{ contains(inputs.build-args, 'tethering') && '_tethering' || '' }}_artifacts

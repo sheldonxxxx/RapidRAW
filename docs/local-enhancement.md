@@ -45,7 +45,7 @@ Only one enhancement model session is cached at a time. Repeated work with the s
 
 Apple Silicon source builds bundle the official **ONNX Runtime 1.30.0** CPU/CoreML library and require **macOS 14 or later**. The build verifies the release archive, extracted library and license notices before replacing cached resources. The Mac app and default local MCP engine use this bundled library. Model files and editing sessions do not need conversion.
 
-Intel Mac builds retain 1.22.0. Upstream [stopped publishing Intel Mac binaries and raised the minimum macOS version](https://github.com/microsoft/onnxruntime/releases/tag/v1.24.1); this upgrade does not introduce an untested custom Intel runtime. The Linux CUDA runtime remains separately configured.
+Intel Mac source builds and the published 0.4.0 Intel packages retain 1.22.0. New fork releases no longer package Intel Macs. Upstream [stopped publishing Intel Mac binaries and raised the minimum macOS version](https://github.com/microsoft/onnxruntime/releases/tag/v1.24.1); this upgrade does not introduce an untested custom Intel runtime. The Linux CUDA runtime remains separately configured.
 
 CPU remains the default on Mac. Upgrading the runtime does not enable CoreML for models that failed its compatibility checks; explicit CoreML remains limited to ViTMatte.
 

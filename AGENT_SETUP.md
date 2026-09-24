@@ -19,7 +19,7 @@ Component versions are independent: the fork release tag, the npm host version, 
 
 ## Deterministic install flow for an agent
 
-1. **Choose a supported platform package.** The current release provides packages for macOS ARM64, macOS x86_64, and Linux x86_64. It does not include Windows, Linux ARM, or camera tethering packages.
+1. **Choose a supported platform package.** The current 0.4.0 release provides packages for macOS ARM64, macOS x86_64, and Linux x86_64. The release workflow is configured to package macOS ARM64 and Linux x86_64 only for subsequent versions. The current release does not include Windows, Linux ARM, or camera tethering packages.
 2. **Install the matching fork native package from GitHub Releases.** Use only this fork's releases at `https://github.com/sheldonxxxx/RapidRAW/releases`. Never substitute an upstream [CyberTimon package](https://github.com/CyberTimon/RapidRAW/releases): upstream builds do not contain this fork's MCP bridge. Standard packages include the native MCP bridge.
 3. **Account for unsigned macOS packages.** macOS packages are not developer-signed or notarized. After the first launch attempt, you may need to approve opening the app in Privacy & Security. Follow [Apple's instructions](https://support.apple.com/en-us/102445); do not disable Gatekeeper globally.
 4. **Ensure Node.js and npm.** Install Node.js 22.12+ with npm and verify `node --version` and `npm --version` before continuing.

@@ -23,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -44,6 +45,11 @@ jobs:
           assert.equal(config.version, version);
           assert(cargo.includes(`version = "${version}"`));
           JS
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo "error: release tag commit must be contained in origin/main" >&2
+            exit 1
+          }
           gh release view "$RELEASE_TAG" --json databaseId,isDraft > release.json
           jq -e '.isDraft == true' release.json
           echo "id=$(jq -r '.databaseId' release.json)" >> "$GITHUB_OUTPUT"
@@ -66,10 +72,6 @@ jobs:
           - platform: 'macos-14'
             target: aarch64-apple-darwin
             args: --features mcp --config src-tauri/tauri.macos-arm64.conf.json
-            asset-prefix: '02'
-          - platform: 'macos-15-intel'
-            args: '--features mcp'
-            target: x86_64-apple-darwin
             asset-prefix: '02'
           - platform: 'ubuntu-22.04'
             target: ''
