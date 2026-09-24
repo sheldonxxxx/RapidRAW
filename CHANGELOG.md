@@ -4,6 +4,10 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+## 0.4.0 — 2026-09-24
+
+Release tag: `fork-v0.4.0`. See the [release notes](docs/releases/0.4.0.md).
+
 ### Local editing
 
 - Add a unified **Local Edits** workspace for named repairs and local adjustments. Create, reorder, hide, remove and refine edits, then copy supported selections between a repair and an adjustment while keeping each copy independent. Shape Light and Surface Colour selections remain adjustment-only.
@@ -31,7 +35,7 @@ Release tag: `fork-v0.3.0`. See the [release notes](docs/releases/0.3.0.md).
 
 ### MCP host
 
-- Prepare the independently versioned Node host as `@sheldonxxxx/rapidraw-mcp@0.2.0` for the public removal-coverage and preview options added in this fork release; publish it separately with the `mcp-v0.2.0` tag after the release commit reaches `main`.
+- Use the independently versioned Node host `@sheldonxxxx/rapidraw-mcp@0.2.0` for the public removal-coverage and preview options added in this fork release; it was released separately under the `mcp-v0.2.0` tag.
 
 ### Development checks
 
@@ -80,7 +84,7 @@ Release tag: `fork-v0.3.0`. See the [release notes](docs/releases/0.3.0.md).
 
 ### Optional pinned NVIDIA runtime packaging and activation
 
-- Add an independently versioned Linux x86_64 NVIDIA runtime pack (official ONNX Runtime 1.30.0 CUDA 13, cuDNN 9.20.0, CUDA 13.2/13.3 user-space libraries; supported driver baseline 595.58.03+) with a dedicated `nvidia-runtime-vX.Y.Z` draft-release workflow, pinned release metadata (`packaging/linux-nvidia-runtime.release.json`), and SHA-verified non-root install under the XDG data directory. No runtime release is published by this change.
+- Support an independently versioned, optional Linux x86_64 NVIDIA runtime pack (official ONNX Runtime 1.30.0 CUDA 13, cuDNN 9.20.0, CUDA 13.2/13.3 user-space libraries; supported driver baseline 595.58.03+) with pinned release metadata (`packaging/linux-nvidia-runtime.release.json`) and SHA-verified non-root install under the XDG data directory.
 - On Linux x86_64 startup, auto-discover the installed pack (`RAPIDRAW_NVIDIA_RUNTIME` explicit path, `off` disable, or the XDG `current` symlink), pin its `runtime.json` identity, re-exec with pack-first libraries before ONNX initialization, and default unset ONNX/Nonlocal providers to CUDA. Explicit provider choices (including `cpu`) are preserved; desktop setup no longer overwrites a caller-supplied `ORT_DYLIB_PATH`. The NIND denoise model keeps its narrow `CuDNNConvAlgorithmSearch::Default` compatibility exception while foreground/sky/depth and Nonlocal remain HEURISTIC, and normal CPU packages embed no NVIDIA payload.
 
 ### Nonlocal provider defaults
@@ -101,10 +105,10 @@ Release tag: `fork-v0.3.0`. See the [release notes](docs/releases/0.3.0.md).
 ### Setup and connection guidance
 
 - Publish the Node MCP host as `@sheldonxxxx/rapidraw-mcp@0.1.0` (public, AGPL-3.0-only) so packaged setups no longer require cloning this repository to build the host. Add the agent-agnostic [agent setup guide](AGENT_SETUP.md) with the pinned GitHub Release + npm host install flow, provider notes, generic MCP config, and verification checklist.
-- Add an independently versioned `mcp-vX.Y.Z` GitHub Actions release path for the npm MCP host using npm Trusted Publishing/OIDC with provenance and no long-lived npm publish token. The path goes live once the workflow is committed/pushed and the one-time npm trusted-publisher binding is configured.
+- Support independently versioned npm MCP host releases through GitHub Actions npm Trusted Publishing/OIDC with provenance, without a long-lived publish token.
 - Add Codex project/user configuration, skill installation, environment and timeout examples, isolated-workspace preflight, and separate registration/native-render verification steps.
 - Align the Linux SSH launcher with the documented release build and check executable paths before connection. Clarify inherited-sidecar baselines and recovery without reconnecting after oversized responses.
-- Declare the `cc` build dependency unconditionally so Linux/Windows release builds compile (the CoreML bridge source itself is still compiled and linked on macOS only). Release builds verified end to end on macOS and Linux with the engine regression suite.
+- Declare the `cc` build dependency unconditionally so Linux and Windows native builds compile (the CoreML bridge source itself is still compiled and linked on macOS only). Release builds verified end to end on macOS and Linux with the engine regression suite.
 - Forward the full process environment through the engine, advanced, and asset acceptance runners when spawning the MCP server. The MCP SDK v2 client only inherits a safe allowlist by default, which dropped `DISPLAY`/`GDK_BACKEND`/`ORT_DYLIB_PATH` and broke headless Linux runs; this matches the existing behavior of the denoise, review-jobs, surfaces, and coverage runners.
 - Document the `target` directory layout needed for unbundled macOS resource discovery when reusing a custom Cargo build cache.
 

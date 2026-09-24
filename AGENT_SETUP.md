@@ -10,18 +10,18 @@ No repository clone is required for the normal packaged setup below. The npm hos
 
 | Component                                               | Current value                           |
 | ------------------------------------------------------- | --------------------------------------- |
-| Fork application release                                | `fork-v0.3.0`                           |
+| Fork application release                                | `fork-v0.4.0`                           |
 | npm MCP host                                            | `@sheldonxxxx/rapidraw-mcp@0.2.0`       |
 | Native MCP bridge (reported by `rapidraw_capabilities`) | `1.2.0`                                 |
 | Node.js                                                 | 22.12 or later (package engine: `>=22`) |
 
-Component versions are independent: the fork release tag, the npm host version, and the native bridge version do not move together. Use the exact pinned pair above. Do not automatically mix unknown future pairs without checking their release notes and compatibility statements.
+Component versions are independent: the fork release tag, the npm host version, and the native bridge version do not move together. Use the exact pinned application and npm host versions above. Do not automatically mix unknown future pairs without checking their release notes and compatibility statements.
 
 ## Deterministic install flow for an agent
 
-1. **Detect OS, architecture, and tethering need.** Ask whether camera tethering is required. If it is not requested, use the standard fork package. If tethering is requested, use the asset explicitly marked `tethering` and install its system `libgphoto2` dependency first.
-2. **Install the matching fork native package from GitHub Releases.** Use only this fork's releases at `https://github.com/sheldonxxxx/RapidRAW/releases`. Never substitute an upstream [CyberTimon package](https://github.com/CyberTimon/RapidRAW/releases): upstream builds do not contain this fork's MCP bridge. Standard packages include the native MCP bridge; assets marked `tethering` additionally enable camera tethering.
-3. **Account for the unsigned beta.** The beta packages are not developer-signed or notarized. On macOS, follow the existing [installation troubleshooting](docs/desktop-guide.md#macos-beta-1-signature-error) rather than inventing Gatekeeper bypasses. Do not disable platform security globally.
+1. **Choose a supported platform package.** The current release provides packages for macOS ARM64, macOS x86_64, and Linux x86_64. It does not include Windows, Linux ARM, or camera tethering packages.
+2. **Install the matching fork native package from GitHub Releases.** Use only this fork's releases at `https://github.com/sheldonxxxx/RapidRAW/releases`. Never substitute an upstream [CyberTimon package](https://github.com/CyberTimon/RapidRAW/releases): upstream builds do not contain this fork's MCP bridge. Standard packages include the native MCP bridge.
+3. **Account for unsigned macOS packages.** macOS packages are not developer-signed or notarized. After the first launch attempt, you may need to approve opening the app in Privacy & Security. Follow [Apple's instructions](https://support.apple.com/en-us/102445); do not disable Gatekeeper globally.
 4. **Ensure Node.js and npm.** Install Node.js 22.12+ with npm and verify `node --version` and `npm --version` before continuing.
 5. **Use the published npm host; do not clone this repository.** Run the pinned host directly:
 
@@ -42,7 +42,6 @@ Component versions are independent: the fork release tag, the npm host version, 
 7. **Resolve the native binary absolute path.** Both `--binary` and `--workspace` must be absolute; the host performs no automatic native-binary discovery.
    - macOS packaged install, for example: `/Applications/RapidRAW MCP.app/Contents/MacOS/rapidraw-mcp` (quote this path in shells).
    - Linux packaged install: use the absolute `rapidraw-mcp` executable path installed by the DEB/RPM package on that machine.
-   - Windows packaged install: discover the installed `rapidraw-mcp.exe` inside the installation directory on that machine.
 8. **Configure stdio MCP with the pinned npm package.** For hosts that accept `mcpServers` JSON, see the example below. For Codex, translate the same command, arguments, environment, and timeouts into its TOML form; see [the Codex adapter](#codex) for registration and trial guidance. For GUI clients with MCP settings UI, map `command`, `args`, and environment variables into the equivalent fields. The wire transport is always stdio: diagnostics go to stderr and stdout carries only MCP protocol traffic.
 9. **Optionally install the execution skill.** The skill provides editing workflow guidance; installing it does not connect the engine. Install with `npx skills add sheldonxxxx/RapidRAW --skill rapidraw-mcp`, or follow the skill link in [RapidRAW MCP](mcp/README.md). Reconnect the MCP client after registration.
 10. **Reconnect and verify the live connection.** Call `rapidraw_capabilities` (start with `{"detail":"overview"}`), then `rapidraw_models`. A successful native capabilities response verifies the fork engine starts.
