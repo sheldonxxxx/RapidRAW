@@ -1,10 +1,37 @@
-name: CI Build
+name: PR Package Build
 
 on:
   pull_request:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.paths.outputs.package }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Check whether the PR changes packaged code
+        id: paths
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+
+          changed = [path for path in subprocess.check_output(
+              ["git", "diff", "--name-only", "-z", "HEAD^1", "HEAD"]
+          ).split(b"\0") if path]
+          package = not changed or any(not path.lower().endswith(b".md") for path in changed)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"package={str(package).lower()}\n")
+          print(f"{len(changed)} changed files; package build required: {package}")
+          PY
+
   build:
+    needs: changes
+    if: needs.changes.outputs.package == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -27,3 +54,20 @@ jobs:
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
       asset-prefix: ${{ matrix.asset-prefix }}
+
+  package-build-gate:
+    name: Package build gate
+    if: always()
+    needs: [changes, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful package builds for code changes
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          PACKAGE_REQUIRED: ${{ needs.changes.outputs.package }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          if [ "$PACKAGE_REQUIRED" = true ]; then
+            test "$BUILD_RESULT" = success
+          fi

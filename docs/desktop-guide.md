@@ -67,7 +67,7 @@ Translations are maintained in the [application locale files](../src/i18n/locale
 
 Install Node.js 22.12 or later, Rust 1.98 or later, and the [Tauri prerequisites for your platform](https://v2.tauri.app/start/prerequisites/). A working graphics backend and sufficient memory for your photos are required. The commands below use a POSIX shell on macOS or Linux. The pinned Rust example leaves the machine's default toolchain unchanged.
 
-Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0. Intel Mac builds retain the existing 1.22.0 runtime; see the [runtime guide](local-enhancement.md#apple-silicon-runtime).
+Apple Silicon builds require macOS 14 or later and bundle ONNX Runtime 1.30.0. Intel Mac source builds and the published 0.4.0 Intel packages retain the existing 1.22.0 runtime; new fork releases no longer package Intel Macs. See the [runtime guide](local-enhancement.md#apple-silicon-runtime).
 
 ```sh
 git clone https://github.com/sheldonxxxx/RapidRAW.git
