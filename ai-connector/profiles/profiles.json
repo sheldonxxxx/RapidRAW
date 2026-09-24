@@ -35,6 +35,11 @@
       "label": "Qwen Image 2.1 · Remove",
       "config": "configs/qwen21-remove-v1.json",
       "megapixels": [1, 2]
+    },
+    "qwen21-remove-pe-v1": {
+      "label": "Qwen remove PE",
+      "config": "configs/qwen21-remove-pe-v1.json",
+      "megapixels": [1]
     }
   }
 }

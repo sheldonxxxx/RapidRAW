@@ -1,6 +1,6 @@
 # Chosen ComfyUI workflows
 
-These are the ten chosen workflows offered by the RapidRAW connector. Use [connector setup](../README.md) for ordinary editing; RapidRAW then prepares source pixels, computes context, uploads the selection and applies the returned crop at its original coordinates.
+These are the eleven chosen workflows offered by the RapidRAW connector. Use [connector setup](../README.md) for ordinary editing; RapidRAW then prepares source pixels, computes context, uploads the selection and applies the returned crop at its original coordinates.
 
 | Workflow                  | Download                                                                                 | Choice in RapidRAW                                 |
 | ------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -11,11 +11,12 @@ These are the ten chosen workflows offered by the RapidRAW connector. Use [conne
 | Klein 4B native edit      | Runtime graph builder only; no standalone API example                                    | Experimental generative profile; 1 or 2 MP         |
 | Qwen Image 2.1            | Runtime graph builder only; no standalone API example                                    | Generative profile; 1 or 2 MP                      |
 | Qwen Image 2.1 Remove     | Runtime graph builder only; no standalone API example                                    | Removal profile; 1 or 2 MP, no prompt needed       |
+| Qwen remove PE            | Runtime graph builder only; no standalone API example                                    | Prompt-enhanced removal; 1 MP                      |
 | Marigold V2 Q4 shared GPU | [Connector template](../rapidraw_connector/depth_profiles/marigold-v2-q4.json)           | Optional Depth Selection mask; fixed 0.67 Comfy MP |
 | Marigold V2 normals Q4    | [Connector template](../rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json) | Optional Shape Light mask                          |
 | Marigold V2 albedo Q4     | [Connector template](../rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json)  | Optional Surface Colour mask                       |
 
-The seven generative profiles come from the connector's [runtime graph builder](../rapidraw_connector/workflows.py), using its [profile configurations](../profiles/profiles.json). The Klein and Boogu rows above also have exported API examples; the native-edit and Qwen rows are runtime-builder-only. The Marigold links are the actual runtime templates, so there is no separate copy to drift from the connector.
+The eight generative profiles come from the connector's [runtime graph builder](../rapidraw_connector/workflows.py), using its [profile configurations](../profiles/profiles.json). The Klein and Boogu rows above also have exported API examples; the native-edit and Qwen rows are runtime-builder-only. The Marigold links are the actual runtime templates, so there is no separate copy to drift from the connector.
 
 ## Tested versions and dependencies
 

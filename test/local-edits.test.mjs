@@ -32,9 +32,57 @@ await build({
     },
   ],
 });
-const { copyMaskSelectionToRepair, copyRepairSelectionToMask, isDirectToolPatch, selectionFingerprint } = await import(
-  pathToFileURL(outfile)
-);
+const {
+  cloneLocalAdjustment,
+  cloneLocalRepair,
+  cloneSelectionComponent,
+  copyMaskSelectionToRepair,
+  copyRepairSelectionToMask,
+  isDirectToolPatch,
+  selectionFingerprint,
+} = await import(pathToFileURL(outfile));
+
+test('duplicated selections get independent IDs and preserve the source', () => {
+  const mask = {
+    id: 'original',
+    name: 'Subject',
+    invert: false,
+    adjustments: { exposure: 2 },
+    subMasks: [{ id: 'brush', name: 'Brush', invert: false, parameters: { lines: [{ points: [{ x: 4 }] }] } }],
+  };
+  const duplicate = cloneLocalAdjustment(mask, true, true);
+  assert.notEqual(duplicate.id, mask.id);
+  assert.notEqual(duplicate.subMasks[0].id, mask.subMasks[0].id);
+  assert.equal(duplicate.invert, true);
+  assert.equal(duplicate.adjustments.exposure, 0);
+  assert.equal(mask.adjustments.exposure, 2);
+  duplicate.subMasks[0].parameters.lines[0].points[0].x = 20;
+  assert.equal(mask.subMasks[0].parameters.lines[0].points[0].x, 4);
+
+  const component = cloneSelectionComponent(mask.subMasks[0], true);
+  assert.notEqual(component.id, mask.subMasks[0].id);
+  assert.equal(component.invert, true);
+});
+
+test('copied repairs discard generated pixels and candidate state', () => {
+  const repair = {
+    id: 'repair',
+    name: 'Remove branch',
+    invert: false,
+    isLoading: true,
+    patchData: { color: 'generated-pixels' },
+    appliedCandidateId: 'candidate',
+    subMasks: [{ id: 'brush', invert: false, parameters: { lines: [] } }],
+  };
+  const duplicate = cloneLocalRepair(repair, true);
+  assert.notEqual(duplicate.id, repair.id);
+  assert.notEqual(duplicate.subMasks[0].id, repair.subMasks[0].id);
+  assert.equal(duplicate.invert, true);
+  assert.equal(duplicate.patchData, null);
+  assert.equal(duplicate.appliedCandidateId, undefined);
+  assert.equal(duplicate.isLoading, false);
+  assert.equal(repair.patchData.color, 'generated-pixels');
+});
 
 test('copying an adjustment selection creates independent repair geometry and IDs', () => {
   const mask = {

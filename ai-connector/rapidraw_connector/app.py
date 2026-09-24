@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .config import Settings, load_catalog, select_profile
 from .geometry import geometry, restore_output
-from .workflows import build_workflow, supports_reference
+from .workflows import build_pe_workflow, build_workflow, supports_reference
 
 MAX_IMAGE_BYTES = 128 * 1024 * 1024
 MAX_IMAGE_PIXELS = 100_000_000
@@ -146,7 +146,7 @@ async def read_bounded(response, maximum):
     return bytes(data)
 
 
-async def execute(settings, graph, output_node, on_event):
+async def completed_history(settings, graph, on_event, include_history=True):
     timeout = aiohttp.ClientTimeout(total=60)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         client_id = 'rapidraw-'+uuid.uuid4().hex
@@ -166,21 +166,54 @@ async def execute(settings, graph, output_node, on_event):
                 response.raise_for_status()
                 history = json.loads(await read_bounded(response, MAX_HISTORY_BYTES)).get(prompt_id)
             if history:
-                await on_event(dict(kind='history', prompt_id=prompt_id, history=history))
+                await on_event(dict(kind='history', prompt_id=prompt_id,
+                                    **({'history': history} if include_history else {})))
                 if history.get('status', {}).get('status_str') == 'error':
                     events = history.get('status', {}).get('messages', [])
                     detail = next((value.get('exception_message') for key, value in events if key == 'execution_error'), 'Unknown execution error')
                     raise RuntimeError(str(detail)[:MAX_ERROR_CHARS])
-                outputs = history.get('outputs', {}).get(output_node, {}).get('images', [])
-                if len(outputs) != 1:
-                    raise RuntimeError('Comfy did not return exactly one result')
-                params = {key: outputs[0][key] for key in ('filename', 'subfolder', 'type') if key in outputs[0]}
-                async with session.get(settings.comfy_url+'/view', params=params) as response:
-                    response.raise_for_status()
-                    data = await read_bounded(response, MAX_IMAGE_BYTES)
-                return data, prompt_id, history
+                return history, prompt_id
             await asyncio.sleep(.2)
         raise TimeoutError('Generation timed out; its Comfy job may still finish. No shared jobs were interrupted.')
+
+
+async def execute(settings, graph, output_node, on_event):
+    history, prompt_id = await completed_history(settings, graph, on_event)
+    outputs = history.get('outputs', {}).get(output_node, {}).get('images', [])
+    if len(outputs) != 1:
+        raise RuntimeError('Comfy did not return exactly one result')
+    params = {key: outputs[0][key] for key in ('filename', 'subfolder', 'type') if key in outputs[0]}
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+        async with session.get(settings.comfy_url+'/view', params=params) as response:
+            response.raise_for_status()
+            data = await read_bounded(response, MAX_IMAGE_BYTES)
+    return data, prompt_id, history
+
+
+def parse_pe_prompt(raw):
+    if not isinstance(raw, str):
+        raise ValueError('PE did not return text')
+    # TextGenerate may include private thinking before its final JSON answer.
+    answer = raw.rsplit('</think>', 1)[-1].strip()
+    if answer.startswith('```'):
+        answer = re.sub(r'^```(?:json)?\s*|\s*```$', '', answer).strip()
+    value = json.loads(answer)
+    if not isinstance(value, dict) or not isinstance(value.get('rewritten_prompt'), str):
+        raise ValueError('PE did not return a rewritten prompt')
+    prompt = value['rewritten_prompt']
+    if not prompt.strip() or len(prompt) > 20000:
+        raise ValueError('PE returned an empty or oversized prompt')
+    if re.search(r'\bmask(?:ing|ed)?\b|selection aid|image\s*(?:number|[12])|\b(?:white|black)\s+regions?\b|pixel.level', prompt, re.I):
+        raise ValueError('PE prompt mentioned mask or image guidance')
+    return prompt
+
+
+async def execute_pe(settings, graph, output_node, on_event):
+    history, prompt_id = await completed_history(settings, graph, on_event, include_history=False)
+    outputs = history.get('outputs', {}).get(output_node, {}).get('text', [])
+    if len(outputs) != 1:
+        raise RuntimeError('Comfy PE did not return exactly one text result')
+    return parse_pe_prompt(outputs[0]), prompt_id
 
 
 def public_generation(receipt):
@@ -196,6 +229,7 @@ def create_app(settings=None):
     app = FastAPI(title='RapidRAW Comfy Connector', docs_url=None, redoc_url=None)
     app.state.settings = settings
     app.state.execute = execute
+    app.state.execute_pe = execute_pe
     lock = asyncio.Lock()
     switch = None
     depth_error = None
@@ -313,7 +347,11 @@ def create_app(settings=None):
             path = settings.cache_dir/(request_id+f'-reference-{index + 1}.png')
             await asyncio.to_thread(write_private, path, data)
             reference_paths.append(path.relative_to(settings.input_dir).as_posix())
-        graph = build_workflow(source_path.relative_to(settings.input_dir).as_posix(), mask_path.relative_to(settings.input_dir).as_posix(), request.prompt, seed, g, config, reference_paths)
+        source_name = source_path.relative_to(settings.input_dir).as_posix()
+        mask_name = mask_path.relative_to(settings.input_dir).as_posix()
+        pe_graph = build_pe_workflow(source_name, mask_name, request.prompt, g, config) if config.get('task') == 'remove_pe' else None
+        graph = None if pe_graph else build_workflow(source_name, mask_name, request.prompt, seed, g, config, reference_paths)
+        initial_graph = pe_graph or graph
         experiment = dict(pure_noise_output=bool(config.get('pure_noise_output', False)))
         receipt = dict(request_id=request_id, source_id=request.source_id,
                        source_sha256=hashlib.sha256(source_bytes).hexdigest(), source_path=str(evidence/'source.jpg'),
@@ -322,14 +360,18 @@ def create_app(settings=None):
                        seed=seed, profile=profile, config=config, requested_megapixels=request.megapixels,
                        experiment=experiment,
                        source_size=list(source.size), context=g,
-                       workflow_sha256=hashlib.sha256(json.dumps(graph['workflow'], sort_keys=True).encode()).hexdigest(),
+                       workflow_sha256=None if pe_graph else hashlib.sha256(json.dumps(graph['workflow'], sort_keys=True).encode()).hexdigest(),
                        prompt=request.prompt, negative_prompt=request.negative_prompt,
                        status='prepared', created_unix=time.time(), execution_events=[])
         if config.get('task') == 'remove' or (config['family'] == 'qwen21' and references):
             receipt['effective_prompt'] = graph['workflow']['7']['inputs']['prompt']
+        if pe_graph:
+            receipt['pe_workflow_sha256'] = hashlib.sha256(json.dumps(pe_graph['workflow'], sort_keys=True).encode()).hexdigest()
         if reference_bytes:
             receipt['reference_sha256'] = [hashlib.sha256(data).hexdigest() for data in reference_bytes]
-        await asyncio.to_thread(prepare_evidence, evidence, receipt, graph['workflow'], source_bytes, mask, mask_bytes, mask_path)
+        await asyncio.to_thread(prepare_evidence, evidence, receipt, initial_graph['workflow'], source_bytes, mask, mask_bytes, mask_path)
+        if pe_graph:
+            (evidence/'workflow.json').replace(evidence/'pe-workflow.json')
         for index, data in enumerate(reference_bytes):
             await asyncio.to_thread(write_private, evidence/f'reference-{index + 1}.png', data)
 
@@ -341,7 +383,7 @@ def create_app(settings=None):
             receipt['execution_events'].append(event)
             receipt['execution_events'] = receipt['execution_events'][-256:]
             if event.get('prompt_id'):
-                receipt['prompt_id'] = event['prompt_id']
+                receipt['pe_prompt_id' if event['kind'].startswith('pe_') else 'prompt_id'] = event['prompt_id']
             if event['kind'] in ('submission_started', 'submitted', 'rejected'):
                 receipt['status'] = event['kind']
             await asyncio.to_thread(atomic_json, evidence/'receipt.json', receipt)
@@ -353,6 +395,18 @@ def create_app(settings=None):
                     await switch.activate(settings.comfy_url, 'generation')
                 receipt['queue_wait_seconds'] = time.monotonic()-queued
                 inference_started = time.monotonic()
+                if pe_graph:
+                    async def on_pe_event(event):
+                        await on_event(dict(event, kind='pe_'+event['kind']))
+                    enhanced, pe_prompt_id = await app.state.execute_pe(settings, pe_graph['workflow'], pe_graph['output_node'], on_pe_event)
+                    receipt['pe_prompt_id'] = pe_prompt_id
+                    receipt['effective_prompt'] = enhanced
+                    receipt['pe_seconds'] = time.monotonic()-inference_started
+                    graph = build_workflow(source_name, mask_name, enhanced, seed, g, config)
+                    receipt['workflow_sha256'] = hashlib.sha256(json.dumps(graph['workflow'], sort_keys=True).encode()).hexdigest()
+                    await asyncio.to_thread(atomic_json, evidence/'workflow.json', graph['workflow'])
+                    await asyncio.to_thread(atomic_json, evidence/'receipt.json', receipt)
+                    inference_started = time.monotonic()
                 data, prompt_id, history = await app.state.execute(settings, graph['workflow'], graph['output_node'], on_event)
                 receipt['comfy_wait_seconds'] = time.monotonic()-inference_started
             receipt['prompt_id'] = prompt_id

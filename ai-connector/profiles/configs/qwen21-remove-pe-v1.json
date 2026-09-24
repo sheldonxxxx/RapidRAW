@@ -1,0 +1,16 @@
+{
+  "id": "qwen21-remove-pe-v1",
+  "family": "qwen21",
+  "model": "qwen_image_2.1_int8_convrot.safetensors",
+  "text_encoder": "qwen3vl_8b_w4a8.safetensors",
+  "pe_encoder": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
+  "vae": "qwen_image_2.1_vae_bf16.safetensors",
+  "steps": 16,
+  "cfg": 1,
+  "megapixels": 1,
+  "mode": "context",
+  "task": "remove_pe",
+  "sampler": "euler",
+  "scheduler": "simple",
+  "dimension_multiple": 32
+}

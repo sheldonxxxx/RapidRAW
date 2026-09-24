@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { v4 as uuidv4 } from 'uuid';
-import { Eye, EyeOff, Plus, Trash2, Wand2 } from 'lucide-react';
+import { ClipboardPaste, Copy, Eye, EyeOff, FileEdit, Plus, PlusSquare, RotateCcw, Trash2, Wand2 } from 'lucide-react';
 import { useAuth, useUser } from '@clerk/react';
 import { useEditorStore } from '../../../store/useEditorStore';
 import { useSettingsStore } from '../../../store/useSettingsStore';
@@ -10,7 +10,16 @@ import { useEditorActions } from '../../../hooks/useEditorActions';
 import { useAiMasking } from '../../../hooks/useAiMasking';
 import { useGenerationCapabilities } from '../../../hooks/useGenerationCapabilities';
 import { usePresets } from '../../../hooks/usePresets';
-import { copyMaskSelectionToRepair, copyRepairSelectionToMask, isDirectToolPatch } from '../../../utils/localEdits';
+import {
+  cloneLocalAdjustment,
+  cloneLocalRepair,
+  cloneSelectionComponent,
+  copyMaskSelectionToRepair,
+  copyRepairSelectionToMask,
+  isDirectToolPatch,
+} from '../../../utils/localEdits';
+import { useContextMenu } from '../../../context/ContextMenuContext';
+import { OPTION_SEPARATOR, type Option } from '../../ui/AppProperties';
 import { isSurfaceMask } from '../../../utils/surfaceGeometry';
 import {
   INITIAL_MASK_ADJUSTMENTS,
@@ -41,6 +50,7 @@ const modes: SubMaskMode[] = [SubMaskMode.Additive, SubMaskMode.Subtractive, Sub
 
 export default function LocalEditsPanel() {
   const { t } = useTranslation();
+  const { showContextMenu } = useContextMenu();
   const selectedImage = useEditorStore((s) => s.selectedImage);
   const adjustments = useEditorStore((s) => s.adjustments);
   const activeLocalEditKind = useEditorStore((s) => s.activeLocalEditKind);
@@ -97,6 +107,13 @@ export default function LocalEditsPanel() {
   }, [provider, isSignedIn, isPro, getToken]);
 
   const [pickerFor, setPickerFor] = useState<EditKind | null>(null);
+  const [copiedEdit, setCopiedEdit] = useState<
+    { kind: 'adjustment'; entry: MaskContainer } | { kind: 'repair'; entry: AiPatch } | null
+  >(null);
+  const [copiedComponent, setCopiedComponent] = useState<{ kind: EditKind; part: SubMask } | null>(null);
+  const [renaming, setRenaming] = useState<{ kind: EditKind; id: string; component: boolean } | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const renameCancelledRef = useRef(false);
   const [componentMode, setComponentMode] = useState<SubMaskMode>(SubMaskMode.Additive);
   const [showComponentPicker, setShowComponentPicker] = useState(false);
   const [maskSections, setMaskSections] = useState<SectionVisibility>({
@@ -382,6 +399,204 @@ export default function LocalEditsPanel() {
     });
   };
 
+  const insertEditAfter = (kind: EditKind, targetId: string, entry: MaskContainer | AiPatch) => {
+    setAdjustments((previous) => {
+      if (kind === 'adjustment') {
+        const masks = [...previous.masks];
+        const index = masks.findIndex((mask) => mask.id === targetId);
+        masks.splice(index < 0 ? masks.length : index + 1, 0, entry as MaskContainer);
+        return { ...previous, masks };
+      }
+      const aiPatches = [...previous.aiPatches];
+      const index = aiPatches.findIndex((patch) => patch.id === targetId);
+      aiPatches.splice(index < 0 ? aiPatches.length : index + 1, 0, entry as AiPatch);
+      return { ...previous, aiPatches };
+    });
+    selectEdit(kind, entry.id);
+  };
+
+  const duplicateEdit = (kind: EditKind, entry: MaskContainer | AiPatch, invert = false) => {
+    if (kind === 'adjustment') {
+      const copy = cloneLocalAdjustment(entry as MaskContainer, invert, true);
+      copy.name = t(invert ? 'editor.masks.patches.invertedName' : 'editor.masks.patches.copyName', {
+        name: entry.name,
+      });
+      insertEditAfter(kind, entry.id, copy);
+    } else {
+      const copy = cloneLocalRepair(entry as AiPatch, invert);
+      copy.name = t(invert ? 'editor.ai.patches.invertedName' : 'editor.masks.patches.copyName', {
+        name: entry.name,
+      });
+      insertEditAfter(kind, entry.id, copy);
+    }
+  };
+
+  const duplicateComponent = (part: SubMask, index: number, invert = false) => {
+    if (!selectedEdit || !activeLocalEditKind) return;
+    if (!invert && isSurfaceMask(part.type)) return;
+    const copy = cloneSelectionComponent(part, invert);
+    if (invert) {
+      const entry =
+        activeLocalEditKind === 'adjustment'
+          ? cloneLocalAdjustment(selectedEdit as MaskContainer, false, true)
+          : cloneLocalRepair(selectedEdit as AiPatch);
+      entry.name = t(
+        activeLocalEditKind === 'adjustment' ? 'editor.masks.patches.invertedName' : 'editor.ai.patches.invertedName',
+        { name: getSubMaskName(part) },
+      );
+      entry.invert = false;
+      entry.subMasks = [copy];
+      insertEditAfter(activeLocalEditKind, selectedEdit.id, entry);
+      selectEdit(activeLocalEditKind, entry.id, copy.id);
+      return;
+    }
+    copy.name = t('editor.masks.patches.copyName', { name: getSubMaskName(part) });
+    const subMasks = [...selectedEdit.subMasks];
+    subMasks.splice(index + 1, 0, copy);
+    if (activeLocalEditKind === 'adjustment') updateMask(selectedEdit.id, { subMasks });
+    else updatePatch(selectedEdit.id, { subMasks });
+    selectEdit(activeLocalEditKind, selectedEdit.id, copy.id);
+  };
+
+  const deleteComponent = (part: SubMask) => {
+    if (!selectedEdit || !activeLocalEditKind) return;
+    const subMasks = selectedEdit.subMasks.filter((item) => item.id !== part.id);
+    if (activeLocalEditKind === 'adjustment') updateMask(selectedEdit.id, { subMasks });
+    else updatePatch(selectedEdit.id, { subMasks });
+    if (selectedSubMask?.id === part.id) selectEdit(activeLocalEditKind, selectedEdit.id);
+  };
+
+  const startRename = (kind: EditKind, id: string, component: boolean, name: string) => {
+    renameCancelledRef.current = false;
+    setRenameDraft(name);
+    setRenaming({ kind, id, component });
+  };
+
+  const finishRename = () => {
+    if (!renameCancelledRef.current && renaming && renameDraft.trim()) {
+      const name = renameDraft.trim();
+      if (renaming.component) updateSubMask(renaming.id, { name });
+      else if (renaming.kind === 'adjustment') updateMask(renaming.id, { name });
+      else updatePatch(renaming.id, { name });
+    }
+    setRenaming(null);
+  };
+
+  const showEditMenu = (event: MouseEvent, kind: EditKind, entry: MaskContainer | AiPatch) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const isAdjustment = kind === 'adjustment';
+    const label = isAdjustment ? 'editor.masks.actions' : 'editor.ai.actions';
+    const options: Option[] = [
+      { label: t(`${label}.rename`), icon: FileEdit, onClick: () => startRename(kind, entry.id, false, entry.name) },
+      {
+        label: t(isAdjustment ? 'editor.masks.actions.duplicateMask' : 'editor.ai.actions.duplicateEdit'),
+        icon: PlusSquare,
+        onClick: () => duplicateEdit(kind, entry),
+      },
+      {
+        label: t(
+          isAdjustment ? 'editor.masks.actions.duplicateAndInvertMask' : 'editor.ai.actions.duplicateAndInvertEdit',
+        ),
+        icon: RotateCcw,
+        onClick: () => duplicateEdit(kind, entry, true),
+      },
+      {
+        label: t(isAdjustment ? 'editor.masks.actions.copyMask' : 'editor.ai.actions.copyEdit'),
+        icon: Copy,
+        onClick: () =>
+          setCopiedEdit(
+            isAdjustment
+              ? { kind: 'adjustment', entry: structuredClone(entry as MaskContainer) }
+              : { kind: 'repair', entry: cloneLocalRepair(entry as AiPatch) },
+          ),
+      },
+      {
+        label: t(isAdjustment ? 'editor.masks.actions.pasteMask' : 'editor.ai.actions.pasteEdit'),
+        icon: ClipboardPaste,
+        disabled: copiedEdit?.kind !== kind,
+        onClick: () => {
+          if (copiedEdit?.kind !== kind) return;
+          const copy =
+            kind === 'adjustment'
+              ? cloneLocalAdjustment(copiedEdit.entry as MaskContainer)
+              : cloneLocalRepair(copiedEdit.entry as AiPatch);
+          insertEditAfter(kind, entry.id, copy);
+        },
+      },
+      { type: OPTION_SEPARATOR },
+    ];
+    if (isAdjustment) {
+      options.push({
+        label: t('editor.masks.actions.resetMaskAdjustments'),
+        icon: RotateCcw,
+        onClick: () => updateMask(entry.id, { adjustments: structuredClone(INITIAL_MASK_ADJUSTMENTS) }),
+      });
+    }
+    options.push({
+      label: t(isAdjustment ? 'editor.masks.actions.deleteMask' : 'editor.ai.actions.deleteEdit'),
+      icon: Trash2,
+      isDestructive: true,
+      onClick: () => deleteEdit(kind, entry.id),
+    });
+    showContextMenu(event.clientX, event.clientY, options);
+  };
+
+  const showComponentMenu = (event: MouseEvent, part: SubMask, index: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!selectedEdit || !activeLocalEditKind) return;
+    const kind = activeLocalEditKind;
+    const label = kind === 'adjustment' ? 'editor.masks.actions' : 'editor.ai.actions';
+    const surfaceAlreadySelected = selectedEdit.subMasks.some((entry) => isSurfaceMask(entry.type));
+    showContextMenu(event.clientX, event.clientY, [
+      {
+        label: t(`${label}.rename`),
+        icon: FileEdit,
+        onClick: () => startRename(kind, part.id, true, getSubMaskName(part)),
+      },
+      {
+        label: t(`${label}.duplicateComponent`),
+        icon: PlusSquare,
+        disabled: isSurfaceMask(part.type),
+        onClick: () => duplicateComponent(part, index),
+      },
+      {
+        label: t(`${label}.duplicateAndInvertComponent`),
+        icon: RotateCcw,
+        onClick: () => duplicateComponent(part, index, true),
+      },
+      {
+        label: t(`${label}.copyComponent`),
+        icon: Copy,
+        onClick: () => setCopiedComponent({ kind, part: structuredClone(part) }),
+      },
+      {
+        label: t(`${label}.pasteComponent`),
+        icon: ClipboardPaste,
+        disabled:
+          copiedComponent?.kind !== kind || (isSurfaceMask(copiedComponent.part.type) && surfaceAlreadySelected),
+        onClick: () => {
+          if (copiedComponent?.kind !== kind) return;
+          if (isSurfaceMask(copiedComponent.part.type) && surfaceAlreadySelected) return;
+          const copy = cloneSelectionComponent(copiedComponent.part);
+          const subMasks = [...selectedEdit.subMasks];
+          subMasks.splice(index + 1, 0, copy);
+          if (kind === 'adjustment') updateMask(selectedEdit.id, { subMasks });
+          else updatePatch(selectedEdit.id, { subMasks });
+          selectEdit(kind, selectedEdit.id, copy.id);
+        },
+      },
+      { type: OPTION_SEPARATOR },
+      {
+        label: t(`${label}.deleteComponent`),
+        icon: Trash2,
+        isDestructive: true,
+        onClick: () => deleteComponent(part),
+      },
+    ]);
+  };
+
   const selectionButtons = (
     types: typeof MASK_AI_TYPES,
     kind: EditKind,
@@ -460,16 +675,38 @@ export default function LocalEditsPanel() {
       const active = activeLocalEditKind === kind && selectedEdit?.id === entry.id;
       const hasSurfaceSelection = entry.subMasks.some((part) => isSurfaceMask(part.type));
       return (
-        <div key={entry.id} className={`rounded-md border ${active ? 'border-accent bg-surface' : 'border-surface'}`}>
+        <div
+          key={entry.id}
+          className={`rounded-md border ${active ? 'border-accent bg-surface' : 'border-surface'}`}
+          onContextMenu={(event) => showEditMenu(event, kind, entry)}
+        >
           <div className="flex items-center gap-1 p-1">
-            <button
-              type="button"
-              className="min-w-0 flex-1 break-words p-2 text-left text-sm font-medium leading-5"
-              aria-pressed={active}
-              onClick={() => selectEdit(kind, entry.id)}
-            >
-              {entry.name}
-            </button>
+            {renaming?.id === entry.id && !renaming.component ? (
+              <input
+                autoFocus
+                className="min-w-0 flex-1 rounded border border-accent bg-bg-primary p-2 text-sm outline-none"
+                value={renameDraft}
+                onChange={(event) => setRenameDraft(event.target.value)}
+                onBlur={finishRename}
+                onContextMenu={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') finishRename();
+                  if (event.key === 'Escape') {
+                    renameCancelledRef.current = true;
+                    setRenaming(null);
+                  }
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="min-w-0 flex-1 break-words p-2 text-left text-sm font-medium leading-5"
+                aria-pressed={active}
+                onClick={() => selectEdit(kind, entry.id)}
+              >
+                {entry.name}
+              </button>
+            )}
             <button
               type="button"
               className="p-1 text-text-secondary hover:text-text-primary"
@@ -621,36 +858,48 @@ export default function LocalEditsPanel() {
                   {t('editor.localEdits.selection', { defaultValue: 'Selection' })}
                 </h3>
                 <div className="space-y-1">
-                  {selectedEdit.subMasks.map((part) => {
+                  {selectedEdit.subMasks.map((part, index) => {
                     const active = selectedSubMask?.id === part.id;
                     const Icon = MASK_ICON_MAP[part.type];
                     const partName = getSubMaskName(part);
                     return (
-                      <div key={part.id} className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          className={`min-w-0 flex-1 rounded p-2 text-left text-sm ${active ? 'bg-surface' : 'hover:bg-card-active'}`}
-                          aria-pressed={active}
-                          onClick={() => selectEdit(activeLocalEditKind!, selectedEdit.id, part.id)}
-                        >
-                          {Icon && <Icon size={15} className="mr-2 inline" />}
-                          {partName}
-                        </button>
+                      <div
+                        key={part.id}
+                        className="flex items-center gap-1"
+                        onContextMenu={(event) => showComponentMenu(event, part, index)}
+                      >
+                        {renaming?.id === part.id && renaming.component ? (
+                          <input
+                            autoFocus
+                            className="min-w-0 flex-1 rounded border border-accent bg-bg-primary p-2 text-sm outline-none"
+                            value={renameDraft}
+                            onChange={(event) => setRenameDraft(event.target.value)}
+                            onBlur={finishRename}
+                            onContextMenu={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') finishRename();
+                              if (event.key === 'Escape') {
+                                renameCancelledRef.current = true;
+                                setRenaming(null);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className={`min-w-0 flex-1 rounded p-2 text-left text-sm ${active ? 'bg-surface' : 'hover:bg-card-active'}`}
+                            aria-pressed={active}
+                            onClick={() => selectEdit(activeLocalEditKind!, selectedEdit.id, part.id)}
+                          >
+                            {Icon && <Icon size={15} className="mr-2 inline" />}
+                            {partName}
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="p-1 text-text-secondary hover:text-red-400"
                           aria-label={t('editor.localEdits.deleteComponent', { name: partName })}
-                          onClick={() => {
-                            if (activeLocalEditKind === 'adjustment')
-                              updateMask(selectedEdit.id, {
-                                subMasks: selectedEdit.subMasks.filter((item) => item.id !== part.id),
-                              });
-                            else
-                              updatePatch(selectedEdit.id, {
-                                subMasks: selectedEdit.subMasks.filter((item) => item.id !== part.id),
-                              });
-                            if (active) selectEdit(activeLocalEditKind!, selectedEdit.id);
-                          }}
+                          onClick={() => deleteComponent(part)}
                         >
                           <Trash2 size={15} />
                         </button>
