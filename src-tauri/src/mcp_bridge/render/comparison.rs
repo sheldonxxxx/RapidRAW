@@ -2,37 +2,42 @@
 use super::*;
 use crate::mcp_bridge::versions::temporary_session;
 
+/// Controls that define framing and pixel registration. Missing values and explicit
+/// defaults are equivalent. Includes warps that preserve dimensions: equal canvas
+/// sizes alone do not establish alignment.
+pub(super) const GEOMETRY_KEYS: &[&str] = &[
+    "orientationSteps",
+    "rotation",
+    "flipHorizontal",
+    "flipVertical",
+    "crop",
+    "aspectRatio",
+    "transformDistortion",
+    "transformVertical",
+    "transformHorizontal",
+    "transformAspect",
+    "transformXOffset",
+    "transformYOffset",
+    "transformRotate",
+    "transformScale",
+    "lensDistortionEnabled",
+    "lensDistortionAmount",
+    "lensDistortionParams",
+    "lensCorrectionMode",
+    "lensMaker",
+    "lensModel",
+    "perspectivePoints",
+    "guidedUpright",
+    "uprightMode",
+    "guidedPerspective",
+];
+
 fn matching_geometry(a: &Value, b: &Value) -> bool {
-    // Missing values and explicit defaults are equivalent. Include warps that
-    // preserve dimensions: equal canvas sizes alone do not establish alignment.
     let defaults = validation::default_adjustments();
-    [
-        "orientationSteps",
-        "rotation",
-        "flipHorizontal",
-        "flipVertical",
-        "crop",
-        "transformDistortion",
-        "transformVertical",
-        "transformHorizontal",
-        "transformAspect",
-        "transformXOffset",
-        "transformYOffset",
-        "transformRotate",
-        "transformScale",
-        "lensDistortionEnabled",
-        "lensDistortionAmount",
-        "lensDistortionParams",
-        "lensCorrectionMode",
-        "lensMaker",
-        "lensModel",
-        "perspectivePoints",
-        "guidedUpright",
-        "uprightMode",
-        "guidedPerspective",
-    ]
-    .iter()
-    .all(|key| a.get(*key).unwrap_or(&defaults[*key]) == b.get(*key).unwrap_or(&defaults[*key]))
+    GEOMETRY_KEYS
+        .iter()
+        .filter(|key| **key != "aspectRatio")
+        .all(|key| a.get(*key).unwrap_or(&defaults[*key]) == b.get(*key).unwrap_or(&defaults[*key]))
 }
 
 fn preview_params(params: &Value) -> Result<Value> {
@@ -43,7 +48,7 @@ fn preview_params(params: &Value) -> Result<Value> {
     Ok(result)
 }
 
-fn image_block(image: &DynamicImage, label: &str) -> Result<Value> {
+pub(super) fn image_block(image: &DynamicImage, label: &str) -> Result<Value> {
     let bytes = encode_image_to_bytes(
         &DynamicImage::ImageRgb8(image.to_rgb8()),
         "png",
@@ -154,7 +159,7 @@ impl Bridge {
 }
 
 // Keep enough room below the bridge's 64 MiB line limit even for noisy PNGs.
-fn bounded_response(result: Value) -> Result<Value> {
+pub(super) fn bounded_response(result: Value) -> Result<Value> {
     if serde_json::to_vec(&result)
         .map_err(|e| e.to_string())?
         .len()

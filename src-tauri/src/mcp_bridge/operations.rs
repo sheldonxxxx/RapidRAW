@@ -26,6 +26,7 @@ pub(super) const METHODS: &[&str] = &[
     "preflight",
     "sample_region",
     "inspect_adjustments",
+    "inspect_edit",
     "render_compare",
     "save_version",
     "list_versions",
@@ -88,6 +89,18 @@ fn duplicate_mask_definition(source: &Value, params: &Value) -> Result<(Value, V
     }
     if !flag(params, "copy_adjustments", false)? {
         duplicate["adjustments"] = json!({});
+    }
+    if let Some(map) = duplicate.as_object_mut() {
+        // A copy of a linked mask is an ordinary selection unless linked again.
+        map.remove(super::mask_links::LINK_KEY);
+    }
+    if flag(params, "link", false)? {
+        if !flag(params, "invert", false)? {
+            return Err(
+                "INVALID_ARGUMENT: link currently creates inverse copies; set invert=true".into(),
+            );
+        }
+        duplicate[super::mask_links::LINK_KEY] = json!(required(source, "id")?);
     }
     let submasks = duplicate["subMasks"]
         .as_array_mut()
@@ -153,6 +166,13 @@ impl Bridge {
             return Err(format!("METHOD_NOT_FOUND: {method}"));
         }
         let session = self.session(&params)?.clone();
+        if let Some((converted, mapping)) =
+            super::mask_coordinates::to_mask_space(method, &session, &params)?
+        {
+            let mut result = Box::pin(self.dispatch(method, converted)).await?;
+            result["coordinate_mapping"] = mapping;
+            return Ok(result);
+        }
         let id = session.id.clone();
         match method {
             "fork_session" => return self.fork_session(&session, &params),
@@ -217,6 +237,7 @@ impl Bridge {
             "sample_region" => self.sample_region(&session, &params),
             "render_compare" => self.render_compare(&session, &params),
             "inspect_adjustments" => self.inspect_adjustments(&session, &params),
+            "inspect_edit" => self.inspect_edit(&session, &params),
             "render" => self.render_response(&session, &params),
             "analyze" => self.analyze(&session, &params),
             "export" => self.export_photo(&session, &params),
