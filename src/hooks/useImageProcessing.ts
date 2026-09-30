@@ -5,7 +5,12 @@ import { useEditorStore } from '../store/useEditorStore';
 import { useUIStore } from '../store/useUIStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useLibraryStore } from '../store/useLibraryStore';
-import { Adjustments, COPYABLE_ADJUSTMENT_KEYS, copyAdjustmentKeys } from '../utils/adjustments';
+import {
+  Adjustments,
+  COPYABLE_ADJUSTMENT_KEYS,
+  copyAdjustmentKeys,
+  originalAdjustmentsFor,
+} from '../utils/adjustments';
 import { Invokes, Panel } from '../components/ui/AppProperties';
 import { debouncedSave } from './useEditorActions';
 import { globalImageCache } from '../utils/ImageLRUCache';
@@ -17,6 +22,7 @@ import {
   preparePreviewAdjustments,
   interactivePreviewResolution,
   retryMissingPreviewAssets,
+  withClippingOverlay,
   type PreviewAssetCacheStatus,
 } from '../utils/previewPipeline';
 import {
@@ -92,6 +98,7 @@ export function useImageProcessing(
   const baseRenderSize = useEditorStore((state) => state.baseRenderSize);
   const originalSize = useEditorStore((state) => state.originalSize);
   const isSliderDragging = useEditorStore((state) => state.isSliderDragging);
+  const showClipping = useEditorStore((state) => state.showClipping);
   const setEditor = useEditorStore((state) => state.setEditor);
 
   const activeView = useUIStore((state) => state.activeView);
@@ -130,6 +137,8 @@ export function useImageProcessing(
     comparisonReturnPendingRef.current = false;
     preallocatedInputRef.current = null;
     uncroppedPipeline.clear();
+    comparisonPipeline.clear();
+    comparisonKeyRef.current = null;
   }, [selectedImage?.path, imageSession]);
 
   const calculateROI = useCallback(() => {
@@ -705,6 +714,50 @@ export function useImageProcessing(
 
   useEffect(() => () => uncroppedPipeline.clear(), [uncroppedPipeline]);
 
+  // Renders the unedited side of the before/after split view. It has its own
+  // native lane, so it never supersedes or waits behind edited previews.
+  const comparisonKeyRef = useRef<string | null>(null);
+  const comparisonPipeline = useMemo(
+    () =>
+      new PreviewPipeline<{
+        adjustments: Adjustments;
+        path: string;
+        session: number;
+        expectedGeneration: number | null;
+        inputRevision: number;
+        targetRes: number;
+      }>(async (request, isLatest) => {
+        const isCurrent = () => {
+          const state = useEditorStore.getState();
+          return (
+            state.splitCompare &&
+            request.path === state.selectedImage?.path &&
+            request.session === state.imageSession &&
+            request.expectedGeneration === state.backendGeneration &&
+            request.inputRevision === latestPreviewRevision('comparison') &&
+            isLatest()
+          );
+        };
+        if (!isCurrent()) return;
+        try {
+          const buffer = await invoke<ArrayBuffer>(Invokes.GenerateComparisonPreview, {
+            jsAdjustments: request.adjustments,
+            expectedGeneration: request.expectedGeneration,
+            inputRevision: request.inputRevision,
+            targetResolution: request.targetRes,
+          });
+          if (!isCurrent()) return;
+          const url = URL.createObjectURL(new Blob([buffer], { type: 'image/jpeg' }));
+          useEditorStore.getState().setEditor({ splitComparisonUrl: url });
+        } catch (error) {
+          if (isCurrent() && !isPreviewSuperseded(error)) console.error('Failed to render comparison:', error);
+        }
+      }),
+    [],
+  );
+
+  useEffect(() => () => comparisonPipeline.clear(), [comparisonPipeline]);
+
   useEffect(
     () =>
       useEditorStore.subscribe((state, previous) => {
@@ -715,6 +768,8 @@ export function useImageProcessing(
           refinementRef.current?.clear();
           pipelineRef.current?.clear();
           uncroppedPipeline.clear();
+          comparisonPipeline.clear();
+          comparisonKeyRef.current = null;
           lastInputRef.current = null;
           lastEditedFrameRef.current = null;
           comparisonRestoreRef.current = null;
@@ -725,7 +780,7 @@ export function useImageProcessing(
         if (!previous.showOriginal && state.showOriginal) {
           comparisonRestoreRef.current = {
             frame: lastEditedFrameRef.current,
-            adjustments: previous.adjustments,
+            adjustments: withClippingOverlay(previous.adjustments, previous.showClipping),
             histogram: previous.histogram,
             waveform: previous.waveform,
             waveformVisible: previous.isWaveformVisible,
@@ -735,8 +790,11 @@ export function useImageProcessing(
         } else if (previous.showOriginal && !state.showOriginal) {
           comparisonReturnPendingRef.current = true;
         }
-        const renderAdjustments = state.previewOverride ?? state.adjustments;
-        const previousAdjustments = previous.previewOverride ?? previous.adjustments;
+        const renderAdjustments = withClippingOverlay(state.previewOverride ?? state.adjustments, state.showClipping);
+        const previousAdjustments = withClippingOverlay(
+          previous.previewOverride ?? previous.adjustments,
+          previous.showClipping,
+        );
         if (!state.selectedImage?.isReady || renderAdjustments === previousAdjustments) return;
         const inputRevision = reservePreviewRevision('main', state.backendGeneration);
         tracePreview({
@@ -757,7 +815,7 @@ export function useImageProcessing(
         refinementRef.current?.clear();
         pipelineRef.current?.clear();
       }),
-    [uncroppedPipeline],
+    [uncroppedPipeline, comparisonPipeline],
   );
 
   const generateUncroppedPreview = useCallback(
@@ -824,8 +882,8 @@ export function useImageProcessing(
       debounce((targetRes: number) => {
         if (targetRes > currentResRef.current) {
           currentResRef.current = targetRes;
-          const { adjustments, previewOverride } = useEditorStore.getState();
-          const renderAdjustments = previewOverride ?? adjustments;
+          const { adjustments, previewOverride, showClipping } = useEditorStore.getState();
+          const renderAdjustments = withClippingOverlay(previewOverride ?? adjustments, showClipping);
           applyAdjustments(renderAdjustments, false, targetRes);
         }
       }, 250),
@@ -865,7 +923,7 @@ export function useImageProcessing(
     if (dragIdleTimer.current) clearTimeout(dragIdleTimer.current);
 
     const targetRes = calculateTargetRes();
-    const renderAdjustments = previewOverride ?? adjustments;
+    const renderAdjustments = withClippingOverlay(previewOverride ?? adjustments, showClipping);
 
     if (activeView !== 'editor') {
       if (isSliderDragging) return;
@@ -934,7 +992,34 @@ export function useImageProcessing(
     appSettings?.copyPasteSettings?.autoSync,
     isWaveformVisible,
     activeWaveformChannel,
+    showClipping,
   ]);
+
+  const splitCompare = useEditorStore((state) => state.splitCompare);
+  useEffect(() => {
+    const image = selectedImage;
+    if (!splitCompare || activeView !== 'editor' || !image?.isReady) {
+      comparisonKeyRef.current = null;
+      comparisonPipeline.clear();
+      return;
+    }
+    // Only geometry reaches the unedited side; wait for a drag to settle.
+    if (isSliderDragging) return;
+    const original = originalAdjustmentsFor(adjustments);
+    const targetRes = calculateTargetRes();
+    const state = useEditorStore.getState();
+    const key = JSON.stringify([image.path, state.imageSession, state.backendGeneration, targetRes, original]);
+    if (key === comparisonKeyRef.current) return;
+    comparisonKeyRef.current = key;
+    comparisonPipeline.enqueue({
+      adjustments: original,
+      path: image.path,
+      session: state.imageSession,
+      expectedGeneration: state.backendGeneration,
+      inputRevision: reservePreviewRevision('comparison', state.backendGeneration),
+      targetRes,
+    });
+  }, [splitCompare, activeView, selectedImage, isSliderDragging, adjustments, calculateTargetRes, comparisonPipeline]);
 
   return {
     applyAdjustments,

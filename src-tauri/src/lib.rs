@@ -18,6 +18,7 @@ mod cache_utils;
 mod camera_tethering;
 mod color_profiles;
 mod culling;
+mod delivery;
 mod denoising;
 mod exif_processing;
 mod export_processing;
@@ -47,6 +48,7 @@ mod nonlocal_install;
 mod nonlocal_onnx;
 mod panorama_stitching;
 mod panorama_utils;
+mod prefetch;
 mod preset_converter;
 mod raw_denoise;
 mod raw_processing;
@@ -509,35 +511,25 @@ fn process_preview_job(
         _ => (if has_roi { 1.4_f32 } else { 1.0_f32 }, 75_u8),
     };
 
-    let mut cached_preview_lock = state
+    let mut cached_previews = state
         .cached_preview
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-
-    let base_valid = cached_preview_lock
-        .as_ref()
-        .is_some_and(|c| c.transform_hash == new_transform_hash && c.preview_dim == preview_dim);
-    let small_valid = base_valid
-        && cached_preview_lock
-            .as_ref()
-            .is_some_and(|c| c.interactive_divisor == interactive_divisor);
+    let cached = cached_previews
+        .get(|c| c.transform_hash == new_transform_hash && c.preview_dim == preview_dim)
+        .cloned();
+    let base_valid = cached.is_some();
 
     cancellation.check()?;
     let geometry_start = std::time::Instant::now();
 
-    let (final_preview_base, scale_for_gpu, unscaled_crop_offset) = if base_valid {
-        let cached = cached_preview_lock.as_ref().unwrap();
+    let (final_preview_base, scale_for_gpu, unscaled_crop_offset) = if let Some(cached) = &cached {
         (
             Arc::clone(&cached.image),
             cached.scale,
             cached.unscaled_crop_offset,
         )
     } else {
-        *state
-            .gpu_image_cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner()) = None;
-
         let (base, scale, offset) =
             generate_transformed_preview(&state, &loaded_image, &adjustments_clone, preview_dim)?;
         (Arc::new(base), scale, offset)
@@ -546,10 +538,12 @@ fn process_preview_job(
     let geometry_duration = geometry_start.elapsed();
     let resize_mask_start = std::time::Instant::now();
 
-    let small_preview_base = if small_valid {
-        Arc::clone(&cached_preview_lock.as_ref().unwrap().small_image)
-    } else {
-        let small = if interactive_divisor > 1.0 {
+    let small_preview_base = match cached
+        .as_ref()
+        .filter(|c| c.interactive_divisor == interactive_divisor)
+    {
+        Some(cached) => Arc::clone(&cached.small_image),
+        None if interactive_divisor > 1.0 => {
             let target_size = (preview_dim as f32 / interactive_divisor) as u32;
             let (w, h) = final_preview_base.dimensions();
             let (small_w, small_h) = if w > h {
@@ -564,33 +558,36 @@ fn process_preview_job(
                 small_w,
                 small_h,
             ))
-        } else {
-            Arc::clone(&final_preview_base)
-        };
-
-        if is_interactive && base_valid {
-            *state
-                .gpu_image_cache
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()) = None;
         }
-
-        small
+        None => Arc::clone(&final_preview_base),
     };
     cancellation.check()?;
 
-    *cached_preview_lock = Some(CachedPreview {
-        image: Arc::clone(&final_preview_base),
-        small_image: Arc::clone(&small_preview_base),
-        transform_hash: new_transform_hash,
-        scale: scale_for_gpu,
-        unscaled_crop_offset,
-        preview_dim,
-        interactive_divisor,
-    });
+    cached_previews.insert(
+        CachedPreview {
+            image: Arc::clone(&final_preview_base),
+            small_image: Arc::clone(&small_preview_base),
+            transform_hash: new_transform_hash,
+            scale: scale_for_gpu,
+            unscaled_crop_offset,
+            preview_dim,
+            interactive_divisor,
+        },
+        |c| c.transform_hash == new_transform_hash && c.preview_dim == preview_dim,
+    );
 
-    drop(cached_preview_lock);
+    drop(cached_previews);
 
+    // A reduced interactive image can share dimensions with a directly
+    // rendered base, so give its GPU texture a distinct cache identity.
+    let gpu_input_hash = if is_interactive && interactive_divisor > 1.0 {
+        let mut hasher = DefaultHasher::new();
+        new_transform_hash.hash(&mut hasher);
+        interactive_divisor.to_bits().hash(&mut hasher);
+        hasher.finish()
+    } else {
+        new_transform_hash
+    };
     let (processing_image, effective_scale, jpeg_quality) = if is_interactive {
         let orig_w = final_preview_base.width() as f32;
         let small_w = small_preview_base.width() as f32;
@@ -622,9 +619,10 @@ fn process_preview_job(
     );
 
     let mut mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = Vec::new();
+    let mut mask_hasher = DefaultHasher::new();
     for def in &mask_definitions {
         cancellation.check()?;
-        if let Some(mask) = get_cached_or_generate_mask(
+        let (key, mask) = crate::mask_generation::get_cached_or_generate_mask_with_key(
             &state,
             def,
             preview_width,
@@ -632,16 +630,22 @@ fn process_preview_job(
             effective_scale,
             scaled_crop_offset,
             &adjustments_clone,
-        ) {
+        );
+        if let Some(mask) = mask {
+            key.hash(&mut mask_hasher);
             mask_bitmaps.push(mask);
         }
     }
+    let mask_key = mask_hasher.finish();
     cancellation.check()?;
     let resize_mask_duration = resize_mask_start.elapsed();
 
     let is_raw = loaded_image.is_raw;
     let tm_override = resolve_tonemapper_override_from_handle(app_handle, is_raw);
-    let final_adjustments = get_all_adjustments_from_json(&adjustments_clone, is_raw, tm_override);
+    let mut final_adjustments =
+        get_all_adjustments_from_json(&adjustments_clone, is_raw, tm_override);
+    final_adjustments.global.show_clipping =
+        u32::from(adjustments_clone["showClipping"].as_bool() == Some(true));
     let lut_path = adjustments_clone["lutPath"].as_str();
     let lut = lut_path.and_then(|p| lut_processing::get_or_load_lut(&state, p).ok());
 
@@ -679,7 +683,7 @@ fn process_preview_job(
             &context,
             &state,
             &processing_image,
-            new_transform_hash,
+            gpu_input_hash,
             RenderRequest {
                 adjustments: final_adjustments,
                 mask_bitmaps: &mask_bitmaps,
@@ -690,6 +694,8 @@ fn process_preview_job(
             use_wgpu_renderer && !compare_original,
             analytics_config,
             Some(identity),
+            Some(mask_key),
+            true,
         )
     });
 
@@ -1112,6 +1118,125 @@ async fn apply_adjustments(
     }
 }
 
+/// Renders the unedited side of the editor's before/after split view at the
+/// editor preview's framing. It runs outside the preview worker on its own
+/// lane, so edits and the comparison never supersede each other.
+#[tauri::command]
+async fn generate_comparison_preview(
+    expected_generation: Option<usize>,
+    input_revision: Option<u64>,
+    js_adjustments: serde_json::Value,
+    target_resolution: Option<u32>,
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<Response, String> {
+    let generation = expected_generation.unwrap_or_else(|| {
+        state
+            .load_image_generation
+            .load(std::sync::atomic::Ordering::SeqCst)
+    });
+    let identity = app_state::PreviewIdentity {
+        generation,
+        lane: app_state::PreviewLane::Comparison,
+        revision: input_revision,
+    };
+    state.register_preview_intent(identity)?;
+    let jpeg = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        let state = app_handle.state::<AppState>();
+        state.ensure_preview_identity(identity)?;
+        let _session = state
+            .preview_session_gate
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        state.ensure_preview_identity(identity)?;
+        let context = get_or_init_gpu_context(&state, &app_handle)?;
+        let mut adjustments = js_adjustments;
+        hydrate_adjustments(&state, &mut adjustments)?;
+        let loaded_image = state
+            .original_image
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or("No original image loaded")?;
+
+        let transform_hash = calculate_transform_hash(&adjustments);
+        let settings = load_settings(app_handle.clone()).unwrap_or_default();
+        let preview_dim =
+            target_resolution.unwrap_or(settings.editor_preview_resolution.unwrap_or(1920));
+        // Reuse the editor's cached base when the geometry matches, without
+        // displacing the edited previews from the two-entry cache.
+        let cached = state
+            .cached_preview
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(|c| c.transform_hash == transform_hash && c.preview_dim == preview_dim)
+            .cloned();
+        let (base, scale, crop_offset) = match cached {
+            Some(cached) => (cached.image, cached.scale, cached.unscaled_crop_offset),
+            None => {
+                let (base, scale, offset) =
+                    generate_transformed_preview(&state, &loaded_image, &adjustments, preview_dim)?;
+                (Arc::new(base), scale, offset)
+            }
+        };
+        state.ensure_preview_identity(identity)?;
+
+        let (width, height) = base.dimensions();
+        let scaled_offset = (crop_offset.0 * scale, crop_offset.1 * scale);
+        let mut mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = Vec::new();
+        for def in &crate::marigold_surface::render_masks(&adjustments) {
+            state.ensure_preview_identity(identity)?;
+            if let Some(mask) = get_cached_or_generate_mask(
+                &state,
+                def,
+                width,
+                height,
+                scale,
+                scaled_offset,
+                &adjustments,
+            ) {
+                mask_bitmaps.push(mask);
+            }
+        }
+
+        let is_raw = loaded_image.is_raw;
+        let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
+        let render_adjustments = get_all_adjustments_from_json(&adjustments, is_raw, tm_override);
+        let lut = adjustments["lutPath"]
+            .as_str()
+            .and_then(|p| lut_processing::get_or_load_lut(&state, p).ok());
+        let rendered = crate::gpu_processing::process_and_get_dynamic_image_with_analytics(
+            &context,
+            &state,
+            &base,
+            transform_hash,
+            RenderRequest {
+                adjustments: render_adjustments,
+                mask_bitmaps: &mask_bitmaps,
+                lut,
+                roi: None,
+            },
+            "generate_comparison_preview",
+            false,
+            None,
+            Some(identity),
+            None,
+            false,
+        )?;
+        state.ensure_preview_identity(identity)?;
+        let rgba = rendered.to_rgba8();
+        let pixels: &[RGBA8] = rgba.as_raw().as_rgba();
+        Encoder::new(Preset::BaselineFastest)
+            .quality(90)
+            .fast_color(true)
+            .encode_imgref(ImgRef::new(pixels, width as usize, height as usize))
+            .map_err(|e| format!("Failed to encode comparison preview: {e}"))
+    })
+    .await
+    .map_err(|e| format!("Comparison preview task failed: {e}"))??;
+    Ok(Response::new(jpeg))
+}
+
 #[tauri::command]
 async fn generate_uncropped_preview(
     expected_generation: Option<usize>,
@@ -1246,6 +1371,10 @@ async fn generate_uncropped_preview(
             false,
             None,
             Some(identity),
+            None,
+            // Keyed by the whole edit, so retaining it would only evict the
+            // editor's cached inputs.
+            false,
         )?;
         state.ensure_preview_identity(identity)?;
         let (width, height) = processed_image.dimensions();
@@ -2464,6 +2593,7 @@ pub fn run() {
             generate_preview_for_path,
             generate_preset_preview,
             generate_uncropped_preview,
+            generate_comparison_preview,
             get_log_file_path,
             frontend_log,
             save_collage,
@@ -2516,6 +2646,7 @@ pub fn run() {
             focus_stacking::stitch_focus_stack,
             focus_stacking::save_focus_stack,
             image_loader::load_image,
+            prefetch::prefetch_images,
             image_loader::get_source_revision,
             image_loader::is_image_cached,
             panorama_stitching::stitch_panorama,

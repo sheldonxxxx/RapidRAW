@@ -28,6 +28,7 @@ Then open the app. Because the beta is not notarized, macOS may still require **
 - **Develop and grade:** exposure, tone mapping, white balance, colour mixer, curves, sharpening, manual noise reduction, lens corrections and geometric transforms.
 - **Make local edits:** brush and gradient masks, colour/luminance ranges, AI selections, depth and local retouching.
 - **Explore looks:** presets, LUTs, grain and creative effects, with adjustable strength.
+- **Compare and check:** a before/after split view with a draggable divider (Y), Show Original (B) and clipping warnings (J). Shortcuts can be changed in the keybind settings.
 - **Organize a library:** folders, albums, virtual copies, ratings, labels, metadata, library filtering and a culling view.
 - **Deliver:** batch processing and export to JPEG, PNG, WebP, AVIF, TIFF, JPEG XL or CUBE LUTs, with the options supported by the selected entry point.
 
@@ -142,6 +143,8 @@ RAPIDRAW_APP=/absolute/RapidRAW/src-tauri/target/release/RapidRAW
 | `--quality <1-100>`    | Requested export quality                                | `90`                  |
 | `--keep-metadata`      | Retain capture metadata                                 | Off                   |
 | `--adjustments <path>` | Native adjustment JSON overriding sidecars              | Use adjacent sidecars |
+
+JPEG, PNG, TIFF and WebP exports carry a verified sRGB ICC profile even when capture metadata is off or GPS is stripped. Capture-metadata retention is supported for JPEG, PNG and WebP output from non-TIFF sources. An unsupported `--keep-metadata` request fails before an output file is written; omit the flag to export without capture metadata. TIFF exports use the requested 8-bit or 16-bit depth, with 16-bit as the default.
 
 Use a separate output location and inspect exported dimensions, metadata and pixels. MCP-only parameters such as `expected_revision`, `long_edge`, `resize` and `color_profile` are not flags of this CLI. For agent-managed originals protection, portable state and structured per-item results, use the [execution skill](../skills/rapidraw-mcp/SKILL.md).
 

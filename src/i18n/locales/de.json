@@ -916,6 +916,11 @@
         "tool": "Werkzeug"
       }
     },
+    "splitCompare": {
+      "after": "Nachher",
+      "before": "Vorher",
+      "divider": "Vorher/Nachher-Trenner"
+    },
     "surface": {
       "above": "Above",
       "albedo": "Surface Colour",
@@ -977,6 +982,7 @@
         "showEdited": "Bearbeitet anzeigen (B)",
         "showOriginal": "Original anzeigen (B)",
         "shutterSpeed": "Verschlusszeit",
+        "splitCompare": "Vorher/Nachher-Splitansicht",
         "undo": "Rückgängig (Strg+Z) oder Verlauf (Rechtsklick)"
       },
       "vc": "VK"
@@ -1830,6 +1836,7 @@
         "toggle_ai": "KI-Panel ein-/ausblenden",
         "toggle_analytics": "Analyseanzeige ein-/ausblenden",
         "toggle_bottom_panel": "Filmstreifen ein-/ausblenden",
+        "toggle_clipping": "Clipping-Warnungen anzeigen",
         "toggle_crop": "Zuschnitt / Gerade ausrichten umschalten",
         "toggle_crop_panel": "Zuschneiden-Panel ein-/ausblenden",
         "toggle_export": "Exportieren-Panel ein-/ausblenden",
@@ -1842,6 +1849,7 @@
         "toggle_patch_markers": "Markierungen und Maske ein-/ausblenden",
         "toggle_presets": "Vorgaben-Panel ein-/ausblenden",
         "toggle_right_panel": "Rechtes Panel ein-/ausblenden",
+        "toggle_split_compare": "Vorher/Nachher-Splitansicht umschalten",
         "undo": "Bearbeitung rückgängig machen",
         "zoom_100": "Auf 100% zoomen",
         "zoom_fit": "Auf Fenstergröße einpassen",

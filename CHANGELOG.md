@@ -4,6 +4,30 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Editor performance
+
+- Speed up the live preview, measured on an Apple M4. A slider-drag frame drops from 478 ms to 15 ms at 3584 px and from 100 ms to 7 ms at 1920 px. With four local masks it is up to 40× faster (1340 ms to 33 ms). Tone-curve output is bit-identical to before. Linux was not measured.
+- Render previews up to about 10 MP as a single GPU tile. Reuse the sharpening, tonal, clarity, and structure blurs, mask layers, and LUT textures while only slider values change. Compute blur weights incrementally. The first render of a new image or crop drops from 478 ms to 114 ms at 3584 px. A 24 MP 16-bit TIFF export differs from the previous build by at most 2 of 65535 code values.
+- Keep the interactive and full-detail preview inputs cached together, so starting and releasing a drag no longer rescales and re-uploads the photo. Thumbnail, preset, and export renders no longer evict the photo being edited.
+- Refresh scopes faster while you edit. The waveform, parade, and vectorscope now use all CPU cores, and scopes read the preview without first copying it to RGB. On an Apple M4 at 3584 px, the luma waveform drops from 18 ms to 4 ms, all scopes together from 75 ms to 24 ms, and the histogram from 2.7 ms to 1.3 ms. Output is identical to before.
+- Decode the next and previous photos in the background while you edit, so stepping through a folder skips the RAW decode. On an Apple M4 with 32 MP CR3 files, opening the next photo drops from about 1.6 s to about 0.15 s once its prefetch has finished; stepping earlier reuses the decode in progress and still waits for it. Prefetching runs at low priority, stops when you open another photo or leave the editor, and is skipped if the photo won't fit in the cache beside the open one. The decoded-photo cache now scales with memory (one eighth of RAM, 512 MiB to 4 GiB) instead of a fixed 512 MiB, which held only one such photo. Linux was not measured.
+- Read application settings from memory instead of parsing the settings file for every preview frame. Reproduce the preview timings with `cargo test --lib preview_perf_bench -- --ignored --nocapture` in `src-tauri`.
+
+### Before/after comparison
+
+- Add a before/after split view to the editor. The unedited photo appears left of a draggable divider and the edit to the right, with the same crop, rotation, flips, perspective, and lens corrections so both sides line up. AI repairs and patches appear only on the edit side. The split follows zoom and pan. Drag the divider, move it with the arrow keys (Shift for larger steps), or double-click to centre it. Toggle the view with the toolbar button or Y (rebindable in keybind settings). It is hidden while cropping, and Show Original still replaces the whole view. The unedited side re-renders only when the photo, geometry, or resolution changes, not while you adjust tones. Divider position and on/off state are not saved with the photo or between sessions.
+
+### Saved edits
+
+- Save edit files (adjustments, ratings, tags, and color labels), metadata sidecars, and existing XMP sidecars when XMP sync is on by writing a temporary file, flushing it to disk, and renaming it over the original. A crash or interrupted save now leaves the previous version intact instead of a truncated file. Replaced sidecars keep their permissions, and symlinked sidecars are updated at their target. Power-loss behavior was not tested.
+- Treat the clipping warning as an editor view setting instead of part of the edit. Toggling it no longer saves the photo, adds an undo step, or carries over when you copy and paste adjustments. The setting is not persisted, stays as set when you switch photos, and applies only to the interactive editor preview. Library thumbnails no longer show clipping colors for edits saved with the warning on. Press J (rebindable in keybind settings) to toggle it.
+
+### Rendering and export reliability
+
+- Fail an ordinary GPU render when image dimensions or aligned texture allocation exceed the device limit, instead of reporting an unprocessed image as a successful render. Final 16-bit TIFF exports use the high-precision render path.
+- Embed and verify an sRGB ICC profile in JPEG, PNG, TIFF, and WebP desktop and CLI exports. Profile labeling is independent of capture-metadata retention and GPS removal.
+- Report unsupported capture-metadata retention requests before writing output, including TIFF inputs or outputs. Remove the ineffective RAW highlight-compression setting without changing RAW development or existing saved edits.
+
 ### MCP mask composition
 
 - Add native parent-mask duplication with fresh IDs, optional inversion, and independent local adjustments. Generated AI subject, depth, and other supported AI components can now join an existing parent in additive, subtractive, or intersect mode. The Node MCP host exposes both operations; installed releases require an updated native bridge and host.

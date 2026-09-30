@@ -495,14 +495,38 @@ fn read_texture_data_roi(
     size: wgpu::Extent3d,
     bytes_per_pixel: u32,
 ) -> Result<Vec<u8>, String> {
-    let unpadded_bytes_per_row = bytes_per_pixel * size.width;
-    let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-    let padded_bytes_per_row = (unpadded_bytes_per_row + align - 1) & !(align - 1);
-    let output_buffer_size = (padded_bytes_per_row * size.height) as u64;
+    if texture.format().block_copy_size(None) != Some(bytes_per_pixel) {
+        return Err("Readback pixel stride does not match the output texture format".into());
+    }
+    let extent = texture.size();
+    if size.width == 0
+        || size.height == 0
+        || size.depth_or_array_layers != 1
+        || origin
+            .x
+            .checked_add(size.width)
+            .is_none_or(|end| end > extent.width)
+        || origin
+            .y
+            .checked_add(size.height)
+            .is_none_or(|end| end > extent.height)
+        || origin
+            .z
+            .checked_add(1)
+            .is_none_or(|end| end > extent.depth_or_array_layers)
+    {
+        return Err("Readback region exceeds the output texture".into());
+    }
+    let layout = readback_layout(
+        size.width,
+        size.height,
+        bytes_per_pixel,
+        device.limits().max_buffer_size,
+    )?;
 
     let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("Readback Buffer"),
-        size: output_buffer_size,
+        size: layout.buffer_size,
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
@@ -520,7 +544,7 @@ fn read_texture_data_roi(
             buffer: &output_buffer,
             layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(padded_bytes_per_row),
+                bytes_per_row: Some(layout.padded_row),
                 rows_per_image: Some(size.height),
             },
         },
@@ -547,15 +571,76 @@ fn read_texture_data_roi(
     let padded_data = buffer_slice.get_mapped_range().to_vec();
     output_buffer.unmap();
 
-    if padded_bytes_per_row == unpadded_bytes_per_row {
+    if layout.padded_row == layout.row {
         Ok(padded_data)
     } else {
-        let mut unpadded_data = Vec::with_capacity((unpadded_bytes_per_row * size.height) as usize);
-        for chunk in padded_data.chunks(padded_bytes_per_row as usize) {
-            unpadded_data.extend_from_slice(&chunk[..unpadded_bytes_per_row as usize]);
-        }
-        Ok(unpadded_data)
+        remove_readback_padding(&padded_data, layout, size.height)
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ReadbackLayout {
+    row: u32,
+    padded_row: u32,
+    buffer_size: u64,
+    data_len: usize,
+}
+
+fn readback_layout(
+    width: u32,
+    height: u32,
+    pixel_bytes: u32,
+    max_buffer_size: u64,
+) -> Result<ReadbackLayout, String> {
+    let row = u64::from(width)
+        .checked_mul(u64::from(pixel_bytes))
+        .ok_or("Readback row size overflow")?;
+    let align = u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+    let padded_row = row
+        .checked_add(align - 1)
+        .ok_or("Readback row alignment overflow")?
+        / align
+        * align;
+    let buffer_size = padded_row
+        .checked_mul(u64::from(height))
+        .ok_or("Readback buffer size overflow")?;
+    let data_len = row
+        .checked_mul(u64::from(height))
+        .and_then(|v| usize::try_from(v).ok())
+        .ok_or("Readback data size overflow")?;
+    if width == 0
+        || height == 0
+        || pixel_bytes == 0
+        || padded_row > u64::from(u32::MAX)
+        || buffer_size > max_buffer_size
+        || usize::try_from(buffer_size).is_err()
+    {
+        return Err("Readback dimensions exceed device or host buffer limits".into());
+    }
+    Ok(ReadbackLayout {
+        row: row as u32,
+        padded_row: padded_row as u32,
+        buffer_size,
+        data_len,
+    })
+}
+
+fn remove_readback_padding(
+    data: &[u8],
+    layout: ReadbackLayout,
+    height: u32,
+) -> Result<Vec<u8>, String> {
+    if data.len() as u64 != layout.buffer_size {
+        return Err("Readback buffer length does not match its layout".into());
+    }
+    let mut result = Vec::with_capacity(layout.data_len);
+    for chunk in data
+        .chunks_exact(layout.padded_row as usize)
+        .take(height as usize)
+    {
+        result.extend_from_slice(&chunk[..layout.row as usize]);
+    }
+    Ok(result)
 }
 
 fn to_rgba_f16(img: &DynamicImage) -> Vec<f16> {
@@ -625,6 +710,14 @@ pub struct GpuProcessor {
     high_precision_pipeline: wgpu::ComputePipeline,
     high_precision_tile: std::sync::OnceLock<HighPrecisionTile>,
     tile_output_size: wgpu::Extent3d,
+    /// Identifies the tile currently held in the blur textures. Blurs depend
+    /// only on the input pixels, so slider changes can reuse them.
+    blur_cache: std::sync::Mutex<Option<BlurCacheKey>>,
+    /// Mask layers last uploaded for a keyed preview input.
+    mask_texture_cache: std::sync::Mutex<Option<(u64, wgpu::TextureView)>>,
+    empty_mask_view: wgpu::TextureView,
+    /// The last uploaded LUT; `Lut`s are shared from the loader's cache.
+    lut_cache: std::sync::Mutex<Option<(Arc<Lut>, wgpu::TextureView, wgpu::Sampler)>>,
     adjustments_buffer: wgpu::Buffer,
     dummy_blur_view: wgpu::TextureView,
     dummy_lut_view: wgpu::TextureView,
@@ -643,6 +736,23 @@ pub struct GpuProcessor {
     pub output_texture_view: wgpu::TextureView,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct BlurCacheKey {
+    input: u64,
+    origin: (u32, u32),
+    extent: (u32, u32),
+    scale_bits: u32,
+}
+
+/// Display processors up to this many pixels render in one tile, so their
+/// blur textures cover the whole preview and can be reused between frames.
+const SINGLE_TILE_MAX_PIXELS: u64 = 3840 * 2560;
+
+fn fits_single_tile(width: u32, height: u32, context: &GpuContext) -> bool {
+    u64::from(width) * u64::from(height) <= SINGLE_TILE_MAX_PIXELS
+        && width.max(height) <= context.limits.max_texture_dimension_2d
+}
+
 struct HighPrecisionTile {
     texture: wgpu::Texture,
     view: wgpu::TextureView,
@@ -653,8 +763,15 @@ enum RenderedPixels {
     U16(Vec<u16>),
 }
 
-fn high_precision_shader_source() -> String {
-    include_str!("shaders/shader.wgsl").replace("rgba8unorm, write>", "rgba16float, write>")
+const HIGH_PRECISION_OUTPUT_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba32Float;
+const HIGH_PRECISION_OUTPUT_PIXEL_BYTES: u32 = 16;
+
+fn high_precision_shader_source() -> Result<String, String> {
+    replace_shader_token(
+        include_str!("shaders/shader.wgsl"),
+        "rgba8unorm, write>",
+        "rgba32float, write>",
+    )
 }
 
 const FLARE_MAP_SIZE: u32 = 512;
@@ -1122,7 +1239,7 @@ impl GpuProcessor {
 
         bind_group_layout_entries[1].ty = wgpu::BindingType::StorageTexture {
             access: wgpu::StorageTextureAccess::WriteOnly,
-            format: wgpu::TextureFormat::Rgba16Float,
+            format: HIGH_PRECISION_OUTPUT_FORMAT,
             view_dimension: wgpu::TextureViewDimension::D2,
         };
         let high_precision_bgl =
@@ -1138,7 +1255,7 @@ impl GpuProcessor {
             });
         let high_precision_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("High Precision Image Processing Shader"),
-            source: wgpu::ShaderSource::Wgsl(high_precision_shader_source().into()),
+            source: wgpu::ShaderSource::Wgsl(high_precision_shader_source()?.into()),
         });
         let high_precision_pipeline =
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -1183,9 +1300,28 @@ impl GpuProcessor {
         });
         let dummy_lut_view = dummy_lut_texture.create_view(&Default::default());
         let dummy_lut_sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
+        let empty_mask_view = device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("Empty Mask Texture Array"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 2,
+                },
+                format: wgpu::TextureFormat::R8Unorm,
+                ..dummy_texture_desc
+            })
+            .create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2Array),
+                ..Default::default()
+            });
 
-        let clamped_tile_width = max_width.min(tile_extent);
-        let clamped_tile_height = max_height.min(tile_extent);
+        let single_tile = !high_precision && fits_single_tile(max_width, max_height, &context);
+        let (clamped_tile_width, clamped_tile_height) = if single_tile {
+            (max_width, max_height)
+        } else {
+            (max_width.min(tile_extent), max_height.min(tile_extent))
+        };
 
         let clamped_tile_size = wgpu::Extent3d {
             width: clamped_tile_width,
@@ -1306,6 +1442,10 @@ impl GpuProcessor {
             high_precision_pipeline,
             high_precision_tile: std::sync::OnceLock::new(),
             tile_output_size: clamped_tile_size,
+            blur_cache: std::sync::Mutex::new(None),
+            mask_texture_cache: std::sync::Mutex::new(None),
+            empty_mask_view,
+            lut_cache: std::sync::Mutex::new(None),
             adjustments_buffer,
             dummy_blur_view,
             dummy_lut_view,
@@ -1335,7 +1475,7 @@ impl GpuProcessor {
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba16Float,
+                    format: HIGH_PRECISION_OUTPUT_FORMAT,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING
                         | wgpu::TextureUsages::STORAGE_BINDING
                         | wgpu::TextureUsages::COPY_SRC,
@@ -1346,10 +1486,95 @@ impl GpuProcessor {
         })
     }
 
+    fn renders_single_tile(&self, width: u32, height: u32) -> bool {
+        width <= self.tile_output_size.width && height <= self.tile_output_size.height
+    }
+
+    /// Returns the mask layers for `request`. A keyed preview reuses its last
+    /// upload while only slider values change; without masks the shader never
+    /// samples the array, so a shared placeholder replaces a full-size upload.
+    fn mask_texture_view(
+        &self,
+        request: &RenderRequest,
+        width: u32,
+        height: u32,
+        key: Option<(u64, u64)>,
+    ) -> wgpu::TextureView {
+        if request.mask_bitmaps.is_empty() && request.adjustments.mask_count == 0 {
+            return self.empty_mask_view.clone();
+        }
+        let layer_count = request.mask_bitmaps.len().clamp(2, MAX_MASKS) as u32;
+        let key = key.map(|key| {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            (key, width, height, layer_count).hash(&mut hasher);
+            hasher.finish()
+        });
+        let mut cache = self
+            .mask_texture_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let (Some(key), Some((cached_key, view))) = (key, cache.as_ref())
+            && key == *cached_key
+        {
+            return view.clone();
+        }
+
+        let device = &self.context.device;
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Full Mask Texture Array"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: layer_count,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        // Layers without a bitmap keep wgpu's zero initialization.
+        for (layer, mask) in request.mask_bitmaps.iter().take(MAX_MASKS).enumerate() {
+            self.context.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layer as u32,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                mask.as_raw(),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(width),
+                    rows_per_image: Some(height),
+                },
+                wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+        *cache = key.map(|key| (key, view.clone()));
+        view
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn run(
         &self,
         input_texture_view: &wgpu::TextureView,
+        input_key: Option<u64>,
+        mask_key: Option<u64>,
         width: u32,
         height: u32,
         request: RenderRequest,
@@ -1398,7 +1623,7 @@ impl GpuProcessor {
                     &self.high_precision_bgl,
                     &high_precision_tile.texture,
                     &high_precision_tile.view,
-                    8,
+                    HIGH_PRECISION_OUTPUT_PIXEL_BYTES,
                 )
             } else {
                 (
@@ -1418,48 +1643,19 @@ impl GpuProcessor {
         });
         let out_width = bounds.width;
         let out_height = bounds.height;
-        let mask_layer_count = request.mask_bitmaps.len().clamp(2, MAX_MASKS) as u32;
-        let full_texture_size = wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: mask_layer_count,
-        };
-        let buffer_size = (width as usize) * (height as usize) * (mask_layer_count as usize);
-        let mut mask_texture_data = Vec::with_capacity(buffer_size);
-        if request.mask_bitmaps.is_empty() {
-            mask_texture_data.resize(buffer_size, 0);
-        } else {
-            for mask_bitmap in request.mask_bitmaps.iter().take(MAX_MASKS) {
-                mask_texture_data.extend_from_slice(mask_bitmap.as_raw());
-            }
-            if mask_texture_data.len() < buffer_size {
-                mask_texture_data.resize(buffer_size, 0);
-            }
-        }
-        let mask_texture = device.create_texture_with_data(
-            queue,
-            &wgpu::TextureDescriptor {
-                label: Some("Full Mask Texture Array"),
-                size: full_texture_size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::R8Unorm,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            },
-            TextureDataOrder::MipMajor,
-            &mask_texture_data,
-        );
+        let mask_texture_view =
+            self.mask_texture_view(&request, width, height, input_key.zip(mask_key));
         if let Some(cancel) = cancellation {
             cancel.check()?;
         }
-        let mask_texture_view = mask_texture.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(wgpu::TextureViewDimension::D2Array),
-            ..Default::default()
-        });
 
-        let (lut_texture_view, lut_sampler) = if let Some(lut_arc) = &request.lut {
+        let mut lut_cache = self.lut_cache.lock().unwrap_or_else(|e| e.into_inner());
+        let (lut_texture_view, lut_sampler) = if let Some(lut_arc) = &request.lut
+            && let Some((cached, view, sampler)) = lut_cache.as_ref()
+            && Arc::ptr_eq(cached, lut_arc)
+        {
+            (view.clone(), sampler.clone())
+        } else if let Some(lut_arc) = &request.lut {
             let lut_data = &lut_arc.data;
             let size = lut_arc.size;
             let mut rgba_lut_data = Vec::with_capacity(lut_data.len() / 3 * 4);
@@ -1506,10 +1702,12 @@ impl GpuProcessor {
                 min_filter: wgpu::FilterMode::Nearest,
                 ..Default::default()
             });
+            *lut_cache = Some((Arc::clone(lut_arc), view.clone(), sampler.clone()));
             (view, sampler)
         } else {
             (self.dummy_lut_view.clone(), self.dummy_lut_sampler.clone())
         };
+        drop(lut_cache);
 
         let adjustments = request.adjustments;
         let flare_amount = flare_map_amount(&adjustments);
@@ -1617,36 +1815,44 @@ impl GpuProcessor {
 
         const TILE_SIZE: u32 = 2048;
         let overlap = self.tile_overlap;
+        let (tile_size_x, tile_size_y) = if self.renders_single_tile(width, height) {
+            (width, height)
+        } else {
+            (TILE_SIZE, TILE_SIZE)
+        };
+        let single_tile = tile_size_x == width && tile_size_y == height;
+        let mut blur_cache = self.blur_cache.lock().unwrap_or_else(|e| e.into_inner());
 
         let output_len = if output_to_display {
             0
         } else {
-            (out_width * out_height * 4) as usize
+            usize::try_from(u64::from(out_width) * u64::from(out_height) * 4)
+                .map_err(|_| "Output image exceeds host allocation limits")?
         };
         let mut final_pixels = match output_precision {
             RenderOutputPrecision::EightBit => RenderedPixels::U8(vec![0u8; output_len]),
             RenderOutputPrecision::SixteenBit => RenderedPixels::U16(vec![0u16; output_len]),
         };
 
-        let start_tile_x = bounds.x / TILE_SIZE;
-        let start_tile_y = bounds.y / TILE_SIZE;
-        let end_tile_x = (bounds.x + bounds.width).div_ceil(TILE_SIZE);
-        let end_tile_y = (bounds.y + bounds.height).div_ceil(TILE_SIZE);
+        let start_tile_x = bounds.x / tile_size_x;
+        let start_tile_y = bounds.y / tile_size_y;
+        let end_tile_x = (bounds.x + bounds.width).div_ceil(tile_size_x);
+        let end_tile_y = (bounds.y + bounds.height).div_ceil(tile_size_y);
 
         for tile_y in start_tile_y..end_tile_y {
             for tile_x in start_tile_x..end_tile_x {
                 if let Some(cancel) = cancellation {
                     cancel.check()?;
                 }
-                let x_start_unclamped = tile_x * TILE_SIZE;
-                let y_start_unclamped = tile_y * TILE_SIZE;
+                let x_start_unclamped = tile_x * tile_size_x;
+                let y_start_unclamped = tile_y * tile_size_y;
 
                 let x_start = x_start_unclamped.max(bounds.x);
                 let y_start = y_start_unclamped.max(bounds.y);
-                let x_end = (x_start_unclamped + TILE_SIZE)
+                let x_end = (x_start_unclamped + tile_size_x)
                     .min(bounds.x + bounds.width)
                     .min(width);
-                let y_end = (y_start_unclamped + TILE_SIZE)
+                let y_end = (y_start_unclamped + tile_size_y)
                     .min(bounds.y + bounds.height)
                     .min(height);
 
@@ -1742,22 +1948,41 @@ impl GpuProcessor {
                     true
                 };
 
-                let did_create_sharpness_blur = run_blur(1.0, &self.sharpness_blur_view);
-                if let Some(cancel) = cancellation {
-                    cancel.check()?;
-                }
-                let did_create_tonal_blur = run_blur(3.5, &self.tonal_blur_view);
-                if let Some(cancel) = cancellation {
-                    cancel.check()?;
-                }
-                let did_create_clarity_blur = run_blur(8.0, &self.clarity_blur_view);
-                if let Some(cancel) = cancellation {
-                    cancel.check()?;
-                }
-                let did_create_structure_blur = run_blur(40.0, &self.structure_blur_view);
-                if let Some(cancel) = cancellation {
-                    cancel.check()?;
-                }
+                let tile_key = input_key.filter(|_| single_tile).map(|input| BlurCacheKey {
+                    input,
+                    origin: (input_x_start, input_y_start),
+                    extent: (input_width, input_height),
+                    scale_bits: scale.to_bits(),
+                });
+                let (
+                    did_create_sharpness_blur,
+                    did_create_tonal_blur,
+                    did_create_clarity_blur,
+                    did_create_structure_blur,
+                ) = if tile_key.is_some() && *blur_cache == tile_key {
+                    (true, true, true, true)
+                } else {
+                    // Clear first: a cancelled pass must not leave a stale key.
+                    *blur_cache = None;
+                    let sharpness = run_blur(1.0, &self.sharpness_blur_view);
+                    if let Some(cancel) = cancellation {
+                        cancel.check()?;
+                    }
+                    let tonal = run_blur(3.5, &self.tonal_blur_view);
+                    if let Some(cancel) = cancellation {
+                        cancel.check()?;
+                    }
+                    let clarity = run_blur(8.0, &self.clarity_blur_view);
+                    if let Some(cancel) = cancellation {
+                        cancel.check()?;
+                    }
+                    let structure = run_blur(40.0, &self.structure_blur_view);
+                    if let Some(cancel) = cancellation {
+                        cancel.check()?;
+                    }
+                    *blur_cache = tile_key;
+                    (sharpness, tonal, clarity, structure)
+                };
 
                 let mut main_encoder = device.create_command_encoder(&Default::default());
 
@@ -1931,28 +2156,15 @@ impl GpuProcessor {
                             }
                         }
                         RenderedPixels::U16(final_pixels) => {
-                            for row in 0..tile_height {
-                                let final_y = y_start + row - bounds.y;
-                                let final_x = x_start - bounds.x;
-                                let final_row_offset = (final_y * out_width + final_x) as usize * 4;
-                                let source_y = crop_y_start + row;
-                                let source_pixel_offset =
-                                    (source_y * input_width + crop_x_start) as usize;
-
-                                for sample in 0..(tile_width as usize * 4) {
-                                    let source_byte_offset = (source_pixel_offset * 4 + sample) * 2;
-                                    let bits = u16::from_ne_bytes([
-                                        processed_tile_data[source_byte_offset],
-                                        processed_tile_data[source_byte_offset + 1],
-                                    ]);
-                                    let value = f16::from_bits(bits).to_f32();
-                                    final_pixels[final_row_offset + sample] = if value.is_finite() {
-                                        (value.clamp(0.0, 1.0) * u16::MAX as f32).round() as u16
-                                    } else {
-                                        0
-                                    };
-                                }
-                            }
+                            copy_f32_tile_to_u16(
+                                &processed_tile_data,
+                                (input_width, input_height),
+                                (crop_x_start, crop_y_start),
+                                (tile_width, tile_height),
+                                final_pixels,
+                                (out_width, out_height),
+                                (x_start - bounds.x, y_start - bounds.y),
+                            )?;
                         }
                     }
                 }
@@ -1961,6 +2173,58 @@ impl GpuProcessor {
 
         Ok((final_pixels, out_width, out_height, bounds.x, bounds.y))
     }
+}
+
+fn decode_output_f32(bytes: &[u8]) -> u16 {
+    let value = f32::from_ne_bytes(bytes.try_into().expect("one f32 channel"));
+    if value.is_finite() {
+        (value.clamp(0.0, 1.0) * u16::MAX as f32).round() as u16
+    } else {
+        0
+    }
+}
+
+fn copy_f32_tile_to_u16(
+    source: &[u8],
+    source_size: (u32, u32),
+    crop_origin: (u32, u32),
+    crop_size: (u32, u32),
+    destination: &mut [u16],
+    destination_size: (u32, u32),
+    destination_origin: (u32, u32),
+) -> Result<(), String> {
+    let fits = |origin: (u32, u32), size: (u32, u32), extent: (u32, u32)| {
+        origin
+            .0
+            .checked_add(size.0)
+            .is_some_and(|end| end <= extent.0)
+            && origin
+                .1
+                .checked_add(size.1)
+                .is_some_and(|end| end <= extent.1)
+    };
+    let source_samples = u64::from(source_size.0) * u64::from(source_size.1) * 4;
+    let destination_samples = u64::from(destination_size.0) * u64::from(destination_size.1) * 4;
+    if !fits(crop_origin, crop_size, source_size)
+        || !fits(destination_origin, crop_size, destination_size)
+        || source.len() as u64 != source_samples * 4
+        || destination.len() as u64 != destination_samples
+    {
+        return Err("Float32 output tile dimensions or readback length are invalid".into());
+    }
+    for row in 0..crop_size.1 {
+        let source_pixel =
+            u64::from(crop_origin.1 + row) * u64::from(source_size.0) + u64::from(crop_origin.0);
+        let destination_pixel = u64::from(destination_origin.1 + row)
+            * u64::from(destination_size.0)
+            + u64::from(destination_origin.0);
+        for sample in 0..u64::from(crop_size.0) * 4 {
+            let at = ((source_pixel * 4 + sample) * 4) as usize;
+            destination[(destination_pixel * 4 + sample) as usize] =
+                decode_output_f32(&source[at..at + 4]);
+        }
+    }
+    Ok(())
 }
 
 /// Render an export without the preview pipeline's half-float input or 8-bit
@@ -2046,6 +2310,8 @@ fn render_precision_with_processor(
     let view = texture.create_view(&Default::default());
     let (pixels, out_width, out_height, _, _) = processor.run(
         &view,
+        None,
+        None,
         width,
         height,
         request,
@@ -2299,6 +2565,8 @@ pub fn process_and_get_dynamic_image(
         false,
         None,
         None,
+        false,
+        None,
     )
 }
 
@@ -2322,6 +2590,8 @@ pub fn process_and_get_dynamic_image_with_precision(
         false,
         None,
         None,
+        false,
+        None,
     )
 }
 
@@ -2336,6 +2606,8 @@ pub fn process_and_get_dynamic_image_with_analytics(
     output_to_display: bool,
     analytics_config: Option<crate::AnalyticsConfig>,
     preview_identity: Option<PreviewIdentity>,
+    mask_key: Option<u64>,
+    retain_input: bool,
 ) -> Result<DynamicImage, String> {
     process_and_get_dynamic_image_inner(
         context,
@@ -2348,7 +2620,30 @@ pub fn process_and_get_dynamic_image_with_analytics(
         output_to_display,
         analytics_config,
         preview_identity,
+        retain_input,
+        mask_key,
     )
+}
+
+fn ordinary_texture_extent(
+    width: u32,
+    height: u32,
+    limit: u32,
+    request: &RenderRequest,
+) -> Result<(u32, u32), String> {
+    validate_precision_request(width, height, u32::MAX, request)?;
+    let rounded = |value: u32| value.checked_add(255).map(|v| v & !255);
+    let (Some(rounded_width), Some(rounded_height)) = (rounded(width), rounded(height)) else {
+        return Err(format!(
+            "GPU render cannot process {width}x{height}; maximum texture dimension is {limit}. Use a supported image size or a high-precision tiled final export."
+        ));
+    };
+    if width == 0 || height == 0 || rounded_width > limit || rounded_height > limit {
+        return Err(format!(
+            "GPU render cannot process {width}x{height}; maximum texture dimension is {limit} (including 256-pixel allocation alignment). Use a supported image size or a high-precision tiled final export."
+        ));
+    }
+    Ok((rounded_width, rounded_height))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2363,6 +2658,8 @@ fn process_and_get_dynamic_image_inner(
     output_to_display: bool,
     analytics_config: Option<crate::AnalyticsConfig>,
     preview_identity: Option<PreviewIdentity>,
+    retain_input: bool,
+    mask_key: Option<u64>,
 ) -> Result<DynamicImage, String> {
     let start_time = Instant::now();
     let cancellation = preview_identity.map(|identity| PreviewCancellation { state, identity });
@@ -2374,15 +2671,7 @@ fn process_and_get_dynamic_image_inner(
     let queue = &context.queue;
 
     let max_dim = context.limits.max_texture_dimension_2d;
-    if width > max_dim || height > max_dim {
-        log::warn!(
-            "Image dimensions ({}x{}) exceed GPU limits ({}). Bypassing GPU processing and returning unprocessed image to prevent a crash. Try upgrading your GPU :)",
-            width,
-            height,
-            max_dim
-        );
-        return Ok(base_image.clone());
-    }
+    let (new_width, new_height) = ordinary_texture_extent(width, height, max_dim, &request)?;
 
     let mut processor_lock = match state.gpu_processor.lock() {
         Ok(guard) => guard,
@@ -2397,11 +2686,16 @@ fn process_and_get_dynamic_image_inner(
         cancel.check()?;
     }
     let mut needs_new_processor = false;
-    let new_width = (width + 255) & !255;
-    let new_height = (height + 255) & !255;
 
     if let Some(p) = processor_lock.as_ref() {
         if p.width < width || p.height < height {
+            needs_new_processor = true;
+        } else if retain_input
+            && !p.processor.renders_single_tile(width, height)
+            && fits_single_tile(new_width, new_height, context)
+        {
+            // A larger render (such as 100% zoom or an export) left a tiled
+            // processor. Rebuild so the preview regains its cached blurs.
             needs_new_processor = true;
         }
     } else {
@@ -2435,52 +2729,38 @@ fn process_and_get_dynamic_image_inner(
     let processor_state = processor_lock.as_ref().unwrap();
     let processor = &processor_state.processor;
 
-    let mut cache_lock = match state.gpu_image_cache.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            log::warn!("GPU image cache lock was poisoned. Resetting to self-heal.");
-            let mut guard = poisoned.into_inner();
-            *guard = None;
-            guard
-        }
-    };
+    let mut cache_lock = state
+        .gpu_image_cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     if let Some(cancel) = &cancellation {
         cancel.check()?;
     }
-    let mut needs_new_cache = false;
+    let is_input = |cache: &GpuImageCache| {
+        cache.transform_hash == transform_hash && cache.width == width && cache.height == height
+    };
+    let cache_hit = cache_lock.get(is_input).is_some();
 
-    if let Some(cache) = &*cache_lock {
-        if cache.transform_hash != transform_hash || cache.width != width || cache.height != height
-        {
-            needs_new_cache = true;
-        }
+    // Only the editor preview retains its input. Thumbnails and exports upload
+    // a transient texture so they never evict the image being edited.
+    let transient_input;
+    let (input_view, input_key) = if cache_hit {
+        let cache = cache_lock.get(is_input).unwrap();
+        (&cache.texture_view, Some(cache.id))
     } else {
-        needs_new_cache = true;
-    }
-
-    if needs_new_cache {
-        let old_cache = cache_lock.take();
-        drop(old_cache);
-
-        let _ = context.device.poll(wgpu::PollType::Wait {
-            submission_index: None,
-            timeout: Some(std::time::Duration::from_millis(500)),
-        });
-
         let img_rgba_f16 = to_rgba_f16(base_image);
         if let Some(cancel) = &cancellation {
             cancel.check()?;
         }
-        let texture_size = wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
         let texture = device.create_texture_with_data(
             queue,
             &wgpu::TextureDescriptor {
                 label: Some("Input Texture"),
-                size: texture_size,
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -2492,24 +2772,36 @@ fn process_and_get_dynamic_image_inner(
             bytemuck::cast_slice(&img_rgba_f16),
         );
         let texture_view = texture.create_view(&Default::default());
-
-        *cache_lock = Some(GpuImageCache {
-            texture,
-            texture_view,
-            width,
-            height,
-            transform_hash,
-        });
-    }
-
-    let cache = cache_lock.as_ref().unwrap();
+        if retain_input {
+            static NEXT_INPUT_ID: std::sync::atomic::AtomicU64 =
+                std::sync::atomic::AtomicU64::new(1);
+            let id = NEXT_INPUT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let cache = cache_lock.insert(
+                GpuImageCache {
+                    texture,
+                    texture_view,
+                    width,
+                    height,
+                    transform_hash,
+                    id,
+                },
+                is_input,
+            );
+            (&cache.texture_view, Some(id))
+        } else {
+            transient_input = (texture, texture_view);
+            (&transient_input.1, None)
+        }
+    };
 
     let skip_readback = output_to_display;
 
     let (processed_pixels, out_w, out_h, out_x, out_y) = processor.run(
-        &cache.texture_view,
-        cache.width,
-        cache.height,
+        input_view,
+        input_key,
+        mask_key,
+        width,
+        height,
         request,
         output_to_display,
         output_precision,
@@ -2866,6 +3158,21 @@ mod preview_display_tests {
 mod precision_tests {
     use super::*;
 
+    #[test]
+    fn ordinary_render_rejects_nonidentity_oversize_and_unaligned_limit() {
+        let mut adjusted = request(None);
+        adjusted.adjustments.global.exposure = 0.75;
+        let error = ordinary_texture_extent(8193, 2, 8192, &adjusted).unwrap_err();
+        assert!(error.contains("8193x2"));
+        assert!(error.contains("8192"));
+        assert_eq!(
+            ordinary_texture_extent(8192, 2, 8192, &adjusted),
+            Ok((8192, 256))
+        );
+        let error = ordinary_texture_extent(8191, 2, 8191, &adjusted).unwrap_err();
+        assert!(error.contains("8191x2"));
+    }
+
     fn request(roi: Option<Roi>) -> RenderRequest<'static> {
         RenderRequest {
             adjustments: crate::image_processing::get_all_adjustments_from_json(
@@ -2959,6 +3266,98 @@ mod precision_tests {
         );
     }
 
+    #[test]
+    fn selected_float32_output_contract_and_readback_layout() {
+        let source = high_precision_shader_source().unwrap();
+        assert!(source.contains("rgba32float, write>"));
+        assert!(!source.contains("rgba16float, write>"));
+        assert_eq!(
+            HIGH_PRECISION_OUTPUT_FORMAT,
+            wgpu::TextureFormat::Rgba32Float
+        );
+        assert_eq!(HIGH_PRECISION_OUTPUT_PIXEL_BYTES, 16);
+        assert_eq!(
+            HIGH_PRECISION_OUTPUT_FORMAT.block_copy_size(None),
+            Some(HIGH_PRECISION_OUTPUT_PIXEL_BYTES)
+        );
+        let padded = readback_layout(3, 2, HIGH_PRECISION_OUTPUT_PIXEL_BYTES, 1024).unwrap();
+        assert_eq!(
+            (
+                padded.row,
+                padded.padded_row,
+                padded.buffer_size,
+                padded.data_len
+            ),
+            (48, 256, 512, 96)
+        );
+        let unpadded = readback_layout(16, 2, HIGH_PRECISION_OUTPUT_PIXEL_BYTES, 1024).unwrap();
+        assert_eq!(
+            (unpadded.row, unpadded.padded_row, unpadded.buffer_size),
+            (256, 256, 512)
+        );
+        assert!(readback_layout(u32::MAX, 2, 16, u64::MAX).is_err());
+        assert!(readback_layout(3, 2, 16, 511).is_err());
+        assert!(readback_layout(0, 2, 16, 1024).is_err());
+    }
+
+    #[test]
+    fn float32_readback_padding_channels_offsets_and_finite_policy() {
+        let layout = readback_layout(3, 2, 16, 1024).unwrap();
+        let mut padded = vec![0xee; layout.buffer_size as usize];
+        let values = [
+            [0.0, 0.25, 0.5, 1.0],
+            [1.5, -0.5, f32::NAN, f32::INFINITY],
+            [f32::NEG_INFINITY, 0.125, 0.75, 0.8],
+            [0.1, 0.2, 0.3, 0.4],
+            [0.2, 0.3, 0.4, 0.5],
+            [0.3, 0.4, 0.5, 0.6],
+        ];
+        for (pixel, channels) in values.iter().enumerate() {
+            let row = pixel / 3;
+            let col = pixel % 3;
+            for (channel, value) in channels.iter().enumerate() {
+                let at = row * layout.padded_row as usize + col * 16 + channel * 4;
+                padded[at..at + 4].copy_from_slice(&value.to_ne_bytes());
+            }
+        }
+        let data = remove_readback_padding(&padded, layout, 2).unwrap();
+        assert_eq!(data.len(), 96);
+        let mut output = vec![7u16; 4 * 3 * 4];
+        copy_f32_tile_to_u16(&data, (3, 2), (1, 0), (2, 2), &mut output, (4, 3), (1, 1)).unwrap();
+        assert_eq!(&output[20..24], &[65535, 0, 0, 0]);
+        assert_eq!(&output[24..28], &[0, 8192, 49151, 52428]);
+        assert_eq!(output[0], 7);
+        assert!(
+            copy_f32_tile_to_u16(
+                &data[..95],
+                (3, 2),
+                (0, 0),
+                (1, 1),
+                &mut output,
+                (4, 3),
+                (0, 0)
+            )
+            .is_err()
+        );
+        assert!(remove_readback_padding(&padded[..511], layout, 2).is_err());
+        let direct = (32769f32 / 65535.0 * 65535.0).round() as u16;
+        assert_eq!(
+            decode_output_f32(&(32769f32 / 65535.0).to_ne_bytes()),
+            direct
+        );
+    }
+
+    #[test]
+    fn former_half_float_output_collapses_precision_ramp() {
+        let levels: std::collections::HashSet<u16> = (32768u16..=34822)
+            .map(|value| {
+                let half = f16::from_f32(value as f32 / 65535.0);
+                (half.to_f32() * 65535.0).round() as u16
+            })
+            .collect();
+        assert_eq!(levels.len(), 65);
+    }
+
     /// Run explicitly on a machine with a GPU adapter. This checks actual GPU
     /// shader execution, row padding, tile/ROI assembly and effect bindings.
     #[test]
@@ -2969,6 +3368,7 @@ mod precision_tests {
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
                 .expect("GPU adapter required for precision integration test");
+        eprintln!("precision GPU adapter: {:?}", adapter.get_info());
         let limits = adapter.limits();
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_limits: limits.clone(),
@@ -2995,11 +3395,57 @@ mod precision_tests {
             .unwrap()
             .map(|pixel| pixel.0[0])
             .collect();
+        eprintln!(
+            "precision ramp: input first/last={}/{}; output first/last={}/{}; distinct first-row levels={}",
+            input.get_pixel(0, 0)[0],
+            input.get_pixel(2054, 0)[0],
+            output.get_pixel(0, 0)[0],
+            output.get_pixel(2054, 0)[0],
+            levels.len()
+        );
         assert!(
             levels.len() > 1500,
             "Only {} levels survived GPU rendering",
             levels.len()
         );
+        let ramp_maximum = output
+            .pixels()
+            .zip(input.pixels())
+            .map(|(actual, expected)| actual.0[0].abs_diff(expected.0[0]))
+            .max()
+            .unwrap();
+        eprintln!("precision ramp maximum u16 error: {ramp_maximum}");
+        for format in ["png", "tiff"] {
+            let bytes = crate::delivery::encode_profiled_raster(
+                &DynamicImage::ImageRgba16(output.clone()),
+                format,
+                16,
+                format == "png",
+            )
+            .unwrap();
+            crate::delivery::verify_raster_header(&bytes, format, (2055, 3), 16).unwrap();
+            assert!(crate::delivery::verify_profile(&bytes, format).unwrap());
+            let decoded = image::load_from_memory(&bytes).unwrap().to_rgb16();
+            assert_eq!(
+                decoded,
+                DynamicImage::ImageRgba16(output.clone()).to_rgb16()
+            );
+            let encoded_levels: std::collections::HashSet<u16> = decoded
+                .rows()
+                .next()
+                .unwrap()
+                .map(|pixel| pixel.0[0])
+                .collect();
+            assert!(
+                encoded_levels.len() > 1500,
+                "{format} preserved only {} levels",
+                encoded_levels.len()
+            );
+            eprintln!(
+                "GPU {format} roundtrip: {} first-row levels, ICC present",
+                encoded_levels.len()
+            );
+        }
         for (actual, expected) in output.pixels().zip(input.pixels()) {
             assert!(
                 actual.0[0].abs_diff(expected.0[0]) <= 8,
@@ -3068,6 +3514,7 @@ mod precision_tests {
             .map(|(a, b)| a.abs_diff(*b))
             .max()
             .unwrap();
+        eprintln!("streamed spatial maximum u16 difference: {maximum}");
         assert!(
             maximum <= 32,
             "Streamed spatial effect/seam mismatch: {maximum}"
@@ -3104,6 +3551,7 @@ mod precision_tests {
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
                 .expect("GPU adapter required");
+        eprintln!("spatial GPU adapter: {:?}", adapter.get_info());
         let limits = adapter.limits();
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_limits: limits.clone(),
@@ -3260,5 +3708,338 @@ mod precision_tests {
             max_stream <= 32,
             "Tall streamed native structure blur differs at seams: {max_stream}"
         );
+    }
+}
+
+/// Timing harness for the interactive preview path. Run on a machine with a GPU:
+/// `cargo test --lib preview_perf_bench -- --ignored --nocapture`
+#[cfg(test)]
+mod preview_perf_bench {
+    use super::*;
+    use crate::lut_processing::Lut;
+    use std::time::Instant;
+
+    fn context() -> GpuContext {
+        let instance =
+            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .expect("GPU adapter required for the preview benchmark");
+        eprintln!("adapter: {:?}", adapter.get_info().name);
+        let limits = adapter.limits();
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: limits.clone(),
+            ..Default::default()
+        }))
+        .unwrap();
+        GpuContext {
+            device: Arc::new(device),
+            queue: Arc::new(queue),
+            limits,
+            display: Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
+    fn source(width: u32, height: u32) -> DynamicImage {
+        DynamicImage::ImageRgb32F(ImageBuffer::from_fn(width, height, |x, y| {
+            let v = ((x * 7 + y * 13) % 997) as f32 / 997.0;
+            image::Rgb([v, (v * 0.8 + 0.1).fract(), 1.0 - v])
+        }))
+    }
+
+    fn wait(context: &GpuContext) {
+        context
+            .device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(30)),
+            })
+            .unwrap();
+    }
+
+    fn time_frames(label: &str, frames: usize, mut frame: impl FnMut(usize)) {
+        frame(0);
+        let start = Instant::now();
+        for i in 1..=frames {
+            frame(i);
+        }
+        let ms = start.elapsed().as_secs_f64() * 1000.0 / frames as f64;
+        eprintln!("{label}: {ms:.2} ms/frame");
+    }
+
+    fn readback(
+        processor: &GpuProcessor,
+        view: &wgpu::TextureView,
+        keys: (Option<u64>, Option<u64>),
+        (width, height): (u32, u32),
+        json: serde_json::Value,
+        masks: &[image::GrayImage],
+        lut: Option<Arc<Lut>>,
+    ) -> Vec<u8> {
+        let mut adjustments =
+            crate::image_processing::get_all_adjustments_from_json(&json, false, None);
+        adjustments.mask_count = masks.len() as u32;
+        let (pixels, ..) = processor
+            .run(
+                view,
+                keys.0,
+                keys.1,
+                width,
+                height,
+                RenderRequest {
+                    adjustments,
+                    mask_bitmaps: masks,
+                    lut,
+                    roi: None,
+                },
+                false,
+                RenderOutputPrecision::EightBit,
+                None,
+            )
+            .unwrap();
+        match pixels {
+            RenderedPixels::U8(pixels) => pixels,
+            RenderedPixels::U16(_) => unreachable!(),
+        }
+    }
+
+    /// Reused blurs, masks and LUTs must produce the same pixels as a fresh
+    /// upload, and a changed mask key must replace the cached layers.
+    #[test]
+    #[ignore = "requires a GPU adapter; run with --ignored"]
+    fn cached_preview_resources_match_fresh_renders() {
+        let context = context();
+        let (width, height) = (1500, 1000);
+        let texels = to_rgba_f16(&source(width, height));
+        let texture = context.device.create_texture_with_data(
+            &context.queue,
+            &wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba16Float,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            },
+            TextureDataOrder::MipMajor,
+            bytemuck::cast_slice(&texels),
+        );
+        let view = texture.create_view(&Default::default());
+        let processor = GpuProcessor::new(context.clone(), 1536, 1024).unwrap();
+        let size = (width, height);
+        let masks = |value| {
+            vec![image::GrayImage::from_fn(width, height, |x, _| {
+                Luma([if x < width / 2 { value } else { 0 }])
+            })]
+        };
+        let lut = Arc::new(Lut {
+            size: 2,
+            data: (0..8)
+                .flat_map(|i| [(i & 1) as f32, 0.5, ((i >> 2) & 1) as f32])
+                .collect(),
+        });
+        let edit = |exposure: f64| {
+            serde_json::json!({
+                "exposure": exposure,
+                "clarity": 40,
+                "structure": 30,
+                "sharpness": 20,
+                "lutIntensity": 50,
+                "masks": [{ "id": "m", "name": "m", "visible": true, "invert": false, "subMasks": [], "adjustments": { "exposure": 1.0 } }]
+            })
+        };
+
+        let fresh = readback(
+            &processor,
+            &view,
+            (None, None),
+            size,
+            edit(0.5),
+            &masks(255),
+            Some(lut.clone()),
+        );
+        let _ = readback(
+            &processor,
+            &view,
+            (Some(1), Some(1)),
+            size,
+            edit(-1.0),
+            &masks(255),
+            Some(lut.clone()),
+        );
+        let reused = readback(
+            &processor,
+            &view,
+            (Some(1), Some(1)),
+            size,
+            edit(0.5),
+            &masks(255),
+            Some(lut.clone()),
+        );
+        assert!(
+            fresh == reused,
+            "cached blur/mask/LUT render differs from a fresh render"
+        );
+
+        let other_masks = readback(
+            &processor,
+            &view,
+            (Some(1), Some(2)),
+            size,
+            edit(0.5),
+            &masks(0),
+            Some(lut.clone()),
+        );
+        let fresh_other = readback(
+            &processor,
+            &view,
+            (None, None),
+            size,
+            edit(0.5),
+            &masks(0),
+            Some(lut),
+        );
+        assert!(
+            other_masks == fresh_other,
+            "a new mask key must upload new layers"
+        );
+        assert!(
+            other_masks != reused,
+            "mask layers had no visible effect in the fixture"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires a GPU adapter; run with --ignored --nocapture"]
+    fn interactive_preview_frame_costs() {
+        let context = context();
+        for (width, height) in [(1920, 1280), (3584, 2389)] {
+            let image = source(width, height);
+            let t = Instant::now();
+            let texels = to_rgba_f16(&image);
+            let convert_ms = t.elapsed().as_secs_f64() * 1000.0;
+            let texture = context.device.create_texture_with_data(
+                &context.queue,
+                &wgpu::TextureDescriptor {
+                    label: Some("Bench Input"),
+                    size: wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                },
+                TextureDataOrder::MipMajor,
+                bytemuck::cast_slice(&texels),
+            );
+            wait(&context);
+            eprintln!(
+                "{width}x{height}: CPU f32->f16 input conversion {convert_ms:.2} ms, upload+convert {:.2} ms",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+            let view = texture.create_view(&Default::default());
+            let (pw, ph) = ordinary_texture_extent(width, height, u32::MAX, &{
+                let r: RenderRequest = RenderRequest {
+                    adjustments: crate::image_processing::get_all_adjustments_from_json(
+                        &serde_json::json!({}),
+                        false,
+                        None,
+                    ),
+                    mask_bitmaps: &[],
+                    lut: None,
+                    roi: None,
+                };
+                r
+            })
+            .unwrap();
+            let t = Instant::now();
+            let processor = GpuProcessor::new(context.clone(), pw, ph).unwrap();
+            eprintln!(
+                "{width}x{height}: processor creation {:.2} ms",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+            let masks: Vec<image::GrayImage> = (0..4)
+                .map(|m| {
+                    image::GrayImage::from_fn(width, height, |x, _| Luma([((x + m) % 256) as u8]))
+                })
+                .collect();
+            let mask_json: Vec<serde_json::Value> = (0..4)
+                .map(|m| serde_json::json!({ "id": format!("m{m}"), "name": "m", "visible": true, "invert": false, "subMasks": [], "adjustments": { "exposure": 0.2 } }))
+                .collect();
+            for (label, reuse_input, mask_count) in [
+                ("slider drag", true, 0),
+                ("slider drag, 4 masks", true, 4),
+                ("new input", false, 0),
+            ] {
+                time_frames(&format!("{width}x{height}: {label}"), 20, |i| {
+                    let mut adjustments = crate::image_processing::get_all_adjustments_from_json(
+                        &serde_json::json!({ "exposure": (i % 10) as f64 * 0.1, "clarity": 20, "masks": mask_json[..mask_count] }),
+                        false,
+                        None,
+                    );
+                    adjustments.mask_count = mask_count as u32;
+                    let input_key = if reuse_input { 1 } else { 2 + i as u64 };
+                    processor
+                        .run(
+                            &view,
+                            Some(input_key),
+                            Some(mask_count as u64),
+                            width,
+                            height,
+                            RenderRequest {
+                                adjustments,
+                                mask_bitmaps: &masks[..mask_count],
+                                lut: None,
+                                roi: None,
+                            },
+                            true,
+                            RenderOutputPrecision::EightBit,
+                            None,
+                        )
+                        .unwrap();
+                    wait(&context);
+                });
+            }
+        }
+
+        for (width, height) in [(1920u32, 1280u32), (3584, 2389)] {
+            let rgba =
+                DynamicImage::ImageRgba8(image::RgbaImage::from_fn(width, height, |x, y| {
+                    image::Rgba([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8, 255])
+                }));
+            let t = Instant::now();
+            let _ = crate::image_processing::calculate_histogram_from_image(&rgba);
+            let hist_ms = t.elapsed().as_secs_f64() * 1000.0;
+            let t = Instant::now();
+            let _ = crate::image_processing::calculate_waveform_from_image(&rgba, Some("luma"));
+            let luma_ms = t.elapsed().as_secs_f64() * 1000.0;
+            let t = Instant::now();
+            let _ = crate::image_processing::calculate_waveform_from_image(&rgba, None);
+            eprintln!(
+                "{width}x{height}: CPU histogram {hist_ms:.2} ms, luma waveform {luma_ms:.2} ms, all scopes {:.2} ms",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+
+        let full = source(6000, 4000);
+        for target in [3584, 1920] {
+            let t = Instant::now();
+            let _ = crate::image_processing::downscale_f32_image(&full, target, target);
+            eprintln!(
+                "6000x4000 -> {target}: CPU downscale {:.2} ms",
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+        }
     }
 }

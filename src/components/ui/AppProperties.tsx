@@ -59,6 +59,7 @@ export enum Invokes {
   GeneratePreviewForPath = 'generate_preview_for_path',
   GenerateMaskOverlay = 'generate_mask_overlay',
   GeneratePresetPreview = 'generate_preset_preview',
+  GenerateComparisonPreview = 'generate_comparison_preview',
   GenerateUncroppedPreview = 'generate_uncropped_preview',
   GetSourceRevision = 'get_source_revision',
   GetFolderTree = 'get_folder_tree',
@@ -82,6 +83,7 @@ export enum Invokes {
   LoadPresets = 'load_presets',
   LoadSettings = 'load_settings',
   MoveFiles = 'move_files',
+  PrefetchImages = 'prefetch_images',
   ReadExifForPaths = 'read_exif_for_paths',
   RemoveTagForPaths = 'remove_tag_for_paths',
   RenameFiles = 'rename_files',
@@ -246,7 +248,6 @@ export interface AppSettings {
   thumbnailAspectRatio?: ThumbnailAspectRatio;
   uiVisibility?: UiVisibility;
   adjustmentVisibility?: { [key: string]: boolean };
-  rawHighlightCompression?: number;
   processingBackend?: string;
   linuxGpuOptimization?: boolean;
   exportPresets?: ExportPreset[];

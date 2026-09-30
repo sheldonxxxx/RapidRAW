@@ -49,12 +49,53 @@ pub struct CachedPreview {
     pub interactive_divisor: f32,
 }
 
+/// Holds the two most recently used entries. The editor alternates between an
+/// interactive and a settled preview size; keeping both avoids rebuilding the
+/// other one on every drag start and release.
+pub struct RecentSlots<T> {
+    entries: VecDeque<T>,
+}
+
+impl<T> Default for RecentSlots<T> {
+    fn default() -> Self {
+        Self {
+            entries: VecDeque::with_capacity(2),
+        }
+    }
+}
+
+impl<T> RecentSlots<T> {
+    const CAPACITY: usize = 2;
+
+    /// Returns the matching entry, marking it most recently used.
+    pub fn get(&mut self, matches: impl Fn(&T) -> bool) -> Option<&T> {
+        let index = self.entries.iter().position(matches)?;
+        let entry = self.entries.remove(index)?;
+        self.entries.push_front(entry);
+        self.entries.front()
+    }
+
+    /// Inserts `entry`, replacing entries it `matches` and evicting the oldest.
+    pub fn insert(&mut self, entry: T, matches: impl Fn(&T) -> bool) -> &T {
+        self.entries.retain(|existing| !matches(existing));
+        self.entries.push_front(entry);
+        self.entries.truncate(Self::CAPACITY);
+        self.entries.front().unwrap()
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
 pub struct GpuImageCache {
     pub texture: Texture,
     pub texture_view: TextureView,
     pub width: u32,
     pub height: u32,
     pub transform_hash: u64,
+    /// Unique per uploaded texture; keys GPU work derived from its pixels.
+    pub id: u64,
 }
 
 pub struct GpuProcessorState {
@@ -236,7 +277,11 @@ pub enum PreviewLane {
     Main,
     Overlay,
     Uncropped,
+    /// The unedited side of the editor's before/after split view.
+    Comparison,
 }
+
+const PREVIEW_LANES: usize = 4;
 
 impl PreviewLane {
     fn index(self) -> usize {
@@ -244,6 +289,7 @@ impl PreviewLane {
             Self::Main => 0,
             Self::Overlay => 1,
             Self::Uncropped => 2,
+            Self::Comparison => 3,
         }
     }
 }
@@ -256,6 +302,7 @@ impl std::str::FromStr for PreviewLane {
             "main" => Ok(Self::Main),
             "overlay" => Ok(Self::Overlay),
             "uncropped" => Ok(Self::Uncropped),
+            "comparison" => Ok(Self::Comparison),
             _ => Err(format!("Unknown preview lane: {value}")),
         }
     }
@@ -271,7 +318,7 @@ pub struct PreviewIdentity {
 #[derive(Default)]
 struct PreviewIntentState {
     generation: usize,
-    revisions: [u64; 3],
+    revisions: [u64; PREVIEW_LANES],
 }
 
 pub struct PreviewCancellation<'a> {
@@ -349,9 +396,9 @@ pub struct AppState {
     pub window_setup_complete: AtomicBool,
     pub gpu_crash_flag_path: Mutex<Option<PathBuf>>,
     pub original_image: Mutex<Option<LoadedImage>>,
-    pub cached_preview: Mutex<Option<CachedPreview>>,
+    pub cached_preview: Mutex<RecentSlots<CachedPreview>>,
     pub gpu_context: Mutex<Option<GpuContext>>,
-    pub gpu_image_cache: Mutex<Option<GpuImageCache>>,
+    pub gpu_image_cache: Mutex<RecentSlots<GpuImageCache>>,
     pub gpu_processor: Mutex<Option<GpuProcessorState>>,
     pub ai_state: Mutex<Option<AiState>>,
     pub ai_init_lock: TokioMutex<()>,
@@ -380,6 +427,7 @@ pub struct AppState {
     pub patched_warped_cache: Mutex<Option<(u64, Arc<DynamicImage>)>>,
     pub full_transformed_cache: Mutex<Option<TransformedImageCache>>,
     pub decoded_image_cache: Mutex<DecodedImageCache>,
+    pub prefetch: crate::prefetch::PrefetchState,
     pub thumbnail_manager: Arc<ThumbnailManager>,
     pub metadata_manager: Arc<MetadataManager>,
     pub disks_cache: Mutex<Option<Disks>>,
@@ -393,9 +441,9 @@ impl Default for AppState {
             window_setup_complete: AtomicBool::new(false),
             gpu_crash_flag_path: Mutex::new(None),
             original_image: Mutex::new(None),
-            cached_preview: Mutex::new(None),
+            cached_preview: Mutex::new(RecentSlots::default()),
             gpu_context: Mutex::new(None),
-            gpu_image_cache: Mutex::new(None),
+            gpu_image_cache: Mutex::new(RecentSlots::default()),
             gpu_processor: Mutex::new(None),
             ai_state: Mutex::new(None),
             ai_init_lock: TokioMutex::new(()),
@@ -427,6 +475,7 @@ impl Default for AppState {
             patched_warped_cache: Mutex::new(None),
             full_transformed_cache: Mutex::new(None),
             decoded_image_cache: Mutex::new(DecodedImageCache::new(5)),
+            prefetch: Default::default(),
             thumbnail_manager: ThumbnailManager::new(),
             metadata_manager: MetadataManager::new(),
             disks_cache: Mutex::new(None),
@@ -447,7 +496,7 @@ impl AppState {
         let generation = self.load_image_generation.fetch_add(1, Ordering::SeqCst) + 1;
         *intents = PreviewIntentState {
             generation,
-            revisions: [0; 3],
+            revisions: [0; PREVIEW_LANES],
         };
         generation
     }
@@ -466,7 +515,7 @@ impl AppState {
         if intents.generation != identity.generation {
             *intents = PreviewIntentState {
                 generation: identity.generation,
-                revisions: [0; 3],
+                revisions: [0; PREVIEW_LANES],
             };
         }
         if let Some(revision) = identity.revision {
@@ -786,5 +835,26 @@ mod preview_asset_cache_tests {
         assert!(cache.retained_keys(&["key".into()]).is_empty());
         cache.clear();
         assert!(cache.epoch() > old_epoch);
+    }
+}
+
+#[cfg(test)]
+mod recent_slots_tests {
+    use super::RecentSlots;
+
+    #[test]
+    fn keeps_two_most_recent_and_replaces_matching_entries() {
+        let mut slots = RecentSlots::default();
+        slots.insert((1, "a"), |e| e.0 == 1);
+        slots.insert((2, "b"), |e| e.0 == 2);
+        assert_eq!(slots.get(|e| e.0 == 1), Some(&(1, "a")));
+        // 2 is now least recently used and is evicted by 3.
+        slots.insert((3, "c"), |e| e.0 == 3);
+        assert!(slots.get(|e| e.0 == 2).is_none());
+        slots.insert((1, "a2"), |e| e.0 == 1);
+        assert_eq!(slots.get(|e| e.0 == 1), Some(&(1, "a2")));
+        assert_eq!(slots.get(|e| e.0 == 3), Some(&(3, "c")));
+        slots.clear();
+        assert!(slots.get(|e| e.0 == 3).is_none());
     }
 }

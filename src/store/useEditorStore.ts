@@ -40,6 +40,13 @@ export interface EditorState {
   uncroppedAdjustedPreviewUrl: string | null;
   interactivePatch: InteractivePatch | null;
   showOriginal: boolean;
+  /** Clipping warnings in the editor preview; a view aid, never saved with the edit. */
+  showClipping: boolean;
+  /** Before/after split view: the unedited photo left of the divider. */
+  splitCompare: boolean;
+  /** Divider position as a fraction of the image width. */
+  splitComparePosition: number;
+  splitComparisonUrl: string | null;
 
   // Analytics
   histogram: ChannelConfig | null;
@@ -107,6 +114,10 @@ export const useEditorStore = create<EditorState>((set) => ({
   comparisonPreviewUrl: null,
   uncroppedAdjustedPreviewUrl: null,
   showOriginal: false,
+  showClipping: false,
+  splitCompare: false,
+  splitComparePosition: 0.5,
+  splitComparisonUrl: null,
   histogram: null,
   waveform: null,
   isWaveformVisible: false,
@@ -150,7 +161,7 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   setEditor: (updater) =>
     set((state) => {
-      const next = typeof updater === 'function' ? updater(state) : updater;
+      let next = typeof updater === 'function' ? updater(state) : updater;
       const switchingImage = 'selectedImage' in next && next.selectedImage?.path !== state.selectedImage?.path;
       const leavingComparison = state.showOriginal && next.showOriginal === false;
       const replacingComparison =
@@ -159,12 +170,20 @@ export const useEditorStore = create<EditorState>((set) => ({
         const oldUrl = state.comparisonPreviewUrl;
         if (oldUrl.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(oldUrl), 500);
       }
+      const leavingSplit = state.splitCompare && next.splitCompare === false;
+      const replacingSplit = 'splitComparisonUrl' in next && next.splitComparisonUrl !== state.splitComparisonUrl;
+      if (state.splitComparisonUrl && (switchingImage || leavingSplit || replacingSplit)) {
+        const oldUrl = state.splitComparisonUrl;
+        setTimeout(() => URL.revokeObjectURL(oldUrl), 500);
+        if (leavingSplit && !replacingSplit) next = { ...next, splitComparisonUrl: null };
+      }
       if (switchingImage) {
         resetPreviewAssetRevisions();
         if (state.interactivePatch?.url) URL.revokeObjectURL(state.interactivePatch.url);
         return {
           finalPreviewUrl: null,
           comparisonPreviewUrl: null,
+          splitComparisonUrl: null,
           uncroppedAdjustedPreviewUrl: null,
           histogram: null,
           waveform: null,

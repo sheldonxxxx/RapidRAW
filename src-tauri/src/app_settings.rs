@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::RwLock;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -457,8 +458,6 @@ pub struct AppSettings {
     #[serde(default)]
     pub copy_paste_settings: CopyPasteSettings,
     #[serde(default)]
-    pub raw_highlight_compression: Option<f32>,
-    #[serde(default)]
     pub processing_backend: Option<String>,
     #[serde(default)]
     pub linux_gpu_optimization: Option<bool>,
@@ -584,7 +583,6 @@ impl Default for AppSettings {
             adjustment_visibility: default_adjustment_visibility(),
             open_tree_sections: default_open_tree_sections(),
             copy_paste_settings: CopyPasteSettings::default(),
-            raw_highlight_compression: Some(2.5),
             processing_backend: Some("auto".to_string()),
             linux_gpu_optimization: Some(false),
             linux_gpu_optimization_migrated_v1: Some(true),
@@ -669,6 +667,17 @@ pub fn load_settings(app_handle: AppHandle) -> Result<AppSettings, String> {
     }
     let path = get_settings_path(&app_handle)?;
 
+    // Preview rendering reads settings for every frame. Serve the last parsed
+    // copy; `save_settings` is the only writer and refreshes it.
+    if let Some((cached_path, settings)) = SETTINGS_CACHE
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        && *cached_path == path
+    {
+        return Ok(settings.clone());
+    }
+
     let mut settings: AppSettings = if path.exists() {
         let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
         serde_json::from_str(&content).unwrap_or_default()
@@ -729,21 +738,42 @@ pub fn load_settings(app_handle: AppHandle) -> Result<AppSettings, String> {
         let _ = fs::write(&path, json_string);
     }
 
+    *SETTINGS_CACHE.write().unwrap_or_else(|e| e.into_inner()) = Some((path, settings.clone()));
     Ok(settings)
 }
+
+static SETTINGS_CACHE: RwLock<Option<(PathBuf, AppSettings)>> = RwLock::new(None);
 
 #[tauri::command]
 pub fn save_settings(settings: AppSettings, app_handle: AppHandle) -> Result<(), String> {
     let path = get_settings_path(&app_handle)?;
     let json_string = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    fs::write(path, json_string).map_err(|e| e.to_string())?;
+    fs::write(&path, json_string).map_err(|e| e.to_string())?;
+    let cache_size = settings.image_cache_size.unwrap_or(5) as usize;
+    *SETTINGS_CACHE.write().unwrap_or_else(|e| e.into_inner()) = Some((path, settings));
 
     let state = app_handle.state::<AppState>();
-    let cache_size = settings.image_cache_size.unwrap_or(5) as usize;
     state
         .decoded_image_cache
         .lock()
         .unwrap()
         .set_capacity(cache_size);
     Ok(())
+}
+
+#[cfg(test)]
+mod obsolete_preference_tests {
+    use super::*;
+
+    #[test]
+    fn old_highlight_compression_preference_is_ignored_and_other_settings_load() {
+        let mut json = serde_json::to_value(AppSettings::default()).unwrap();
+        json["rawHighlightCompression"] = serde_json::json!(7.5);
+        json["editorPreviewResolution"] = serde_json::json!(1234);
+        let restored: AppSettings = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.editor_preview_resolution, Some(1234));
+        let serialized = serde_json::to_value(restored).unwrap();
+        assert!(serialized.get("rawHighlightCompression").is_none());
+        assert_eq!(serialized["editorPreviewResolution"], 1234);
+    }
 }
