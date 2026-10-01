@@ -120,6 +120,28 @@ test('skill client stops on native error instead of executing queued edits', asy
   assert.equal((await readdir(records[0].output_dir)).filter((p) => p.endsWith('.json')).length, 1);
 });
 
+test('skill client can continue after a request rejected before any change', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'rr-skill-rejected-'));
+  const { code, records } = await run(
+    workspace,
+    [
+      { tool: 'set_adjustments', arguments: { session_id: 'example', patch: { bad: 1 } } },
+      { tool: 'get_session', arguments: { session_id: 'example' } },
+    ],
+    ['--on-rejected', 'continue'],
+  );
+  assert.equal(code, 0);
+  assert.equal(records.length, 3);
+  assert.equal(records[1].data.error.code, 'INVALID_ADJUSTMENT');
+  assert.equal(records[2].isError, false);
+});
+
+test('skill client rejects an unknown --on-rejected value', async () => {
+  const workspace = await mkdtemp(join(tmpdir(), 'rr-skill-rejected-arg-'));
+  const { code } = await run(workspace, [], ['--on-rejected', 'ignore']);
+  assert.equal(code, 2);
+});
+
 test('client reads JSON resources selectively and never hides errors behind pick', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'rr-client-resource-'));
   const { code, records } = await run(workspace, [

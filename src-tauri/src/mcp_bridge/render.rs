@@ -3,6 +3,7 @@
 //! native engine. Initially previews render at source resolution then resize, so
 //! detail-dependent effects match final exports exactly.
 mod comparison;
+mod inspection;
 mod review;
 use super::sessions::{Bridge, Session, atomic_write};
 use super::{Result, flag, number, required, validation};

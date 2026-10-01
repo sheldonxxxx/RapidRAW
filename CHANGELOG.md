@@ -4,6 +4,14 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### MCP edit review
+
+- Add `rapidraw_inspect_edit`, a read-only measurement of the rendered edit against an aligned reference with the same crop, geometry and retouching but default tone, colour and no masks. It reports frame brightness, bright and deep-shadow fractions and corner relationships; with a subject mask, subject-to-surround brightness in stops, warmth difference and a rim index for the band just outside the subject. `look_here` regions point at edge bands that differ from the reference relationship and at areas that looked like their neighbours but were treated much differently, such as a mask edge running across one surface or background seen through an open beak. An optional heatmap shows brightness change against the reference with those regions boxed. The results are measurements for an agent to inspect, not an aesthetic score.
+- Add `link` to `rapidraw_mask_duplicate`. A linked inverse copy (`invert: true, link: true`) stays the inverted selection of its source: refinements, brushes, grow and feather changes and added components are copied into it on every MCP edit, while its own name, opacity and adjustments are kept. The link is stored as `linkedInverseOf` on the mask; removing the source leaves an ordinary mask with a warning, and a `mask_update` patch of `{"linkedInverseOf": null}` unlinks it. Edits made in the desktop editor are picked up at the next MCP edit.
+- Add `coordinate_space` to `rapidraw_mask_create`, `rapidraw_mask_update` and `rapidraw_mask_generate`. Positions, rectangles, radii, brush sizes and linear fade widths can be given in full-resolution rendered pixels or in the pixels of an earlier preview; the bridge converts them to the pre-crop mask canvas and reports the conversion.
+- Add `stage: "aligned_original"` to `rapidraw_sample_region`: the photograph with the edit's crop, geometry and retouching but default tone and colour, so one region compares directly with the edited stage.
+- Add `--on-rejected continue` to the skill's MCP client. It keeps the connection after a request the server rejected before changing anything; the default still stops after every error.
+
 ### Editor performance
 
 - Speed up the live preview, measured on an Apple M4. A slider-drag frame drops from 478 ms to 15 ms at 3584 px and from 100 ms to 7 ms at 1920 px. With four local masks it is up to 40× faster (1340 ms to 33 ms). Tone-curve output is bit-identical to before. Linux was not measured.

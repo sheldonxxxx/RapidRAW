@@ -180,6 +180,7 @@ impl Bridge {
             .cloned()
             .ok_or("SESSION_NOT_FOUND: Unknown session")?;
         crate::marigold_depth::sync_orientation(&mut adjustments);
+        let link_warnings = super::mask_links::sync_linked_masks(&mut adjustments)?;
         validation::validate_adjustments(&adjustments, session.dimensions)
             .map_err(|e| format!("INVALID_ADJUSTMENTS: {e}"))?;
         validate_metadata(&metadata)?;
@@ -195,7 +196,10 @@ impl Bridge {
         session.cursor = session.history.len() - 1;
         session.revision += 1;
         self.persist(&session)?;
-        let result = session.info(false);
+        let mut result = session.info(false);
+        if !link_warnings.is_empty() {
+            result["warnings"] = json!(link_warnings);
+        }
         self.sessions.insert(id.into(), session);
         Ok(result)
     }

@@ -463,6 +463,10 @@ fn mask_schema(patch: bool) -> Value {
     props.extend(fields("visible invert", boolean()));
     props.insert("opacity".into(), number(0.0, 100.0));
     props.insert("subMasks".into(), array(submask_schema(), 1, 128));
+    props.insert(
+        super::mask_links::LINK_KEY.into(),
+        json!({"type":"string","minLength":1,"maxLength":256,"description":"Keep this mask's components an inverted copy of the named parent; the bridge refreshes them on every edit."}),
+    );
     let mut required = vec!["id", "name", "visible", "invert", "subMasks"];
     if patch {
         props.insert("prompt".into(), string());
