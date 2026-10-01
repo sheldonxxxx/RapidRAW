@@ -1,28 +1,27 @@
 # Chosen ComfyUI workflows
 
-These are the eleven chosen workflows offered by the RapidRAW connector. Use [connector setup](../README.md) for ordinary editing; RapidRAW then prepares source pixels, computes context, uploads the selection and applies the returned crop at its original coordinates.
+These are the ten chosen workflows offered by the RapidRAW connector. Use [connector setup](../README.md) for ordinary editing; RapidRAW then prepares source pixels, computes context, uploads the selection and applies the returned crop at its original coordinates.
 
-| Workflow                  | Download                                                                                 | Choice in RapidRAW                                 |
-| ------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Klein 4B                  | [API JSON](klein4-v1.api.json)                                                           | Generative profile; 1 MP default, 1 or 2 MP        |
-| Klein 4B closer context   | [API JSON](klein4-tight2mp.api.json)                                                     | Generative profile; 2 MP default, 1 or 2 MP        |
-| Klein 9B KV               | [API JSON](klein9-kv.api.json)                                                           | Generative profile; 1 MP                           |
-| Boogu Edit Turbo          | [API JSON](boogu-turbo4-context.api.json)                                                | Generative profile; 1 MP                           |
-| Klein 4B native edit      | Runtime graph builder only; no standalone API example                                    | Experimental generative profile; 1 or 2 MP         |
-| Qwen Image 2.1            | Runtime graph builder only; no standalone API example                                    | Generative profile; 1 or 2 MP                      |
-| Qwen Image 2.1 Remove     | Runtime graph builder only; no standalone API example                                    | Removal profile; 1 or 2 MP, no prompt needed       |
-| Qwen remove PE            | Runtime graph builder only; no standalone API example                                    | Prompt-enhanced removal; 1 MP                      |
-| Marigold V2 Q4 shared GPU | [Connector template](../rapidraw_connector/depth_profiles/marigold-v2-q4.json)           | Optional Depth Selection mask; fixed 0.67 Comfy MP |
-| Marigold V2 normals Q4    | [Connector template](../rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json) | Optional Shape Light mask                          |
-| Marigold V2 albedo Q4     | [Connector template](../rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json)  | Optional Surface Colour mask                       |
+| Workflow                          | Download                                                                                 | Choice in RapidRAW                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Klein 4B                          | [API JSON](klein4-v1.api.json)                                                           | Generative profile; 1 MP default, 1 or 2 MP                    |
+| Klein 4B closer context           | [API JSON](klein4-tight2mp.api.json)                                                     | Generative profile; 2 MP default, 1 or 2 MP                    |
+| Klein 4B native edit              | Runtime graph builder only; no standalone API example                                    | Experimental generative profile; 1 or 2 MP                     |
+| Qwen Image 2.1                    | Runtime graph builder only; no standalone API example                                    | Generative profile; 1 or 2 MP                                  |
+| Qwen Image 2.1 Remove             | Runtime graph builder only; no standalone API example                                    | Removal profile; 1 or 2 MP, no prompt needed                   |
+| Qwen Image 2.1 Remove (gray fill) | Runtime graph builder only; no standalone API example                                    | Removal profile for large objects; 1 or 2 MP, no prompt needed |
+| Qwen remove PE                    | Runtime graph builder only; no standalone API example                                    | Prompt-enhanced removal; 1 MP                                  |
+| Marigold V2 Q4 shared GPU         | [Connector template](../rapidraw_connector/depth_profiles/marigold-v2-q4.json)           | Optional Depth Selection mask; fixed 0.67 Comfy MP             |
+| Marigold V2 normals Q4            | [Connector template](../rapidraw_connector/surface_profiles/marigold-v2-normals-q4.json) | Optional Shape Light mask                                      |
+| Marigold V2 albedo Q4             | [Connector template](../rapidraw_connector/surface_profiles/marigold-v2-albedo-q4.json)  | Optional Surface Colour mask                                   |
 
-The eight generative profiles come from the connector's [runtime graph builder](../rapidraw_connector/workflows.py), using its [profile configurations](../profiles/profiles.json). The Klein and Boogu rows above also have exported API examples; the native-edit and Qwen rows are runtime-builder-only. The Marigold links are the actual runtime templates, so there is no separate copy to drift from the connector.
+The seven generative profiles come from the connector's [runtime graph builder](../rapidraw_connector/workflows.py), using its [profile configurations](../profiles/profiles.json). The Klein 4B rows above also have exported API examples; the native-edit and Qwen rows are runtime-builder-only. The Marigold links are the actual runtime templates, so there is no separate copy to drift from the connector.
 
 ## Tested versions and dependencies
 
 Generative workflows were evaluated on ComfyUI commit `c75d8c966c29cb0392259af791f43373315b72db`. Marigold and the subsequent shared-server regression used `36da3ff763687eab86a35e1019995dd1fb369b0d`. See the [ComfyUI guide](../../docs/comfyui.md#tested-versions) for exact dependency revisions and acceptance scope.
 
-- Klein and Boogu generative profiles need native ComfyUI nodes and the weights listed in [model requirements](../README.md#requirements). Qwen Image 2.1 additionally needs `TextEncodeQwenImage21` and `QwenImage21Cache` plus its [models and weights](../README.md#qwen-image-21).
+- Klein generative profiles need native ComfyUI nodes and the weights listed in [model requirements](../README.md#requirements). Qwen Image 2.1 additionally needs `TextEncodeQwenImage21` and `QwenImage21Cache` plus its [models and weights](../README.md#qwen-image-21).
 - Marigold needs native Marigold V2 nodes, `SaveImageAdvanced`, ComfyUI-GGUF and the [optional scoped sampler](../comfy-nodes/rapidraw_marigold/__init__.py). Follow [Marigold setup](../MARIGOLD.md#set-up-the-existing-server).
 - [catalog.json](catalog.json) records each graph's SHA-256, required node classes, model filenames and tested Comfy revision. [models.json](models.json) contains recorded model download revisions and checksums. Weights are not included; check each model's license.
 
@@ -33,7 +32,7 @@ These files use **ComfyUI API prompt format**, not the UI canvas format. Submit 
 For a standalone generative example:
 
 1. Provide `source.png` and `selection.png` in ComfyUI's input directory, or replace both `LoadImage.image` values with your uploaded filenames. The example canvas is 1024 × 1024. `selection.png` must be RGBA: **alpha 255 selects the edit and alpha 0 protects the source**. RGB colour is irrelevant. The graph deliberately inverts Comfy's `LoadImage` mask output to recover that selection support.
-2. Replace the placeholder text in `CLIPTextEncode` or `TextEncodeBooguEdit`. Preserve intended negative conditioning: the Klein graphs zero it; Boogu receives a separate negative prompt.
+2. Replace the placeholder text in `CLIPTextEncode`. The Klein graphs zero the negative conditioning, so keep that branch as supplied.
 3. If your input has other dimensions, change the paired source/mask `ImageCrop` bounds together. Keep `ImageScale`, latent dimensions and scheduler dimensions consistent with the generation size. Dimensions should be divisible by 16; the production connector computes these values from the selection and advertised MP budget.
 4. Keep an explicit seed for comparisons. Submit `{"prompt": GRAPH_OBJECT}` as JSON to `/prompt`; read the returned `prompt_id`, wait for `/history/<prompt_id>`, then retrieve output with `/view`. The generative output node is `99`.
 

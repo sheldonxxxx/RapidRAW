@@ -4,6 +4,11 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### MCP retouch
+
+- Add `replace_patch_id` to `retouch` for local inpaint and generative patches. It regenerates an existing patch in place, keeping its position, instead of appending another one, so alternatives with different seeds, profiles or prompts no longer need a fork per attempt or a stack of hidden patches. The patch's own pixels are excluded from the conditioning image, matching desktop regeneration. Selection, prompt, removal controls and generation settings are inherited unless supplied; the seed is not, so each call draws a new alternative unless one is named. The result reports the replaced receipt as `previous_generation`. Manual clone, heal, retouch and liquify patches cannot be replaced this way.
+- Decide whether generative `retouch` needs a prompt from the connector's advertised `requires_prompt` for the chosen (or default) workflow, as the desktop already does, instead of recognising only `qwen21-remove-v1`. Prompt-free removal workflows added to a connector no longer need a prompt from MCP callers. If the connector cannot be queried, the previous `qwen21-remove-v1` rule applies.
+
 ### Editor performance
 
 - Speed up the live preview, measured on an Apple M4. A slider-drag frame drops from 478 ms to 15 ms at 3584 px and from 100 ms to 7 ms at 1920 px. With four local masks it is up to 40× faster (1340 ms to 33 ms). Tone-curve output is bit-identical to before. Linux was not measured.
@@ -61,6 +66,8 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ### Generative editing
 
+- Remove the **Klein 9B KV** and **Boogu Edit Turbo** connector profiles, their exported API graphs, model manifest entries and the now-unused Boogu workflow family and Klein KV-cache option. Use Klein 4B (closer context) or Qwen Image 2.1 instead. A catalog that still lists either profile must drop it before the connector will start.
+- Add the `qwen21-remove-fill-v1` connector profile, "Qwen Image 2.1 · Remove (gray fill)". It paints the selection flat gray in the generation input and asks Qwen Image 2.1 to fill it with the surrounding scene, so large or dominant objects that the prompt-free `qwen21-remove-v1` leaves in place are removed. It is prompt-free, uses the same Qwen model files and keeps the original photograph as the final composite.
 - Add **Qwen remove PE** as a separate 1 MP workflow. PE expands a short removal request from the crop and selection guide without referring to the guide; Qwen receives the PE instruction unchanged and only the photo crop as an image input. RapidRAW still composites through the original selection.
 
 ### Release process

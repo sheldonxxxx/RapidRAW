@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 from rapidraw_connector.config import Settings, load_catalog, select_profile
 from rapidraw_connector.app import create_app, parse_pe_prompt
-from rapidraw_connector.workflows import REMOVE_PROMPT, build_pe_workflow, build_workflow
+from rapidraw_connector.workflows import REMOVE_FILL_PROMPT, REMOVE_PROMPT, build_pe_workflow, build_workflow
 from rapidraw_connector.geometry import geometry
 from PIL import Image
 
@@ -77,6 +77,39 @@ class Qwen21Tests(unittest.TestCase):
                 self.assertEqual(receipt['prompt'],'')
                 self.assertEqual(receipt['effective_prompt'],REMOVE_PROMPT)
                 self.assertEqual(receipt['config']['task'],'remove')
+
+    def test_fill_removal_paints_selection_gray_before_generation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            app=create_app(Settings(root,ROOT/'profiles',root/'state'))
+            seen={}
+            async def generate(settings, graph, output_node, on_event):
+                seen['source']=graph['30']['inputs']['image']
+                seen['prompt']=graph['7']['inputs']['prompt']
+                seen['filled']=Image.open(settings.input_dir/seen['source']).convert('RGB')
+                return self._png(Image.new('RGB',(graph['51']['inputs']['width'],graph['51']['inputs']['height']),(200,50,50))), 'id',{}
+            app.state.execute=AsyncMock(side_effect=generate)
+            with TestClient(app) as client:
+                caps=client.get('/capabilities').json()['generation']['profiles']
+                self.assertFalse(next(p for p in caps if p['id']=='qwen21-remove-fill-v1')['requires_prompt'])
+                source_id='b'*64
+                source=io.BytesIO();Image.new('RGB',(320,320),(200,50,50)).save(source,format='PNG')
+                self.assertEqual(client.post('/upload_source',data={'source_id':source_id},files={'file':('source.png',source.getvalue(),'image/png')}).status_code,200)
+                mask=Image.new('L',(320,320),0);mask.paste(255,(120,120,200,200))
+                payload={'source_id':source_id,'profile':'qwen21-remove-fill-v1','mask_image_base64':base64.b64encode(self._png(mask)).decode(),'seed':42}
+                self.assertEqual(client.post('/inpaint',json={**payload,'prompt':'replace with bird'}).status_code,400)
+                response=client.post('/inpaint',json=payload)
+                self.assertEqual(response.status_code,200,response.text[:300])
+                request_id=response.json()['generation']['request_id']
+                receipt=json.loads((root/'state/receipts'/request_id/'receipt.json').read_text())
+            self.assertTrue(seen['source'].endswith('-filled.png'))
+            self.assertEqual(seen['prompt'],REMOVE_FILL_PROMPT)
+            self.assertEqual(seen['filled'].getpixel((160,160)),(128,128,128))
+            self.assertEqual(seen['filled'].getpixel((10,10)),(200,50,50))
+            self.assertEqual(receipt['effective_prompt'],REMOVE_FILL_PROMPT)
+            self.assertEqual(receipt['config']['task'],'remove_fill')
+            self.assertTrue((root/'state/receipts'/request_id/'filled.png').is_file())
+            self.assertEqual(Image.open(root/'state/receipts'/request_id/'source.jpg').getpixel((160,160)),(200,50,50))
 
     def test_multi_reference_request_reaches_qwen_and_receipts(self):
         with tempfile.TemporaryDirectory() as directory:

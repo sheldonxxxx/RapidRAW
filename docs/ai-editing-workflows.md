@@ -8,16 +8,17 @@ Workflow, AI resolution and seed controls require a [current build of this fork]
 
 ## Choose an included profile
 
-The bundled catalog contains four profiles. Install their required models and enable the entries you use:
+The bundled catalog contains the profiles below, plus an experimental Klein 4B native edit and the Qwen remove PE workflow. Install their required models and enable the entries you use:
 
-| Profile                     | Use it for                                                                  | Default / supported AI resolution |
-| --------------------------- | --------------------------------------------------------------------------- | --------------------------------- |
-| **Klein 4B**                | First attempt for removal, creative recolouring and instruction edits       | 1 MP / 1 or 2 MP                  |
-| **Klein 4B closer context** | Isolated subjects needing less context; retain useful landmarks             | 2 MP / 1 or 2 MP                  |
-| **Klein 9B KV**             | A bounded alternative when Klein 4B struggles with an instruction           | 1 MP / 1 MP                       |
-| **Boogu Edit Turbo**        | Another instruction-edit alternative, including adding or replacing objects | 1 MP / 1 MP                       |
+| Profile                               | Use it for                                                                                                                                         | Default / supported AI resolution |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| **Klein 4B**                          | First attempt for removal, creative recolouring and instruction edits                                                                              | 1 MP / 1 or 2 MP                  |
+| **Klein 4B closer context**           | Isolated subjects needing less context; retain useful landmarks                                                                                    | 2 MP / 1 or 2 MP                  |
+| **Qwen Image 2.1**                    | Instruction edits that Klein 4B misses: recolouring, replacing or adding objects                                                                   | 1 MP / 1 or 2 MP                  |
+| **Qwen Image 2.1 Remove**             | Prompt-free object removal that continues the surrounding scene                                                                                    | 1 MP / 1 or 2 MP                  |
+| **Qwen Image 2.1 Remove (gray fill)** | Prompt-free removal of large or dominant objects that plain Remove leaves in place; can invent scenery when little context surrounds the selection | 1 MP / 1 or 2 MP                  |
 
-Check the [model requirements and licenses](../ai-connector/README.md#requirements), especially for commercial use of Klein 9B KV.
+Check the [model requirements and licenses](../ai-connector/README.md#requirements) before deployment.
 
 ## Remove objects and preserve structure
 

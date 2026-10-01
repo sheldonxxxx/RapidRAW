@@ -11,16 +11,6 @@
       "config": "configs/klein4-tight2mp.json",
       "megapixels": [1, 2]
     },
-    "klein9-kv": {
-      "label": "Klein 9B KV",
-      "config": "configs/klein9-kv.json",
-      "megapixels": [1]
-    },
-    "boogu-turbo4-context": {
-      "label": "Boogu Edit Turbo",
-      "config": "configs/boogu-turbo4-context.json",
-      "megapixels": [1]
-    },
     "klein4-native-v1": {
       "label": "Experimental: Klein 4B native edit, local reference",
       "config": "configs/klein4-native-v1.json",
@@ -32,8 +22,13 @@
       "megapixels": [1, 2]
     },
     "qwen21-remove-v1": {
-      "label": "Qwen Image 2.1 · Remove",
+      "label": "Qwen Image 2.1 \u00b7 Remove",
       "config": "configs/qwen21-remove-v1.json",
+      "megapixels": [1, 2]
+    },
+    "qwen21-remove-fill-v1": {
+      "label": "Qwen Image 2.1 \u00b7 Remove (gray fill)",
+      "config": "configs/qwen21-remove-fill-v1.json",
       "megapixels": [1, 2]
     },
     "qwen21-remove-pe-v1": {

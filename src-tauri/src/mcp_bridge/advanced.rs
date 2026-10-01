@@ -43,6 +43,48 @@ fn generation_options(
     Ok(Some(options))
 }
 
+/// The connector's own `/capabilities` decide whether a profile takes a prompt; the
+/// first removal profile id is the fallback for a connector that cannot be queried.
+async fn connector_profile_is_prompt_free(address: &str, profile: Option<&str>) -> bool {
+    match crate::ai_commands::get_ai_connector_capabilities(address.to_string(), None).await {
+        Ok(Some(capabilities)) => capabilities.requires_prompt(profile) == Some(false),
+        _ => profile == Some("qwen21-remove-v1"),
+    }
+}
+
+/// The existing generative or local-inpaint patch that `retouch` regenerates in place.
+fn replaceable_patch<'a>(adjustments: &'a Value, id: &str) -> Result<&'a Value> {
+    let patch = adjustments["aiPatches"]
+        .as_array()
+        .and_then(|patches| patches.iter().find(|patch| patch["id"] == id))
+        .ok_or_else(|| format!("PATCH_NOT_FOUND: No AI patch with id '{id}' in this session"))?;
+    let manual = patch["subMasks"].as_array().is_some_and(|submasks| {
+        submasks.iter().any(|submask| {
+            ["clone", "heal", "retouch", "liquify"]
+                .iter()
+                .any(|kind| submask["type"] == *kind)
+        })
+    });
+    if manual {
+        return Err("INVALID_ARGUMENT: replace_patch_id supports only inpaint and generative patches; redo clone, heal, retouch and liquify patches with their own mode".into());
+    }
+    Ok(patch)
+}
+
+/// Settings a regeneration keeps from the patch it replaces. The seed is dropped
+/// so each regeneration is a new alternative unless the caller names one.
+fn inherited_generation_options(
+    previous: &Value,
+) -> Result<Option<crate::ai_connector::GenerationOptions>> {
+    let Some(value) = previous.get("generationOptions").filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let mut options: crate::ai_connector::GenerationOptions = serde_json::from_value(value.clone())
+        .map_err(|error| format!("INVALID_PATCH_RESULT: saved generationOptions: {error}"))?;
+    options.seed = None;
+    Ok((options != crate::ai_connector::GenerationOptions::default()).then_some(options))
+}
+
 fn model_assets(kind: &str) -> Result<Vec<(&'static str, &'static str)>> {
     Ok(match kind {
         "masks" => vec![
@@ -763,17 +805,48 @@ impl Bridge {
         {
             return Err("INVALID_ARGUMENT: unknown retouch mode".into());
         }
-        let generation_options = generation_options(params, mode)?;
-        let removal_options = params
-            .get("removal_options")
-            .map(|value| {
-                let options: crate::inpainting::removal::RemovalOptions =
-                    serde_json::from_value(value.clone())
-                        .map_err(|error| format!("INVALID_ARGUMENT: removal_options: {error}"))?;
-                options.validate()?;
-                Ok::<_, String>(options)
-            })
+        let replace_id = match params.get("replace_patch_id") {
+            None => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .filter(|id| !id.is_empty())
+                    .ok_or("INVALID_ARGUMENT: replace_patch_id must be a non-empty string")?,
+            ),
+        };
+        if replace_id.is_some() && !["inpaint", "generative"].contains(&mode) {
+            return Err(
+                "INVALID_ARGUMENT: replace_patch_id requires inpaint or generative mode".into(),
+            );
+        }
+        // Fields left out of a regeneration come from the patch it replaces.
+        let previous = replace_id
+            .map(|id| replaceable_patch(&session.current().adjustments, id).cloned())
             .transpose()?;
+        let generation_options = match generation_options(params, mode)? {
+            Some(options) => Some(options),
+            None if mode == "generative" => previous
+                .as_ref()
+                .map(inherited_generation_options)
+                .transpose()?
+                .flatten(),
+            None => None,
+        };
+        let removal_options = match params.get("removal_options") {
+            Some(value) => Some(value.clone()),
+            None => previous
+                .as_ref()
+                .and_then(|patch| patch.get("removalOptions"))
+                .filter(|value| !value.is_null())
+                .cloned(),
+        }
+        .map(|value| {
+            let options: crate::inpainting::removal::RemovalOptions = serde_json::from_value(value)
+                .map_err(|error| format!("INVALID_ARGUMENT: removal_options: {error}"))?;
+            options.validate()?;
+            Ok::<_, String>(options)
+        })
+        .transpose()?;
         let preview_only = match params.get("preview_only") {
             None => false,
             Some(value) => value
@@ -785,9 +858,18 @@ impl Bridge {
             return Err("INVALID_ARGUMENT: removal_options and preview_only require inpaint or generative mode".into());
         }
 
-        let submasks = params["sub_masks"]
-            .as_array()
-            .ok_or("INVALID_ARGUMENT: sub_masks must be an array")?;
+        let submasks = match (params.get("sub_masks"), &previous) {
+            (Some(value), _) => value.as_array(),
+            (None, Some(patch)) => patch["subMasks"].as_array(),
+            (None, None) => None,
+        }
+        .ok_or("INVALID_ARGUMENT: sub_masks must be an array unless replace_patch_id names an existing patch")?
+        .clone();
+        let prompt = params["prompt"]
+            .as_str()
+            .or_else(|| previous.as_ref().and_then(|patch| patch["prompt"].as_str()))
+            .unwrap_or("")
+            .to_string();
         if submasks.is_empty() || submasks.len() > 64 {
             return Err("INVALID_ARGUMENT: require 1..64 sub_masks".into());
         }
@@ -798,9 +880,17 @@ impl Bridge {
                 "INVALID_ARGUMENT: {mode} requires at least one submask of type '{mode}'"
             ));
         }
-        let id = uuid::Uuid::new_v4().to_string();
-        let name = params["name"].as_str().unwrap_or(mode);
-        let mut patch = json!({"id":id,"name":name,"visible":true,"invert":false,"opacity":100,"prompt":params["prompt"].as_str().unwrap_or(""),"subMasks":submasks});
+        let id = replace_id.map_or_else(|| uuid::Uuid::new_v4().to_string(), str::to_string);
+        let name = params["name"]
+            .as_str()
+            .or_else(|| previous.as_ref().and_then(|patch| patch["name"].as_str()))
+            .unwrap_or(mode);
+        let (invert, opacity) = previous
+            .as_ref()
+            .map_or((json!(false), json!(100)), |patch| {
+                (patch["invert"].clone(), patch["opacity"].clone())
+            });
+        let mut patch = json!({"id":id,"name":name,"visible":true,"invert":invert,"opacity":opacity,"prompt":prompt,"subMasks":submasks});
         if let Some(options) = &generation_options {
             patch["generationOptions"] = json!(options);
         }
@@ -846,22 +936,19 @@ impl Bridge {
                     "INVALID_ARGUMENT: cloud generative retouch requires a request token".into(),
                 );
             }
-            let prompt_free_removal = generation_options
+            let profile = generation_options
                 .as_ref()
-                .and_then(|options| options.profile.as_deref())
-                == Some("qwen21-remove-v1");
-            if prompt_free_removal
-                && params["prompt"]
-                    .as_str()
-                    .is_some_and(|text| !text.trim().is_empty())
-            {
-                return Err("INVALID_ARGUMENT: Qwen Remove does not accept a text prompt".into());
+                .and_then(|options| options.profile.as_deref());
+            let prompt_free_removal = match &settings.ai_connector_address {
+                Some(address) if settings.ai_provider.as_deref() == Some("ai-connector") => {
+                    connector_profile_is_prompt_free(address.trim(), profile).await
+                }
+                _ => false,
+            };
+            if prompt_free_removal && !prompt.trim().is_empty() {
+                return Err("INVALID_ARGUMENT: Qwen Remove does not accept a text prompt; pass prompt \"\" when replacing a prompted patch".into());
             }
-            if !prompt_free_removal
-                && params["prompt"]
-                    .as_str()
-                    .is_none_or(|text| text.trim().is_empty())
-            {
+            if !prompt_free_removal && prompt.trim().is_empty() {
                 return Err("INVALID_ARGUMENT: generative retouch requires a prompt".into());
             }
         }
@@ -925,14 +1012,36 @@ impl Bridge {
         if !next["aiPatches"].is_array() {
             next["aiPatches"] = json!([]);
         }
-        next["aiPatches"].as_array_mut().unwrap().push(patch);
+        let patches = next["aiPatches"].as_array_mut().unwrap();
+        let mut previous_generation = None;
+        if let Some(replaced) = replace_id {
+            let slot = patches
+                .iter_mut()
+                .find(|existing| existing["id"] == replaced)
+                .ok_or_else(|| format!("PATCH_NOT_FOUND: No AI patch with id '{replaced}'"))?;
+            previous_generation = slot["patchData"].get("generation").cloned();
+            *slot = patch;
+        } else {
+            patches.push(patch);
+        }
+        let verb = if replace_id.is_some() {
+            "Regenerated"
+        } else {
+            "Applied"
+        };
         let mut result = self.commit(
             &session.id,
             next,
             session.current().metadata.clone(),
-            &format!("Applied {mode} patch"),
+            &format!("{verb} {mode} patch"),
         )?;
         result["patch_id"] = json!(id);
+        if replace_id.is_some() {
+            result["replaced_patch_id"] = json!(id);
+            if let Some(generation) = previous_generation {
+                result["previous_generation"] = generation;
+            }
+        }
         result["mask_statistics"] = mask_statistics(&bitmap);
         result["image"] = image_reply(&bitmap)?;
         result["remote_generation"] = json!(mode == "generative");
@@ -1311,6 +1420,41 @@ mod tests {
                 generation_options(&json!({"generation_options":invalid}), "generative").is_err()
             );
         }
+    }
+    #[test]
+    fn replacement_targets_only_existing_inpaint_patches() {
+        let adjustments = json!({"aiPatches":[
+            {"id":"gen","subMasks":[{"type":"radial"}]},
+            {"id":"clone","subMasks":[{"type":"radial"},{"type":"clone"}]}
+        ]});
+        assert_eq!(replaceable_patch(&adjustments, "gen").unwrap()["id"], "gen");
+        assert!(
+            replaceable_patch(&adjustments, "missing")
+                .unwrap_err()
+                .starts_with("PATCH_NOT_FOUND")
+        );
+        assert!(
+            replaceable_patch(&adjustments, "clone")
+                .unwrap_err()
+                .starts_with("INVALID_ARGUMENT")
+        );
+        assert!(replaceable_patch(&json!({}), "gen").is_err());
+    }
+    #[test]
+    fn regeneration_keeps_saved_settings_but_draws_a_new_seed() {
+        let saved = json!({"generationOptions":{"seed":7,"profile":"klein4-v1","megapixels":2}});
+        let inherited = inherited_generation_options(&saved).unwrap().unwrap();
+        assert_eq!(inherited.seed, None);
+        assert_eq!(inherited.profile.as_deref(), Some("klein4-v1"));
+        assert_eq!(inherited.megapixels, Some(2.0));
+        for empty in [
+            json!({}),
+            json!({"generationOptions":null}),
+            json!({"generationOptions":{"seed":7}}),
+        ] {
+            assert!(inherited_generation_options(&empty).unwrap().is_none());
+        }
+        assert!(inherited_generation_options(&json!({"generationOptions":{"unknown":1}})).is_err());
     }
     #[test]
     fn subject_regions_are_validated_before_native_inference() {

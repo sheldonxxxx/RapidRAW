@@ -1,9 +1,18 @@
-"""Pure ComfyUI graphs for Klein, Boogu and Qwen edit profiles."""
+"""Pure ComfyUI graphs for Klein and Qwen edit profiles."""
 
 REMOVE_PROMPT = ('Remove the object from the selected area completely. Fill the area with only '
                  'the surrounding natural background, continuing its texture, structure, '
                  'lighting and colour. No part, silhouette or shadow of the removed object '
                  'remains. Keep all other scene content unchanged.')
+
+
+REMOVE_FILL_PROMPT = ('Fill the flat gray area with the natural surrounding scene so it blends seamlessly, '
+                      'continuing the structures, texture and lighting around it.')
+FIXED_PROMPTS = {'remove': REMOVE_PROMPT, 'remove_fill': REMOVE_FILL_PROMPT}
+
+
+def prompt_free(config):
+    return config.get('task') in FIXED_PROMPTS
 
 
 def qwen_reference_prompt(prompt, count):
@@ -23,7 +32,7 @@ def qwen_reference_prompt(prompt, count):
 
 
 def supports_reference(config):
-    return config['family'] in ('klein', 'qwen21') and config.get('task') not in ('remove', 'remove_pe')
+    return config['family'] in ('klein', 'qwen21') and config.get('task') not in ('remove', 'remove_fill', 'remove_pe')
 
 
 PE_SYSTEM_PROMPT = '''You rewrite image-editing requests for a Qwen image editor. The first image is the source photograph. The second image is an aligned black-and-white selection guide: white indicates the area to repair and black indicates content to retain. Use this guide to identify the requested objects, but write an instruction that describes the edit directly from the photograph. Preserve the scene, viewpoint, lighting, and all untargeted subjects. Describe a natural replacement for removed content that matches its surroundings. Do not mention the guide, a mask, selection, image numbers, white or black regions, or pixels in the rewritten instruction. Do not add objects or invent a different edit. Return only a JSON object with keys "rewritten_prompt", "wh_ratio", and "ratio_follow". Set "wh_ratio" to "" and "ratio_follow" to "<image1>".'''
@@ -76,12 +85,12 @@ def build_workflow(source_name, mask_name, prompt, seed, geometry, config, refer
     family = c['family']
     if reference_names and not supports_reference(c):
         raise ValueError('This workflow does not support a reference image')
-    if family not in ('klein', 'boogu', 'qwen21'):
+    if family not in ('klein', 'qwen21'):
         raise ValueError('Unsupported generation family')
     pure_noise = bool(c.get('pure_noise_output', False))
     if pure_noise and family != 'klein':
         raise ValueError('Pure-noise native edit requires a Klein profile')
-    effective_prompt = REMOVE_PROMPT if c.get('task') == 'remove' else prompt
+    effective_prompt = FIXED_PROMPTS.get(c.get('task'), prompt)
 
     def node(number, kind, **inputs):
         workflow[str(number)] = {'class_type': kind, 'inputs': inputs}
@@ -115,17 +124,11 @@ def build_workflow(source_name, mask_name, prompt, seed, geometry, config, refer
         denoise_mask = node(55, 'ImageToMask', image=mask_scaled, channel='red')
     model = node(1, 'UNETLoader', unet_name=c['model'], weight_dtype=c.get('weight_dtype', 'default'))
     vae = node(3, 'VAELoader', vae_name=c['vae'])
-    clip = node(2, 'CLIPLoader', clip_name=c['text_encoder'], type='flux2' if family == 'klein' else 'boogu', device=c.get('encoder_device', 'default'))
-    if c.get('kv_cache'):
-        model = node(5, 'FluxKVCache', model=model)
+    clip = node(2, 'CLIPLoader', clip_name=c['text_encoder'], type='flux2', device=c.get('encoder_device', 'default'))
     if c.get('shift') is not None:
         model = node(6, 'ModelSamplingAuraFlow', model=model, shift=float(c['shift']))
-    if family == 'boogu':
-        node(7, 'TextEncodeBooguEdit', clip=clip, prompt=effective_prompt, negative_prompt=c.get('negative_prompt', ''), vae=vae, **{'images.image_1': pixels})
-        positive, negative = ['7', 0], ['7', 1]
-    else:
-        positive = node(7, 'CLIPTextEncode', clip=clip, text=effective_prompt)
-        negative = node(8, 'ConditioningZeroOut', conditioning=positive)
+    positive = node(7, 'CLIPTextEncode', clip=clip, text=effective_prompt)
+    negative = node(8, 'ConditioningZeroOut', conditioning=positive)
     encoded = node(56, 'VAEEncode', pixels=pixels, vae=vae)
     if pure_noise:
         # Native-edit output canvas starts from pure noise; the local context
@@ -134,7 +137,7 @@ def build_workflow(source_name, mask_name, prompt, seed, geometry, config, refer
     elif c.get('mode', 'masked') == 'masked':
         latent = node(57, 'SetLatentNoiseMask', samples=encoded, mask=denoise_mask)
     elif c['mode'] == 'context':
-        latent = node(57, 'EmptyFlux2LatentImage' if family == 'klein' else 'EmptyLatentImage', width=g['gen_width'], height=g['gen_height'], batch_size=1)
+        latent = node(57, 'EmptyFlux2LatentImage', width=g['gen_width'], height=g['gen_height'], batch_size=1)
     else:
         raise ValueError('Unsupported generation mode')
     if family == 'klein':
@@ -152,8 +155,6 @@ def build_workflow(source_name, mask_name, prompt, seed, geometry, config, refer
         sampler = node(61, 'KSamplerSelect', sampler_name=c.get('sampler', 'euler'))
         sigmas = node(62, 'Flux2Scheduler', steps=int(c['steps']), width=g['gen_width'], height=g['gen_height'])
         latent = node(63, 'SamplerCustomAdvanced', noise=noise, guider=guider, sampler=sampler, sigmas=sigmas, latent_image=latent)
-    else:
-        latent = node(63, 'KSampler', model=model, seed=int(seed), steps=int(c['steps']), cfg=float(c['cfg']), sampler_name=c.get('sampler', 'euler'), scheduler=c.get('scheduler', 'simple'), positive=positive, negative=negative, latent_image=latent, denoise=float(c.get('denoise', 1)))
     decoded = node(64, 'VAEDecode', samples=latent, vae=vae)
     node(99, 'PreviewImage', images=decoded)
     result = dict(workflow=workflow, output_node='99', output_kind='generation')

@@ -485,6 +485,18 @@ fn prompt_required_by_default() -> bool {
     true
 }
 
+impl AiGenerationCapabilities {
+    /// Whether the named profile (or the connector default) needs a text prompt.
+    /// `None` when the connector does not advertise that profile.
+    pub fn requires_prompt(&self, profile: Option<&str>) -> Option<bool> {
+        let id = profile.unwrap_or(&self.default_profile);
+        self.profiles
+            .iter()
+            .find(|entry| entry.id == id)
+            .map(|entry| entry.requires_prompt)
+    }
+}
+
 fn parse_generation_capabilities(
     value: serde_json::Value,
 ) -> Result<Option<AiGenerationCapabilities>, String> {
@@ -604,6 +616,21 @@ mod generation_capabilities_tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn prompt_requirement_follows_the_advertised_profile() {
+        let value = json!({"protocol_version":2,"generation":{"seed":true,"default_profile":"edit",
+            "profiles":[
+                {"id":"edit","label":"Edit","default_megapixels":1,"megapixels":[1]},
+                {"id":"qwen21-remove-v2","label":"Remove 2","default_megapixels":1,"megapixels":[1],"requires_prompt":false}]}});
+        let capabilities = parse_generation_capabilities(value).unwrap().unwrap();
+        assert_eq!(capabilities.requires_prompt(None), Some(true));
+        assert_eq!(
+            capabilities.requires_prompt(Some("qwen21-remove-v2")),
+            Some(false)
+        );
+        assert_eq!(capabilities.requires_prompt(Some("unknown")), None);
     }
 
     #[test]

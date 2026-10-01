@@ -637,7 +637,20 @@ export const toolDefinitions: ToolDefinition[] = [
       ...mutation,
       mode: z.enum(['clone', 'heal', 'retouch', 'liquify', 'inpaint', 'generative']),
       name: z.string().max(200).optional(),
-      sub_masks: z.array(subMask).min(1).max(64),
+      sub_masks: z
+        .array(subMask)
+        .min(1)
+        .max(64)
+        .optional()
+        .describe('Required unless replace_patch_id regenerates an existing patch, which then keeps its selection.'),
+      replace_patch_id: z
+        .string()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe(
+          'inpaint/generative only: regenerate this existing AI patch in place instead of appending another. Its own pixels are excluded from the conditioning image, its position is kept, and it commits as one revision. Omitted sub_masks, prompt, name, removal_options and generation_options (except seed) are inherited, so a new seed draws a fresh alternative; pass generation_options.seed to repeat or choose one. Save a version before each alternative to compare and restore.',
+        ),
       source_point: point.optional(),
       prompt: z
         .string()

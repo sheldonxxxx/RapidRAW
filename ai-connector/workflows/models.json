@@ -34,62 +34,6 @@
       "checksum_basis": "upstream_sha256_and_size"
     },
     {
-      "filename": "flux-2-klein-9b-kv-fp8.safetensors",
-      "bytes": 9818935984,
-      "sha256": "33f7da5625a00798349a719742999d3c7dd20c1a7eda14663922c363640728f1",
-      "source_url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-kv-fp8/resolve/8430c03ee457ea86907ed31a009cd56280df003d/flux-2-klein-9b-kv-fp8.safetensors",
-      "repository_license": "flux-non-commercial-license",
-      "repository": "black-forest-labs/FLUX.2-klein-9b-kv-fp8",
-      "revision": "8430c03ee457ea86907ed31a009cd56280df003d",
-      "weight_format": "FP8",
-      "checksum_basis": "upstream_sha256_and_size"
-    },
-    {
-      "filename": "qwen_3_8b_fp8mixed.safetensors",
-      "bytes": 8664848742,
-      "sha256": "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
-      "source_url": "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/3f62d9d8ae1fec33c6e91453d5c712855b096b55/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
-      "repository_license": "flux-non-commercial-license",
-      "repository": "Comfy-Org/flux2-klein-9B",
-      "revision": "3f62d9d8ae1fec33c6e91453d5c712855b096b55",
-      "weight_format": "FP8 mixed",
-      "checksum_basis": "upstream_sha256_and_size",
-      "license_note": "License label is the distributing repository metadata; consult the upstream terms for the full stack."
-    },
-    {
-      "filename": "boogu_image_edit_turbo_hotfix_1k_20260708_int8_convrot.safetensors",
-      "bytes": 10326755028,
-      "sha256": "b0bdd36eb559d62e8169e16a1e8b4438f8be17fc092ca9d43a2d8460c1d79e6a",
-      "source_url": "https://huggingface.co/Comfy-Org/Boogu-Image/resolve/0e060b5c47ce43918f5943d166e57b73b09d72f8/diffusion_models/boogu_image_edit_turbo_hotfix_1k_20260708_int8_convrot.safetensors",
-      "repository_license": "apache-2.0",
-      "repository": "Comfy-Org/Boogu-Image",
-      "revision": "0e060b5c47ce43918f5943d166e57b73b09d72f8",
-      "weight_format": "INT8 convrot",
-      "checksum_basis": "upstream_sha256_and_size"
-    },
-    {
-      "filename": "qwen3vl_8b_fp8_scaled.safetensors",
-      "bytes": 10588637512,
-      "sha256": "4ba424cf62e51392e4d1a39933e803706f4e823c1065f36aaf149c6453f66bcd",
-      "source_url": "https://huggingface.co/Comfy-Org/Boogu-Image/resolve/0e060b5c47ce43918f5943d166e57b73b09d72f8/text_encoders/qwen3vl_8b_fp8_scaled.safetensors",
-      "repository_license": "apache-2.0",
-      "repository": "Comfy-Org/Boogu-Image",
-      "revision": "0e060b5c47ce43918f5943d166e57b73b09d72f8",
-      "weight_format": "FP8 scaled",
-      "checksum_basis": "upstream_sha256_and_size"
-    },
-    {
-      "filename": "boogu.safetensors",
-      "bytes": 335304388,
-      "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
-      "source_url": "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/741f7c3ce8b383c54771c7003378a50191e9efe9/ae.safetensors",
-      "repository_license": "apache-2.0",
-      "repository": "black-forest-labs/FLUX.1-schnell",
-      "revision": "741f7c3ce8b383c54771c7003378a50191e9efe9",
-      "checksum_basis": "upstream_sha256_and_size",
-      "filename_note": "The tested alias boogu.safetensors is byte-identical to the linked FLUX.1-schnell ae.safetensors."
-    },
-    {
       "filename": "marigold_v2_depth_log_stage2.safetensors",
       "comfy_model_path": "loras/marigold_v2_depth_log_stage2.safetensors",
       "bytes": 1703764632,

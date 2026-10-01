@@ -30,3 +30,11 @@ test('removal mask widths reject unbounded, non-integral and unknown values', ()
   }
   assert.throws(() => retouch.schema.parse({ ...base, preview_only: 'true' }));
 });
+test('an existing patch can be regenerated without restating its selection', () => {
+  const { sub_masks, ...rest } = base;
+  const parsed = retouch.schema.parse({ ...rest, replace_patch_id: 'patch-1', generation_options: { seed: 9 } });
+  assert.equal(parsed.replace_patch_id, 'patch-1');
+  assert.equal(parsed.sub_masks, undefined);
+  assert.throws(() => retouch.schema.parse({ ...base, replace_patch_id: '' }));
+  assert.throws(() => retouch.schema.parse({ ...base, replace_patch_id: 7 }));
+});

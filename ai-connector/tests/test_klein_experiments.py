@@ -24,7 +24,7 @@ from rapidraw_connector.geometry import geometry
 from rapidraw_connector.workflows import build_workflow
 
 ROOT = Path(__file__).resolve().parents[1]
-PRODUCTION = ('klein4-v1', 'klein4-tight2mp', 'klein9-kv', 'boogu-turbo4-context')
+PRODUCTION = ('klein4-v1', 'klein4-tight2mp')
 RETAINED = 'klein4-native-v1'
 REMOVED_PROFILES = ('klein4-genmask-v1', 'klein4-native-global-v1',
                     'klein4-native-global-promptv1', 'klein4-native-global-local-last-v1',
@@ -85,7 +85,7 @@ class ProductionRegression(unittest.TestCase):
             digest = hashlib.sha256(target.read_bytes()).hexdigest()
             self.assertEqual(digest, entry['sha256'], entry['id'])
             checked += 1
-        self.assertGreaterEqual(checked, 4)
+        self.assertGreaterEqual(checked, 2)
 
 
 class RetainedNativeProfile(unittest.TestCase):
@@ -135,19 +135,16 @@ class RetainedNativeProfile(unittest.TestCase):
 
     def test_pure_noise_rejected_for_non_klein_family(self):
         _, klein = select_profile(self.listing, 'klein4-v1', None)
-        _, boogu = select_profile(self.listing, 'boogu-turbo4-context', None)
-        for bad in (dict(klein, pure_noise_output=True, family='boogu'),
-                    dict(boogu, pure_noise_output=True)):
-            with self.subTest(bad=bad):
-                with self.assertRaises(ValueError):
-                    build_workflow(self.source_name, self.mask_name, self.prompt, self.seed, self.g, bad)
+        bad = dict(klein, pure_noise_output=True, family='qwen21')
+        with self.assertRaises(ValueError):
+            build_workflow(self.source_name, self.mask_name, self.prompt, self.seed, self.g, bad)
 
     def test_profile_model_rejects_non_klein_pure_noise(self):
         base = dict(id='probe', family='klein', model='m.safetensors',
                     text_encoder='e.safetensors', vae='v.safetensors',
                     steps=4, cfg=1, megapixels=1)
         with self.assertRaises(ValueError):
-            Profile.model_validate(dict(base, pure_noise_output=True, family='boogu'))
+            Profile.model_validate(dict(base, pure_noise_output=True, family='qwen21'))
 
     def test_removed_fields_fail_closed(self):
         base = dict(id='probe', family='klein', model='m.safetensors',
@@ -174,7 +171,7 @@ class RetainedNativeProfile(unittest.TestCase):
             labels = {name: item['label'] for name, item in load_catalog(settings)['profiles'].items()}
             with TestClient(service.create_app(settings)) as client:
                 profiles = {item['id']: item for item in client.get('/capabilities').json()['generation']['profiles']}
-                self.assertEqual(set(profiles), {*PRODUCTION, RETAINED, 'qwen21-v1', 'qwen21-remove-v1', 'qwen21-remove-pe-v1'})
+                self.assertEqual(set(profiles), {*PRODUCTION, RETAINED, 'qwen21-v1', 'qwen21-remove-v1', 'qwen21-remove-fill-v1', 'qwen21-remove-pe-v1'})
             for name in REMOVED_PROFILES:
                 self.assertNotIn(name, profiles)
             self.assertEqual(profiles[RETAINED]['megapixels'], [1, 2])

@@ -36,8 +36,7 @@ class DepthService(unittest.TestCase):
                     capabilities = client.get('/capabilities').json()
                     self.assertEqual(capabilities['protocol_version'], 2)
                     advertised = {item['id'] for item in capabilities['generation']['profiles']}
-                    self.assertTrue({'klein4-v1', 'klein4-tight2mp', 'klein9-kv',
-                                     'boogu-turbo4-context'} <= advertised)
+                    self.assertTrue({'klein4-v1', 'klein4-tight2mp'} <= advertised)
                     self.assertEqual(client.get('/depth/capabilities').status_code, 404 if config is None else 503)
 
     def test_map_keeps_precision_and_cache_survives_offline_backend(self):
