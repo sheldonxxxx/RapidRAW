@@ -1420,26 +1420,19 @@ pub(crate) async fn export_images_impl(
                         return Ok(());
                     }
 
-                    let base_image = if is_current_edit {
-                        match crate::get_original_image(&state) {
-                            Ok((orig_data_arc, _)) => {
-                                composite_patches_on_image(&orig_data_arc, &js_adjustments)
-                                    .map_err(|e| format!("Failed to composite AI patches: {}", e))?
-                            }
-                            Err(_) => {
-                                let bytes =
-                                    fs::read(&source_path_str).map_err(|e| e.to_string())?;
-                                load_and_composite(
-                                    &bytes,
-                                    &source_path_str,
-                                    &js_adjustments,
-                                    false,
-                                    &settings,
-                                    None,
-                                )
-                                .map_err(|e| format!("Failed to load fallback image: {}", e))?
-                            }
-                        }
+                    let loaded_image = if is_current_edit {
+                        state
+                            .original_image
+                            .lock()
+                            .unwrap_or_else(|error| error.into_inner())
+                            .clone()
+                            .filter(|loaded| parse_virtual_path(&loaded.path).0 == source_path)
+                    } else {
+                        None
+                    };
+                    let base_image = if let Some(loaded_image) = loaded_image {
+                        composite_patches_on_image(&loaded_image.image, &js_adjustments)
+                            .map_err(|e| format!("Failed to composite AI patches: {}", e))?
                     } else {
                         match read_file_mapped(Path::new(&source_path_str)) {
                             Ok(mmap) => load_and_composite(
@@ -1642,7 +1635,7 @@ pub async fn run_headless_export(
     session: crate::launch_request::HeadlessExportSession,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    println!("Starting headless export...");
+    cli_println!("Starting headless export...");
     let state = app_handle.state::<crate::AppState>();
 
     let source_path = std::path::Path::new(&session.source);
@@ -1679,7 +1672,7 @@ pub async fn run_headless_export(
             .map_err(|e| format!("Failed to create output directory: {}", e))?;
     }
 
-    println!("Found {} images to export. Processing...", paths.len());
+    cli_println!("Found {} images to export. Processing...", paths.len());
 
     let export_settings = ExportSettings {
         jpeg_quality: session.quality,
@@ -1703,7 +1696,7 @@ pub async fn run_headless_export(
         let json: serde_json::Value = serde_json::from_str(&content)
             .map_err(|e| format!("Failed to parse adjustments JSON: {}", e))?;
         custom_adjustments = Some(json);
-        println!(
+        cli_println!(
             "Loaded custom adjustments to override sidecars from: {}",
             adj_path
         );
@@ -1795,9 +1788,10 @@ pub async fn estimate_export_sizes(
         let loaded_image = state
             .original_image
             .lock()
-            .unwrap()
+            .unwrap_or_else(|error| error.into_inner())
             .clone()
-            .ok_or("No original image loaded")?;
+            .filter(|loaded| parse_virtual_path(&loaded.path).0 == source_path)
+            .ok_or("The selected image changed while estimating its export size")?;
         let mut adjustments_clone = current_edit_adjustments.clone().unwrap();
         hydrate_adjustments(&state, &mut adjustments_clone)?;
 

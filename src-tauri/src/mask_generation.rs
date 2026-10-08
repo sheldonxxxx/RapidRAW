@@ -14,8 +14,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use tauri::Manager;
 
 use crate::app_state::AppState;
-use crate::get_cached_full_warped_image;
 use crate::image_processing::{apply_cpu_default_raw_processing, apply_geometry_warp};
+use crate::{get_cached_full_warped_image, get_cached_full_warped_image_for_path};
 use std::borrow::Cow;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -1755,6 +1755,7 @@ pub fn resolve_warped_image_for_masks(
 }
 
 fn mask_bitmap_key(
+    path: &str,
     def: &MaskDefinition,
     width: u32,
     height: u32,
@@ -1768,6 +1769,7 @@ fn mask_bitmap_key(
     def_for_hash.adjustments = serde_json::Value::Null;
     let def_json = serde_json::to_string(&def_for_hash).unwrap_or_default();
     def_json.hash(&mut hasher);
+    path.hash(&mut hasher);
 
     width.hash(&mut hasher);
     height.hash(&mut hasher);
@@ -1781,8 +1783,10 @@ fn mask_bitmap_key(
     hasher.finish()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn get_cached_or_generate_mask(
     state: &tauri::State<AppState>,
+    path: &str,
     def: &MaskDefinition,
     width: u32,
     height: u32,
@@ -1790,14 +1794,25 @@ pub fn get_cached_or_generate_mask(
     crop_offset: (f32, f32),
     adjustments: &serde_json::Value,
 ) -> Option<GrayImage> {
-    get_cached_or_generate_mask_with_key(state, def, width, height, scale, crop_offset, adjustments)
-        .1
+    get_cached_or_generate_mask_with_key(
+        state,
+        path,
+        def,
+        width,
+        height,
+        scale,
+        crop_offset,
+        adjustments,
+    )
+    .1
 }
 
 /// Also returns the cache key that identifies the bitmap's pixels for the
 /// currently loaded image.
+#[allow(clippy::too_many_arguments)]
 pub fn get_cached_or_generate_mask_with_key(
     state: &tauri::State<AppState>,
+    path: &str,
     def: &MaskDefinition,
     width: u32,
     height: u32,
@@ -1805,7 +1820,7 @@ pub fn get_cached_or_generate_mask_with_key(
     crop_offset: (f32, f32),
     adjustments: &serde_json::Value,
 ) -> (u64, Option<GrayImage>) {
-    let key = mask_bitmap_key(def, width, height, scale, crop_offset, adjustments);
+    let key = mask_bitmap_key(path, def, width, height, scale, crop_offset, adjustments);
     {
         let cached = state.mask_cache.lock().unwrap().get(&key);
         if let Some(img) = cached {
@@ -1813,8 +1828,14 @@ pub fn get_cached_or_generate_mask_with_key(
         }
     }
 
-    let warped_image =
-        resolve_warped_image_for_masks(state, adjustments, std::slice::from_ref(def));
+    let warped_image = if def.requires_warped_image() {
+        match get_cached_full_warped_image_for_path(state, Some(path), adjustments) {
+            Ok(image) => Some(image),
+            Err(_) => return (key, None),
+        }
+    } else {
+        None
+    };
 
     let generated = generate_mask_bitmap(
         def,
@@ -1972,9 +1993,33 @@ mod composite_cache_tests {
     fn image_dependent_masks_invalidate_on_warp_but_not_exposure() {
         let def: MaskDefinition = serde_json::from_value(json!({"id":"m","name":"m","visible":true,"invert":false,"adjustments":{},
             "subMasks":[{"id":"s","type":"color","visible":true,"mode":"additive","parameters":{}}]})).unwrap();
-        let key = |a: Value| mask_bitmap_key(&def, 100, 100, 1.0, (0.0, 0.0), &a);
+        let key = |a: Value| mask_bitmap_key("photo.png", &def, 100, 100, 1.0, (0.0, 0.0), &a);
         assert_ne!(key(json!({})), key(json!({"transformScale":1.5})));
         assert_eq!(key(json!({})), key(json!({"exposure":1.5})));
+    }
+
+    #[test]
+    fn color_mask_cache_separates_photos_and_replaced_repairs() {
+        let def: MaskDefinition = serde_json::from_value(json!({
+            "id":"m", "name":"Color", "visible":true, "invert":false, "adjustments":{},
+            "subMasks":[{"id":"s", "type":"color", "visible":true, "mode":"additive", "parameters":{}}]
+        })).unwrap();
+        let key = |path: &str, a: Value| mask_bitmap_key(path, &def, 100, 100, 1.0, (0.0, 0.0), &a);
+        assert_ne!(key("first.png", json!({})), key("second.png", json!({})));
+        assert_ne!(
+            key("first.png", json!({})),
+            key("first.png?vc=1", json!({}))
+        );
+        assert_ne!(
+            key(
+                "first.png",
+                json!({"aiPatches":[{"id":"repair", "patchData":"old"}]})
+            ),
+            key(
+                "first.png",
+                json!({"aiPatches":[{"id":"repair", "patchData":"new"}]})
+            )
+        );
     }
 
     #[test]

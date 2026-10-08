@@ -644,8 +644,27 @@ fn remove_readback_padding(
 }
 
 fn to_rgba_f16(img: &DynamicImage) -> Vec<f16> {
-    let rgba_f32 = img.to_rgba32f();
-    rgba_f32.into_raw().into_iter().map(f16::from_f32).collect()
+    match img {
+        DynamicImage::ImageRgb32F(buffer) => {
+            let mut output = Vec::with_capacity(buffer.as_raw().len() / 3 * 4);
+            for pixel in buffer.pixels() {
+                output.extend([
+                    f16::from_f32(pixel[0]),
+                    f16::from_f32(pixel[1]),
+                    f16::from_f32(pixel[2]),
+                    f16::ONE,
+                ]);
+            }
+            output
+        }
+        DynamicImage::ImageRgba32F(buffer) => {
+            buffer.as_raw().iter().copied().map(f16::from_f32).collect()
+        }
+        _ => {
+            let rgba_f32 = img.to_rgba32f();
+            rgba_f32.into_raw().into_iter().map(f16::from_f32).collect()
+        }
+    }
 }
 
 // Fail explicitly if an upstream shader changes the integration points instead
@@ -3159,6 +3178,58 @@ mod precision_tests {
     use super::*;
 
     #[test]
+    fn direct_float_upload_preserves_rgb_alpha_and_half_float_bits() {
+        let samples = [
+            0.0,
+            -0.0,
+            0.5,
+            1.0,
+            -0.25,
+            16.0,
+            f32::MIN_POSITIVE,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NAN,
+        ];
+        for (width, height) in [(0, 0), (1, 1), (7, 3)] {
+            let rgb =
+                DynamicImage::ImageRgb32F(image::Rgb32FImage::from_fn(width, height, |x, y| {
+                    let i = (x + y * width) as usize;
+                    image::Rgb([
+                        samples[i % samples.len()],
+                        samples[(i + 1) % samples.len()],
+                        samples[(i + 2) % samples.len()],
+                    ])
+                }));
+            let rgba =
+                DynamicImage::ImageRgba32F(image::Rgba32FImage::from_fn(width, height, |x, y| {
+                    let i = (x + y * width) as usize;
+                    image::Rgba([
+                        samples[i % samples.len()],
+                        samples[(i + 1) % samples.len()],
+                        samples[(i + 2) % samples.len()],
+                        (i % 3) as f32 / 2.0,
+                    ])
+                }));
+            let byte_image = DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+                width,
+                height,
+                image::Rgba([17, 99, 251, 128]),
+            ));
+            for input in [rgb, rgba, byte_image] {
+                let expected: Vec<u16> = input
+                    .to_rgba32f()
+                    .into_raw()
+                    .into_iter()
+                    .map(|v| f16::from_f32(v).to_bits())
+                    .collect();
+                let actual: Vec<u16> = to_rgba_f16(&input).into_iter().map(f16::to_bits).collect();
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+
+    #[test]
     fn ordinary_render_rejects_nonidentity_oversize_and_unaligned_limit() {
         let mut adjusted = request(None);
         adjusted.adjustments.global.exposure = 0.75;
@@ -3851,7 +3922,9 @@ mod preview_perf_bench {
                 "structure": 30,
                 "sharpness": 20,
                 "lutIntensity": 50,
-                "masks": [{ "id": "m", "name": "m", "visible": true, "invert": false, "subMasks": [], "adjustments": { "exposure": 1.0 } }]
+                "masks": [{ "id": "m", "name": "m", "visible": true, "invert": false,
+                    "subMasks": [{ "id": "s", "type": "brush", "visible": true, "mode": "additive", "parameters": { "lines": [] } }],
+                    "adjustments": { "exposure": 1.0 } }]
             })
         };
 
@@ -3975,7 +4048,9 @@ mod preview_perf_bench {
                 })
                 .collect();
             let mask_json: Vec<serde_json::Value> = (0..4)
-                .map(|m| serde_json::json!({ "id": format!("m{m}"), "name": "m", "visible": true, "invert": false, "subMasks": [], "adjustments": { "exposure": 0.2 } }))
+                .map(|m| serde_json::json!({ "id": format!("m{m}"), "name": "m", "visible": true, "invert": false,
+                    "subMasks": [{ "id": format!("s{m}"), "type": "brush", "visible": true, "mode": "additive", "parameters": { "lines": [] } }],
+                    "adjustments": { "exposure": 0.2 } }))
                 .collect();
             for (label, reuse_input, mask_count) in [
                 ("slider drag", true, 0),

@@ -2,7 +2,7 @@ use crate::image_processing::apply_orientation;
 use anyhow::{Result, anyhow};
 use image::{DynamicImage, ImageBuffer, Rgba};
 use rawler::{
-    decoders::{Orientation, RawDecodeParams},
+    decoders::{Decoder, Orientation, RawDecodeParams},
     imgop::develop::{DemosaicAlgorithm, Intermediate, ProcessingStep, RawDevelop},
     rawimage::{BlackLevel, RawImage, RawPhotometricInterpretation},
     rawsource::RawSource,
@@ -21,6 +21,26 @@ pub fn develop_raw_image(
     let (developed_image, orientation) =
         develop_internal(file_bytes, fast_demosaic, linear_mode, cancel_token)?;
     Ok(apply_orientation(developed_image, orientation))
+}
+
+fn metadata_orientation(decoder: &dyn Decoder, source: &RawSource) -> Result<Orientation> {
+    let metadata = decoder.raw_metadata(source, &RawDecodeParams::default())?;
+    Ok(metadata
+        .exif
+        .orientation
+        .map(Orientation::from_u16)
+        .unwrap_or(Orientation::Normal))
+}
+
+pub fn extract_embedded_preview(file_bytes: &[u8]) -> Option<DynamicImage> {
+    let source = RawSource::new_from_slice(file_bytes);
+    let decoder = rawler::get_decoder(&source).ok()?;
+    let preview = decoder
+        .full_image(&source, &RawDecodeParams::default())
+        .ok()??;
+    let orientation =
+        metadata_orientation(decoder.as_ref(), &source).unwrap_or(Orientation::Normal);
+    Some(apply_orientation(preview, orientation))
 }
 
 fn is_linear_raw_format(raw_image: &RawImage) -> bool {
@@ -89,7 +109,8 @@ fn recover_clipped_pixel(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     if magenta > 0.0 {
         let target_g = cur_r.min(cur_b) * 0.80 + ((cur_r + cur_b) * 0.5) * 0.20;
         let correction = (target_g - cur_g).max(0.0);
-        cur_g += correction * outer_blend;
+        let magenta_weight = smoothstep(0.0, 0.25, magenta / max_c);
+        cur_g += correction * outer_blend * magenta_weight;
     }
 
     let residual = (cur_r.min(cur_b) - cur_g).max(0.0);
@@ -143,12 +164,7 @@ fn develop_internal(
     check_cancel()?;
     let mut raw_image: RawImage = decoder.raw_image(&source, &RawDecodeParams::default(), false)?;
 
-    let metadata = decoder.raw_metadata(&source, &RawDecodeParams::default())?;
-    let orientation = metadata
-        .exif
-        .orientation
-        .map(Orientation::from_u16)
-        .unwrap_or(Orientation::Normal);
+    let orientation = metadata_orientation(decoder.as_ref(), &source)?;
 
     let is_linear_format = is_linear_raw_format(&raw_image);
 
@@ -314,6 +330,15 @@ pub fn get_fast_demosaic_scale_factor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clipped_red_sensor_noise_does_not_create_a_green_discontinuity() {
+        let below = recover_clipped_pixel(2.0, 0.02 - 0.000001, 0.02);
+        let above = recover_clipped_pixel(2.0, 0.02 + 0.000001, 0.02);
+        for (first, second) in [(below.0, above.0), (below.1, above.1), (below.2, above.2)] {
+            assert!((first - second).abs() < 0.0001);
+        }
+    }
 
     #[test]
     fn constant_rgb_black_level_repeat_matches_channel_white_levels() {

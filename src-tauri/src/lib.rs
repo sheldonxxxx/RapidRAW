@@ -5,6 +5,21 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+// CLI diagnostics must not abort an export when its output pipe closes.
+macro_rules! cli_println {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stdout(), $($arg)*);
+    }};
+}
+
+macro_rules! cli_eprintln {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stderr(), $($arg)*);
+    }};
+}
+
 mod adjustment_utils;
 mod ai_commands;
 mod ai_connector;
@@ -329,7 +344,29 @@ pub fn get_cached_full_warped_image(
     state: &tauri::State<AppState>,
     js_adjustments: &serde_json::Value,
 ) -> Result<Arc<DynamicImage>, String> {
-    let geo_hash = calculate_geometry_hash(js_adjustments);
+    get_cached_full_warped_image_for_path(state, None, js_adjustments)
+}
+
+pub fn get_cached_full_warped_image_for_path(
+    state: &tauri::State<AppState>,
+    path: Option<&str>,
+    js_adjustments: &serde_json::Value,
+) -> Result<Arc<DynamicImage>, String> {
+    let loaded_image = state
+        .original_image
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone()
+        .ok_or("No original image loaded")?;
+    if let Some(path) = path
+        && parse_virtual_path(path).0 != parse_virtual_path(&loaded_image.path).0
+    {
+        return Err(format!("'{path}' is not the loaded image"));
+    }
+    let mut hasher = DefaultHasher::new();
+    loaded_image.path.hash(&mut hasher);
+    calculate_geometry_hash(js_adjustments).hash(&mut hasher);
+    let geo_hash = hasher.finish();
 
     {
         let cache_lock = state
@@ -343,7 +380,7 @@ pub fn get_cached_full_warped_image(
         }
     }
 
-    let (base_arc, is_raw) = get_original_image(state)?;
+    let base_arc = &loaded_image.image;
     let mut cow_image = if js_adjustments
         .get("aiPatches")
         .and_then(|patches| patches.as_array())
@@ -357,7 +394,7 @@ pub fn get_cached_full_warped_image(
         Cow::Borrowed(base_arc.as_ref())
     };
 
-    if is_raw {
+    if loaded_image.is_raw {
         apply_cpu_default_raw_processing(cow_image.to_mut());
     }
 
@@ -624,6 +661,7 @@ fn process_preview_job(
         cancellation.check()?;
         let (key, mask) = crate::mask_generation::get_cached_or_generate_mask_with_key(
             &state,
+            &loaded_image.path,
             def,
             preview_width,
             preview_height,
@@ -1188,6 +1226,7 @@ async fn generate_comparison_preview(
             state.ensure_preview_identity(identity)?;
             if let Some(mask) = get_cached_or_generate_mask(
                 &state,
+                &loaded_image.path,
                 def,
                 width,
                 height,
@@ -1335,6 +1374,7 @@ async fn generate_uncropped_preview(
             state.ensure_preview_identity(identity)?;
             if let Some(mask) = get_cached_or_generate_mask(
                 &state,
+                &loaded_image.path,
                 def,
                 preview_width,
                 preview_height,
@@ -1452,6 +1492,7 @@ fn generate_preset_preview(
         .filter_map(|def| {
             get_cached_or_generate_mask(
                 &state,
+                &loaded_image.path,
                 def,
                 img_w,
                 img_h,
@@ -1922,13 +1963,13 @@ fn setup_logging(app_handle: &tauri::AppHandle) {
     let log_dir = match app_handle.path().app_log_dir() {
         Ok(dir) => dir,
         Err(e) => {
-            eprintln!("Failed to get app log directory: {}", e);
+            cli_eprintln!("Failed to get app log directory: {}", e);
             return;
         }
     };
 
     if let Err(e) = fs::create_dir_all(&log_dir) {
-        eprintln!("Failed to create log directory at {:?}: {}", log_dir, e);
+        cli_eprintln!("Failed to create log directory at {:?}: {}", log_dir, e);
     }
 
     let log_file_path = log_dir.join("app.log");
@@ -1953,19 +1994,21 @@ fn setup_logging(app_handle: &tauri::AppHandle) {
             ))
         })
         .level(level)
-        .chain(std::io::stderr());
+        .chain(fern::Output::call(|record| {
+            let _ = writeln!(std::io::stderr(), "{}", record.args());
+        }));
 
     if let Some(file) = log_file {
         dispatch = dispatch.chain(file);
     } else {
-        eprintln!(
+        cli_eprintln!(
             "Failed to open log file at {:?}. Logging to console only.",
             log_file_path
         );
     }
 
     if let Err(e) = dispatch.apply() {
-        eprintln!("Failed to apply logger configuration: {}", e);
+        cli_eprintln!("Failed to apply logger configuration: {}", e);
     }
 
     panic::set_hook(Box::new(|info| {
@@ -2196,7 +2239,7 @@ pub fn run() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let launch_req = parse_launch_args(&args);
     if let LaunchRequest::InvalidHeadless(error) = &launch_req {
-        eprintln!("Headless export failed: {}", error);
+        cli_eprintln!("Headless export failed: {}", error);
         std::process::exit(2);
     }
     let is_headless = matches!(launch_req, LaunchRequest::HeadlessExport(_));
@@ -2374,7 +2417,7 @@ pub fn run() {
                     .is_some()
                     {
                         std::env::set_var("ORT_DYLIB_PATH", &ort_library_path);
-                        println!("Set ORT_DYLIB_PATH to: {}", ort_library_path.display());
+                        cli_println!("Set ORT_DYLIB_PATH to: {}", ort_library_path.display());
                     }
                 }
             }
@@ -2402,11 +2445,11 @@ pub fn run() {
                     tauri::async_runtime::spawn(async move {
                         match crate::export_processing::run_headless_export(session, app_handle_clone.clone()).await {
                             Ok(_) => {
-                                println!("Headless export completed successfully.");
+                                cli_println!("Headless export completed successfully.");
                                 app_handle_clone.exit(0);
                             }
                             Err(e) => {
-                                eprintln!("Headless export failed: {}", e);
+                                cli_eprintln!("Headless export failed: {}", e);
                                 app_handle_clone.exit(1);
                             }
                         }
