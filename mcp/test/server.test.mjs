@@ -370,7 +370,14 @@ test('job and named-version contracts reject invalid identifiers and expose corr
   });
   assert.equal(invalid.isError, true);
   const { tools } = await client.listTools();
-  for (const name of ['render_compare', 'inspect_adjustments', 'list_versions', 'get_job', 'list_jobs']) {
+  for (const name of [
+    'render_compare',
+    'inspect_adjustments',
+    'inspect_edit',
+    'list_versions',
+    'get_job',
+    'list_jobs',
+  ]) {
     assert.equal(tools.find((tool) => tool.name === `rapidraw_${name}`).annotations.readOnlyHint, true);
   }
   assert.equal(tools.find((tool) => tool.name === 'rapidraw_cancel_job').annotations.idempotentHint, true);

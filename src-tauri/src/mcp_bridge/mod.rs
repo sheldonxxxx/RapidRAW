@@ -5,6 +5,8 @@ mod asset_library;
 mod enhance;
 mod geometry_review;
 mod jobs;
+mod mask_coordinates;
+mod mask_links;
 mod model_cache;
 mod operations;
 mod portable;

@@ -40,6 +40,23 @@ const renderRegion = region
     'Rectangle in full-resolution rendered image pixels AFTER user crop and geometry. Extracted before long_edge resizing; read rendered dimensions first.',
   );
 const point = z.object({ x: z.number().nonnegative(), y: z.number().nonnegative() }).strict();
+const coordinateSpace = z
+  .object({
+    space: z.enum(['mask', 'rendered', 'preview']),
+    preview: z
+      .object({
+        width: z.number().int().positive(),
+        height: z.number().int().positive(),
+        region: renderRegion.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .optional()
+  .describe(
+    'Coordinates used in this request. mask (default): pre-crop mask canvas. rendered: full-resolution pixels after crop. preview: pixels of an earlier render with these output dimensions and optional render region. Positions, rectangles, radii, brush sizes and linear fade widths are converted to the mask canvas; the result reports the conversion.',
+  );
 const mappedPoint = z.object({ x: z.number(), y: z.number() }).strict();
 const longEdge = z
   .number()
@@ -332,7 +349,12 @@ export const toolDefinitions: ToolDefinition[] = [
     {
       ...session,
       region: renderRegion,
-      stage: z.enum(['edited', 'original']).optional(),
+      stage: z
+        .enum(['edited', 'original', 'aligned_original'])
+        .optional()
+        .describe(
+          "edited (default); original: no user edits, uncropped; aligned_original: the edit's crop, geometry and retouching with default tone and colour, so the same region matches edited.",
+        ),
       suggest_white_balance: z.boolean().optional(),
     },
     true,
@@ -392,6 +414,20 @@ export const toolDefinitions: ToolDefinition[] = [
       disabled_masks: disabledMasks.optional(),
       difference_gain: z.number().min(1).max(16).optional(),
       exposure_range: z.number().min(0.01).max(20).optional(),
+    },
+    true,
+  ),
+  tool(
+    'inspect_edit',
+    'Measure the rendered edit against an aligned reference with the same crop, geometry and retouching but default tone, colour and no masks. Returns frame brightness and corner relationships, optional subject/surround brightness and warmth, a rim index for the band just outside the subject, and look_here regions: edge bands brighter or darker than the reference relationship, or areas that looked like their neighbours but were treated much differently. The image is a gain map (red brightened, blue darkened against the reference); a patch coloured unlike the surface it belongs to often reveals a mask miss worth checking against what the region actually is, such as a darkened part of the subject or lifted background seen through it. Numbers describe the photograph; they are not an aesthetic score, and deliberate choices can produce any of them. Does not change the edit.',
+    {
+      ...session,
+      subject_mask_id: z.string().min(1).max(128).optional(),
+      long_edge: z.number().int().min(256).max(2048).optional(),
+      edge_width: z.number().int().min(1).max(64).optional(),
+      similarity_radius: z.number().int().min(3).max(96).optional(),
+      heatmap: z.boolean().optional(),
+      gain_range_stops: z.number().min(0.25).max(6).optional(),
     },
     true,
   ),
@@ -557,17 +593,19 @@ export const toolDefinitions: ToolDefinition[] = [
       adjustments: adjustments.optional(),
       invert: z.boolean().optional(),
       opacity: percent.optional(),
+      coordinate_space: coordinateSpace,
     },
   ),
   tool(
     'mask_duplicate',
-    'Copy a parent mask and its native selection assets into an independently editable mask with fresh IDs. By default, clear its local adjustments; invert=true toggles the copied parent selection.',
+    'Copy a parent mask and its native selection assets into an independently editable mask with fresh IDs. By default, clear its local adjustments; invert=true toggles the copied parent selection. link=true (with invert=true) keeps the copy an inverted image of the source: later changes to the source selection (refinement, brushes, grow/feather, added components) are copied into it on every edit while its own name, opacity and adjustments stay. Unlink with mask_update patch {"linkedInverseOf": null}.',
     {
       ...mutation,
       mask_id: z.string().min(1).max(128),
       name: z.string().max(200).optional(),
       invert: z.boolean().optional(),
       copy_adjustments: z.boolean().optional(),
+      link: z.boolean().optional(),
     },
   ),
   tool(
@@ -578,6 +616,7 @@ export const toolDefinitions: ToolDefinition[] = [
       mask_id: z.string().min(1),
       patch: record.optional(),
       submask_operations: z.array(record).min(1).max(100).optional(),
+      coordinate_space: coordinateSpace,
     },
   ),
   tool('mask_remove', 'Remove a mask from the session, with undo support; original photo is unchanged.', {
@@ -586,7 +625,7 @@ export const toolDefinitions: ToolDefinition[] = [
   }),
   tool(
     'mask_generate',
-    'Generate an AI mask. Set target_mask_id and mode to add a new component inside an existing parent; omit both to create a parent. Normals/albedo explicitly use the separately enabled shared AI connector and save RGB16 maps. Normals parameters: normalAngle (degrees), normalAmount (signed exposure stops, -1.5..1.5). Albedo parameters: surfacePointX/Y (0..1 on the unrotated map), surfaceTolerance (.005..1), surfaceColor (RGB 0..255), surfaceAmount (0..1). Saved maps work offline; intersect with regional masks to confine edits. Depth defaults to the built-in model; depth_provider=marigold explicitly sends analysis pixels to the separately enabled depth service and saves a reusable 16-bit map. Subject include/exclude points use the full mask canvas before crop. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
+    'Generate an AI mask. Set target_mask_id and mode to add a new component inside an existing parent; omit both to create a parent. Normals/albedo explicitly use the separately enabled shared AI connector and save RGB16 maps. Normals parameters: normalAngle (degrees), normalAmount (signed exposure stops, -1.5..1.5). Albedo parameters: surfacePointX/Y (0..1 on the unrotated map), surfaceTolerance (.005..1), surfaceColor (RGB 0..255), surfaceAmount (0..1). Saved maps work offline; intersect with regional masks to confine edits. Depth defaults to the built-in model; depth_provider=marigold explicitly sends analysis pixels to the separately enabled depth service and saves a reusable 16-bit map. Region and include/exclude points use the full mask canvas before crop unless coordinate_space says otherwise. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
     {
       ...mutation,
       kind: z.enum(['subject', 'foreground', 'sky', 'depth', 'normals', 'albedo']),
@@ -622,6 +661,7 @@ export const toolDefinitions: ToolDefinition[] = [
         .describe('Required with target_mask_id; the new component is appended in this composition mode.'),
       parameters: record.optional(),
       adjustments: adjustments.optional(),
+      coordinate_space: coordinateSpace,
     },
     false,
     { network: true },

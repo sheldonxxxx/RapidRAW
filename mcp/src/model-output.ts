@@ -247,7 +247,7 @@ export function summarizeOutput(operation: string, data: JsonObject): JsonObject
     ]);
   if (method === 'get_session') return data;
   if (/^(start_|get_|cancel_|resume_).*(job|denoise|operation)/.test(method) || method === 'save_version') return data;
-  if (/^(render|inspect_adjustments)/.test(method)) return data;
+  if (/^(render|inspect_adjustments|inspect_edit)/.test(method)) return data;
   if (/export|bundle/.test(method)) return data;
   if (
     [
