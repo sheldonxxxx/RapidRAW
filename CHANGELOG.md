@@ -4,6 +4,16 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Upstream fixes
+
+- Convert decoded float images directly to GPU upload buffers, avoiding an intermediate full-size RGBA float copy while preserving pixel values and alpha.
+- Smooth magenta highlight correction, select Color Mixer hues in perceptual sRGB space, and prevent invalid vibrance values. Existing edits that use these controls can render differently.
+- Read embedded RAF and CR3 previews when the EXIF reader cannot parse the RAW container, preserving preview orientation and the fork's source freshness checks. Read missing Nikon lens information from RAW metadata.
+- Keep image-dependent mask caches separate for each photograph and check that the editor's loaded photograph matches a current-edit export. Empty masks no longer shift later masks onto the wrong adjustments.
+- Allow headless exports to complete when a receiving program closes stdout or stderr early.
+- Preserve TIFF bit depth and timestamp options in export presets; save the Unrated library filter, apply filters before RAW/JPEG grouping, and keep generated tags within the configured limit.
+- Escape now exits rename mode or deselects local edits correctly. Hold Ctrl or Cmd while dragging a crop handle to resize around the crop's centre.
+
 ### Editor performance
 
 - Speed up the live preview, measured on an Apple M4. A slider-drag frame drops from 478 ms to 15 ms at 3584 px and from 100 ms to 7 ms at 1920 px. With four local masks it is up to 40× faster (1340 ms to 33 ms). Tone-curve output is bit-identical to before. Linux was not measured.

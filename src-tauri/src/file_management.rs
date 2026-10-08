@@ -1482,21 +1482,14 @@ fn apply_exif_orientation(img: DynamicImage, orientation: u32) -> DynamicImage {
     }
 }
 
-fn try_load_embedded_raw_preview(source_path: &Path, target_res: u32) -> Option<DynamicImage> {
-    let mmap = read_file_mapped(source_path).ok()?;
-    let exif = exif_processing::read_exif(&mmap)?;
-
-    let (jpeg_bytes, ifd) = find_embedded_jpeg(&exif, exif::In::PRIMARY)
+fn exif_embedded_preview(exif: &exif::Exif) -> Option<DynamicImage> {
+    let (jpeg_bytes, ifd) = find_embedded_jpeg(exif, exif::In::PRIMARY)
         .map(|b| (b, exif::In::PRIMARY))
         .or_else(|| {
-            find_embedded_jpeg(&exif, exif::In::THUMBNAIL).map(|b| (b, exif::In::THUMBNAIL))
+            find_embedded_jpeg(exif, exif::In::THUMBNAIL).map(|b| (b, exif::In::THUMBNAIL))
         })?;
 
     let img = image::load_from_memory_with_format(jpeg_bytes, image::ImageFormat::Jpeg).ok()?;
-
-    if img.width().max(img.height()) < (target_res as f32 * 0.95) as u32 {
-        return None;
-    }
 
     let orientation = exif
         .get_field(exif::Tag::Orientation, ifd)
@@ -1504,6 +1497,17 @@ fn try_load_embedded_raw_preview(source_path: &Path, target_res: u32) -> Option<
         .unwrap_or(1);
 
     Some(apply_exif_orientation(img, orientation))
+}
+
+fn try_load_embedded_raw_preview(source_path: &Path, target_res: u32) -> Option<DynamicImage> {
+    let mmap = read_file_mapped(source_path).ok()?;
+    let preview = match exif_processing::read_exif(&mmap) {
+        Some(exif) => exif_embedded_preview(&exif)?,
+        None => {
+            image_loader::safe_embedded_preview_fallback(&mmap, &source_path.to_string_lossy())?
+        }
+    };
+    (preview.width().max(preview.height()) >= (target_res as f32 * 0.95) as u32).then_some(preview)
 }
 
 fn load_thumbnail_mask_source(
@@ -4517,6 +4521,33 @@ pub fn sync_metadata_to_xmp(source_path: &Path, metadata: &ImageMetadata, create
 #[cfg(test)]
 mod thumbnail_cache_revision_tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires RAPIDRAW_TEST_RAW pointing to a RAW with an embedded preview and no TIFF EXIF container"]
+    fn raw_container_preview_reaches_thumbnail_loader() {
+        let path = PathBuf::from(std::env::var("RAPIDRAW_TEST_RAW").unwrap());
+        let bytes = fs::read(&path).unwrap();
+        assert!(exif_processing::read_exif(&bytes).is_none());
+        let expected = crate::raw_processing::extract_embedded_preview(&bytes).unwrap();
+        let actual = try_load_embedded_raw_preview(&path, 1280).unwrap();
+        assert_eq!(actual.dimensions(), expected.dimensions());
+        assert_eq!(actual.to_rgb8(), expected.to_rgb8());
+        let colors: std::collections::HashSet<_> = actual
+            .to_rgb8()
+            .pixels()
+            .step_by(127)
+            .map(|pixel| pixel.0)
+            .collect();
+        assert!(
+            colors.len() > 16,
+            "Embedded preview must contain photo pixels"
+        );
+        assert!(
+            try_load_embedded_raw_preview(&path, expected.width().max(expected.height()) * 2)
+                .is_none(),
+            "A preview too small for the requested thumbnail must be rejected"
+        );
+    }
 
     #[cfg(unix)]
     #[test]

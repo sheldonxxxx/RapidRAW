@@ -569,7 +569,7 @@ export default function AIPanel() {
       } else if (activeSubMaskId) onSelectSubMask(null);
       else if (activePatchContainerId) onSelectPatchContainer(null);
     };
-    if (activePatchContainerId || renamingId) setCustomEscapeHandler(() => handler);
+    if (activePatchContainerId || renamingId) setCustomEscapeHandler(handler);
     else setCustomEscapeHandler(null);
     return () => setCustomEscapeHandler(null);
   }, [

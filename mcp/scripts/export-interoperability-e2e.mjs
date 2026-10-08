@@ -147,6 +147,22 @@ try {
   for (const format of ['jpeg', 'png', 'tiff', 'webp', 'avif', 'jxl']) {
     const path = join(workspace, 'exports', `format-${format}.${format}`);
     const requirements = [`parameter:export.format=${JSON.stringify(format)}`];
+    const keepMetadata = ['jpeg', 'png', 'webp'].includes(format);
+    if (!keepMetadata)
+      await test(
+        `unsupported_capture_metadata_${format}`,
+        [...requirements, 'parameter:export.keep_metadata=true'],
+        async () => {
+          const rejected = await h.call(
+            'export',
+            { session_id: sid, path, format, keep_metadata: true },
+            { expectError: true },
+          );
+          assert.match(JSON.stringify(rejected.result), /UNSUPPORTED_METADATA/);
+          await assert.rejects(stat(path), { code: 'ENOENT' });
+          return { rejected_before_writing: true };
+        },
+      );
     const result = await test(`native_export_${format}`, ['tool:export', ...requirements], async () => {
       const result = (
         await h.call('export', {
@@ -155,7 +171,7 @@ try {
           format,
           bit_depth: ['png', 'tiff'].includes(format) ? 16 : 8,
           resize: { mode: 'width', value: 160 },
-          keep_metadata: true,
+          keep_metadata: keepMetadata,
           strip_gps: true,
           preserve_timestamps: true,
           ...(hasProfile ? { color_profile: 'auto' } : {}),
@@ -245,7 +261,7 @@ try {
       [
         ...requirements,
         'parameter:export.strip_gps=true',
-        'parameter:export.keep_metadata=true',
+        `parameter:export.keep_metadata=${keepMetadata}`,
         'parameter:export.preserve_timestamps=true',
       ],
       async () => {
@@ -405,6 +421,7 @@ try {
             keep_metadata: false,
           });
           const original = decodePng(await readFile(path));
+          assert.equal(original.bitDepth, 16);
           inspectDisplaySrgbProfile(pngProfile(original));
           const converted = await exec(
             magick,
@@ -413,16 +430,18 @@ try {
           );
           assertNoIccWarnings(converted.stderr);
           assert.equal(converted.stdout.length, original.width * original.height * 6);
-          let sum = 0,
-            maximum = 0;
+          let sumCodeValues = 0,
+            maximumCodeValues = 0;
           for (let i = 0; i < original.pixels.length; i++) {
-            const error = Math.abs(original.pixels[i] - converted.stdout.readUInt16BE(i * 2) / 65535);
-            sum += error;
-            maximum = Math.max(maximum, error);
+            const error = Math.abs(Math.round(original.pixels[i] * 65535) - converted.stdout.readUInt16BE(i * 2));
+            sumCodeValues += error;
+            maximumCodeValues = Math.max(maximumCodeValues, error);
           }
-          const mean = sum / original.pixels.length;
+          const meanCodeValues = sumCodeValues / original.pixels.length;
+          const mean = meanCodeValues / 65535;
+          const maximum = maximumCodeValues / 65535;
           assert.ok(
-            mean <= 4 / 65535 && maximum <= 32 / 65535,
+            meanCodeValues <= 4 && maximumCodeValues <= 32,
             `sRGB-to-independent-sRGB must preserve color within fixed-point/TRC quantization: mean=${mean}, maximum=${maximum}`,
           );
           await writeFile(join(workspace, 'reference-srgb-transform.rgb'), converted.stdout);
