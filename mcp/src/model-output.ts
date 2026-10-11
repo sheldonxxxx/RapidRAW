@@ -227,6 +227,7 @@ export function summarizeOutput(operation: string, data: JsonObject): JsonObject
     return fields(data, [
       ...common,
       'engine',
+      'engine_commands',
       'bridge_version',
       'protocol_version',
       'methods',

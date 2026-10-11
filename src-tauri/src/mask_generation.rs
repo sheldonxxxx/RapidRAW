@@ -1706,14 +1706,15 @@ fn generate_mask_overlay_inner(
     });
     state.ensure_preview_identity(identity)?;
 
-    if let Some(gray_mask) = generate_mask_bitmap(
-        &parsed_mask_def,
-        width,
-        height,
-        scale,
-        scaled_crop_offset,
-        warped_image.as_deref(),
-    ) {
+    if let Some(gray_mask) =
+        crate::engine_commands::rasterize_mask(crate::engine_commands::MaskRasterRequest {
+            definition: &parsed_mask_def,
+            dimensions: (width, height),
+            scale,
+            crop_offset: scaled_crop_offset,
+            warped_image: warped_image.as_deref(),
+        })
+    {
         state.ensure_preview_identity(identity)?;
         let mut rgba_mask = RgbaImage::new(width, height);
         for (x, y, pixel) in gray_mask.enumerate_pixels() {

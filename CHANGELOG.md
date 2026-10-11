@@ -4,6 +4,12 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Shared editing engine
+
+- Add a versioned command registry for Open, Adjust, Mask, Render and Export, exposed by the desktop and MCP capabilities. Both entry points use shared native operations while retaining their existing preview and session controls.
+- Use the same final-image geometry, sampled crop origin and visible-mask preparation for desktop export and MCP rendering. Reject incomplete mask rasterization instead of pairing adjustments with missing selection pixels.
+- Add deterministic CPU/GPU regressions for geometry, mask placement, exposure, preview parity, region rendering and sixteen-bit delivery. Run the small GPU checks explicitly in macOS native CI, alongside the existing precision and preview-cache checks.
+
 ### MCP retouch
 
 - Add `replace_patch_id` to `retouch` for local inpaint and generative patches. It regenerates an existing patch in place, keeping its position, instead of appending another one, so alternatives with different seeds, profiles or prompts no longer need a fork per attempt or a stack of hidden patches. The patch's own pixels are excluded from the conditioning image, matching desktop regeneration. Selection, prompt, removal controls and generation settings are inherited unless supplied; the seed is not, so each call draws a new alternative unless one is named. The result reports the replaced receipt as `previous_generation`. Manual clone, heal, retouch and liquify patches cannot be replaced this way.

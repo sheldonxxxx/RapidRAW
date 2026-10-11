@@ -134,7 +134,7 @@ impl Bridge {
             "resume_job" => return self.start_denoise_job(&params, true).await,
             "capabilities" => {
                 return Ok(
-                    json!({"protocol_version":1,"engine":"RapidRAW","bridge_version":"1.2.0","methods":METHODS,"workspace":self.paths.root,"adjustment_schema":validation::adjustment_schema(),"coordinate_space":{"masks":"oriented full-resolution pixels before user crop","render_region":"output pixels after user crop, before preview resizing"},"precision":{"render":"float32 GPU / 16-bit readback","formats_16bit":["png","tiff"]},"persistence":"Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.","originals":"Never overwritten. All source files copied to session workspace.","limits":{"masks":32,"history":32,"comparison_variants":4,"comparison_long_edge":2048,"concurrent_denoise_jobs":1,"request_bytes":67108864},"model_policy":"Local generation copies and verifies installed model assets. Only install_model can download missing assets. Only explicitly selected generative retouch can send image data to a connector."}),
+                    json!({"protocol_version":1,"engine":"RapidRAW","bridge_version":"1.2.0","methods":METHODS,"engine_commands":crate::engine_commands::contract(),"workspace":self.paths.root,"adjustment_schema":validation::adjustment_schema(),"coordinate_space":{"masks":"oriented full-resolution pixels before user crop","render_region":"output pixels after user crop, before preview resizing"},"precision":{"render":"float32 GPU / 16-bit readback","formats_16bit":["png","tiff"]},"persistence":"Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.","originals":"Never overwritten. All source files copied to session workspace.","limits":{"masks":32,"history":32,"comparison_variants":4,"comparison_long_edge":2048,"concurrent_denoise_jobs":1,"request_bytes":67108864},"model_policy":"Local generation copies and verifies installed model assets. Only install_model can download missing assets. Only explicitly selected generative retouch can send image data to a connector."}),
                 );
             }
             "get_engine_settings" => {
@@ -142,7 +142,12 @@ impl Bridge {
                     .map_err(|e| e.to_string());
             }
             "list_images" => return list_images(&params),
-            "open_photo" => return self.open(&params).await,
+            method
+                if crate::engine_commands::command_for_mcp(method)
+                    == Some(crate::engine_commands::CommandId::Open) =>
+            {
+                return self.open(&params).await;
+            }
             "list_sessions" => {
                 return Ok(
                     json!({"sessions":self.sessions.values().map(|s|s.info(false)).collect::<Vec<_>>(),"count":self.sessions.len()}),
@@ -231,6 +236,7 @@ impl Bridge {
         // All remaining calls inspect or mutate one active native image serially.
         session.check_revision(&params)?;
         self.activate(&id).await?;
+        let core_command = crate::engine_commands::command_for_mcp(method);
         match method {
             "map_coordinates" => self.map_coordinates(&session, &params),
             "preflight" => self.preflight(&session, &params),
@@ -238,10 +244,14 @@ impl Bridge {
             "render_compare" => self.render_compare(&session, &params),
             "inspect_adjustments" => self.inspect_adjustments(&session, &params),
             "inspect_edit" => self.inspect_edit(&session, &params),
-            "render" => self.render_response(&session, &params),
+            _ if core_command == Some(crate::engine_commands::CommandId::Render) => {
+                self.render_response(&session, &params)
+            }
             "analyze" => self.analyze(&session, &params),
-            "export" => self.export_photo(&session, &params),
-            "set_adjustments" | "load_recipe" => {
+            _ if core_command == Some(crate::engine_commands::CommandId::Export) => {
+                self.export_photo(&session, &params)
+            }
+            _ if core_command == Some(crate::engine_commands::CommandId::Adjust) => {
                 let patch = if method == "load_recipe" {
                     let path = Path::new(required(&params, "path")?);
                     serde_json::from_slice(
@@ -284,7 +294,7 @@ impl Bridge {
                 result["applied"] = json!(true);
                 Ok(result)
             }
-            "mask_create" | "mask_duplicate" | "mask_update" | "mask_remove" => {
+            _ if core_command == Some(crate::engine_commands::CommandId::Mask) => {
                 self.mask_edit(&session, method, &params)
             }
             "undo" | "redo" => {

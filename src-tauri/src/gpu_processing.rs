@@ -3711,6 +3711,10 @@ mod precision_tests {
     }
 }
 
+#[cfg(test)]
+#[path = "engine_regression_tests.rs"]
+mod engine_regression_tests;
+
 /// Timing harness for the interactive preview path. Run on a machine with a GPU:
 /// `cargo test --lib preview_perf_bench -- --ignored --nocapture`
 #[cfg(test)]

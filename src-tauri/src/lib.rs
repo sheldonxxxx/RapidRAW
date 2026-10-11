@@ -20,6 +20,7 @@ mod color_profiles;
 mod culling;
 mod delivery;
 mod denoising;
+mod engine_commands;
 mod exif_processing;
 mod export_processing;
 mod file_management;
@@ -642,10 +643,13 @@ fn process_preview_job(
 
     let is_raw = loaded_image.is_raw;
     let tm_override = resolve_tonemapper_override_from_handle(app_handle, is_raw);
-    let mut final_adjustments =
-        get_all_adjustments_from_json(&adjustments_clone, is_raw, tm_override);
-    final_adjustments.global.show_clipping =
-        u32::from(adjustments_clone["showClipping"].as_bool() == Some(true));
+    let final_adjustments =
+        engine_commands::effective_adjustments(engine_commands::AdjustRequest {
+            adjustments: &adjustments_clone,
+            is_raw,
+            tonemapper_override: tm_override,
+            show_clipping: adjustments_clone["showClipping"].as_bool() == Some(true),
+        });
     let lut_path = adjustments_clone["lutPath"].as_str();
     let lut = lut_path.and_then(|p| lut_processing::get_or_load_lut(&state, p).ok());
 
@@ -1043,6 +1047,11 @@ async fn set_preview_intent(
 struct PreviewAssetCacheStatus {
     cache_epoch: u64,
     retained_keys: Vec<String>,
+}
+
+#[tauri::command]
+fn get_engine_commands() -> engine_commands::CommandContract {
+    engine_commands::contract()
 }
 
 #[tauri::command]
@@ -2589,6 +2598,7 @@ pub fn run() {
             apply_adjustments,
             set_preview_intent,
             get_preview_asset_cache_status,
+            get_engine_commands,
             cache_utils::get_preview_cache_usage,
             generate_preview_for_path,
             generate_preset_preview,

@@ -409,6 +409,8 @@ For removal, recolouring, adding objects and lettering, follow the [AI editing w
 
 Current source builds expose **67 MCP tools** over stdio. Local AI operations need their model assets installed. HDR, focus merging, panorama and negative conversion are also exposed, with photographic acceptance limits documented in the [historical capability snapshot](docs/mcp/history/capability-matrix-2026-09.md). The live `rapidraw_capabilities` response defines the available tools and schemas for your build.
 
+Desktop editing and MCP share a [native command contract](docs/engine-commands.md) for Open, Adjust, Mask, Render and Export. Deterministic CPU/GPU regressions check mask placement, geometry and output precision; photographic acceptance remains a separate review.
+
 ## Connect an agent
 
 1. Install a fork release package and connect the pinned npm host using the [agent setup guide](AGENT_SETUP.md). Source builds via the [source-build fallback](mcp/README.md#build-and-connect) or the [Linux GPU server guide](docs/mcp/remote-ssh.md) remain the fallback for development or unsupported platforms.
