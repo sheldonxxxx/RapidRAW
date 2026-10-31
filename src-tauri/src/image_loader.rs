@@ -947,6 +947,19 @@ pub async fn load_image(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<LoadImageResult, String> {
+    crate::engine_commands::open(
+        crate::engine_commands::OpenRequest { path },
+        state,
+        app_handle,
+    )
+    .await
+}
+
+pub(crate) async fn load_image_native(
+    path: String,
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<LoadImageResult, String> {
     let my_generation = state.begin_preview_generation();
     let generation_tracker = state.load_image_generation.clone();
     let cancel_token = Some((generation_tracker.clone(), my_generation));

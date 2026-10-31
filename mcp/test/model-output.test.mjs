@@ -183,6 +183,19 @@ test('compact client keeps lifecycle, refinement, export and failure information
   assert.equal(redacted.adjustments.masks[0].subMasks[0].parameters.samRefinement.logitsBase64._rapidraw_asset, true);
 });
 
+test('command discovery survives full, selective and compact capability responses', () => {
+  const registry = {
+    version: 1,
+    commands: [{ id: 'render', desktop_commands: ['apply_adjustments'], mcp_methods: ['render'] }],
+  };
+  const caps = { engine_commands: registry, adjustment_schema: { type: 'object', properties: {} } };
+  for (const options of [{}, { detail: 'overview' }, { schema_paths: ['properties'] }]) {
+    const output = capabilityOutput(caps, options);
+    assert.deepEqual(output.engine_commands, registry);
+    assert.deepEqual(summarizeOutput('capabilities', output).engine_commands, registry);
+  }
+});
+
 test('descriptors round-trip against live session state, then behave as ordinary values', async () => {
   const native = maskedState();
   const shown = toolResult(native).structuredContent;

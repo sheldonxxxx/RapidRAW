@@ -35,7 +35,7 @@ use crate::image_processing::{
 use crate::lut_processing::{
     convert_image_to_cube_lut, generate_identity_lut_image, get_or_load_lut,
 };
-use crate::mask_generation::{render_source_mask_bitmaps, render_source_mask_bitmaps_checked};
+use crate::mask_generation::render_source_mask_bitmaps;
 
 use crate::cache_utils::{calculate_full_job_hash, calculate_transform_hash};
 use crate::{
@@ -465,6 +465,7 @@ impl Drop for ExportTaskGuard {
     }
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn render_export_source_masks(
     definitions: &[crate::mask_generation::MaskDefinition],
@@ -476,15 +477,16 @@ fn render_export_source_masks(
     crop_offset: (f32, f32),
     cancellation_token: Option<&AtomicBool>,
 ) -> Result<Vec<GrayImage>, String> {
-    render_source_mask_bitmaps_checked(
-        definitions,
-        Some(base_image),
-        is_raw,
-        adjustments,
-        width,
-        height,
-        1.0,
-        crop_offset,
+    crate::engine_commands::source_masks(
+        crate::engine_commands::MaskRequest {
+            definitions,
+            source: base_image,
+            is_raw,
+            adjustments,
+            dimensions: (width, height),
+            scale: 1.0,
+            crop_offset,
+        },
         || {
             if let Some(token) = cancellation_token {
                 ensure_export_not_cancelled(token)
@@ -507,26 +509,12 @@ fn process_image_for_export_pipeline(
     app_handle: &tauri::AppHandle,
     output_precision: RenderOutputPrecision,
 ) -> Result<DynamicImage, String> {
-    let (transformed_image, unscaled_crop_offset) =
-        apply_all_transformations(Cow::Borrowed(base_image), js_adjustments);
-    let (img_w, img_h) = transformed_image.dimensions();
-
-    let mask_definitions = crate::marigold_surface::render_masks(js_adjustments);
-
-    let mask_bitmaps = render_export_source_masks(
-        &mask_definitions,
-        base_image,
-        is_raw,
-        js_adjustments,
-        img_w,
-        img_h,
-        unscaled_crop_offset,
-        None,
-    )?;
+    let prepared =
+        crate::engine_commands::prepare_render_source(base_image, js_adjustments, is_raw)?;
 
     let tm_override = resolve_tonemapper_override_from_handle(app_handle, is_raw);
-    let mut all_adjustments = get_all_adjustments_from_json(js_adjustments, is_raw, tm_override);
-    all_adjustments.global.show_clipping = 0;
+    let all_adjustments =
+        crate::engine_commands::final_adjustments(js_adjustments, is_raw, tm_override);
 
     let lut_path = js_adjustments["lutPath"].as_str();
     let lut = lut_path
@@ -538,14 +526,14 @@ fn process_image_for_export_pipeline(
 
     let request = RenderRequest {
         adjustments: all_adjustments,
-        mask_bitmaps: &mask_bitmaps,
+        mask_bitmaps: &prepared.bitmaps,
         lut,
         roi: None,
     };
     render_export_request(
         context,
         state,
-        transformed_image.as_ref(),
+        &prepared.image,
         unique_hash,
         request,
         debug_tag,
@@ -563,35 +551,24 @@ fn render_export_request(
     debug_tag: &str,
     output_precision: RenderOutputPrecision,
 ) -> Result<DynamicImage, String> {
-    match output_precision {
-        RenderOutputPrecision::SixteenBit => {
-            crate::gpu_processing::process_and_get_dynamic_image_high_precision(
-                context, image, request,
-            )
-        }
-        RenderOutputPrecision::EightBit => process_and_get_dynamic_image_with_precision(
-            context,
-            state,
+    crate::engine_commands::render_final(
+        context,
+        state,
+        crate::engine_commands::FinalRenderRequest {
             image,
-            job_hash,
-            request,
-            debug_tag,
-            output_precision,
-        ),
-    }
+            native: request,
+            precision: output_precision,
+            cache_key: job_hash,
+            caller: debug_tag,
+        },
+    )
 }
 
 fn render_output_precision(
     output_format: &str,
     export_settings: &ExportSettings,
 ) -> RenderOutputPrecision {
-    if matches!(output_format.to_lowercase().as_str(), "tif" | "tiff")
-        && export_settings.tiff_bit_depth == TiffBitDepth::Sixteen
-    {
-        RenderOutputPrecision::SixteenBit
-    } else {
-        RenderOutputPrecision::EightBit
-    }
+    crate::engine_commands::export_precision(output_format, export_settings.tiff_bit_depth)
 }
 
 fn set_timestamps_from_exif(src: &Path, dst: &Path) {
@@ -790,6 +767,20 @@ pub(crate) fn encode_image_to_bytes(
     jpeg_quality: u8,
     tiff_bit_depth: TiffBitDepth,
 ) -> Result<Vec<u8>, String> {
+    crate::engine_commands::encode_export(crate::engine_commands::ExportRequest {
+        image,
+        format: output_format,
+        quality: jpeg_quality,
+        bit_depth: tiff_bit_depth,
+    })
+}
+
+pub(crate) fn encode_image_to_bytes_native(
+    image: &DynamicImage,
+    output_format: &str,
+    jpeg_quality: u8,
+    tiff_bit_depth: TiffBitDepth,
+) -> Result<Vec<u8>, String> {
     let mut image_bytes = Vec::new();
     let mut cursor = Cursor::new(&mut image_bytes);
 
@@ -912,27 +903,20 @@ fn export_masks_for_image(
     cancellation_token: &AtomicBool,
 ) -> Result<(), String> {
     ensure_export_not_cancelled(cancellation_token)?;
-    let (transformed_image, unscaled_crop_offset) =
-        apply_all_transformations(Cow::Borrowed(base_image), js_adjustments);
-    ensure_export_not_cancelled(cancellation_token)?;
-    let (img_w, img_h) = transformed_image.dimensions();
-    let mask_definitions = crate::marigold_surface::render_masks(js_adjustments);
-
-    let mask_bitmaps = render_export_source_masks(
-        &mask_definitions,
+    let prepared = crate::engine_commands::prepare_render_source_checked(
         base_image,
-        is_raw,
         js_adjustments,
-        img_w,
-        img_h,
-        unscaled_crop_offset,
-        Some(cancellation_token),
+        is_raw,
+        || ensure_export_not_cancelled(cancellation_token),
     )?;
+    let (img_w, img_h) = prepared.image.dimensions();
+    let mask_bitmaps = &prepared.bitmaps;
     ensure_export_not_cancelled(cancellation_token)?;
 
     if !mask_bitmaps.is_empty() {
         let tm_override = resolve_tonemapper_override_from_handle(app_handle, is_raw);
-        let all_adjustments = get_all_adjustments_from_json(js_adjustments, is_raw, tm_override);
+        let all_adjustments =
+            crate::engine_commands::final_adjustments(js_adjustments, is_raw, tm_override);
         let lut_path = js_adjustments["lutPath"].as_str();
         let lut = lut_path
             .filter(|path| !path.is_empty())
@@ -958,7 +942,7 @@ fn export_masks_for_image(
             let processed = render_export_request(
                 context,
                 state,
-                transformed_image.as_ref(),
+                &prepared.image,
                 unique_hash,
                 RenderRequest {
                     adjustments: single_adjustments,

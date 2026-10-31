@@ -14,12 +14,12 @@ use crate::export_processing::{
     apply_export_resize_and_watermark, calculate_resize_target, encode_image_to_bytes,
     export_adjustments_as_lut_high_precision,
 };
-use crate::gpu_processing::{RenderRequest, Roi, process_and_get_dynamic_image_high_precision};
+use crate::gpu_processing::{RenderOutputPrecision, RenderRequest, Roi};
 use crate::image_processing::{
-    calculate_histogram_from_image, calculate_waveform_from_image, get_all_adjustments_from_json,
-    get_or_init_gpu_context, resolve_tonemapper_override_from_handle,
+    calculate_histogram_from_image, calculate_waveform_from_image, get_or_init_gpu_context,
+    resolve_tonemapper_override_from_handle,
 };
-use crate::mask_generation::{MaskDefinition, render_source_mask_bitmaps};
+use crate::mask_generation::MaskDefinition;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, imageops};
 use serde_json::{Value, json};
@@ -41,6 +41,7 @@ struct Prepared {
     warnings: Vec<String>,
 }
 
+#[cfg(test)]
 fn render_mcp_source_masks(
     masks: &[MaskDefinition],
     composited_source: &DynamicImage,
@@ -49,23 +50,30 @@ fn render_mcp_source_masks(
     dimensions: (u32, u32),
     crop_offset: (f32, f32),
 ) -> Result<(Vec<GrayImage>, Vec<String>)> {
-    let bitmaps = render_source_mask_bitmaps(
-        masks,
-        Some(composited_source),
-        is_raw,
-        adjustments,
-        dimensions.0,
-        dimensions.1,
-        1.0,
-        crop_offset,
+    let bitmaps = crate::engine_commands::source_masks(
+        crate::engine_commands::MaskRequest {
+            definitions: masks,
+            source: composited_source,
+            is_raw,
+            adjustments,
+            dimensions,
+            scale: 1.0,
+            crop_offset,
+        },
+        || Ok(()),
     )
     .map_err(|error| format!("MASK_RENDER_FAILED: {error}"))?;
     if bitmaps.len() != masks.len() {
         return Err("MASK_RENDER_FAILED: Could not rasterize every visible mask".into());
     }
-    let warnings = masks
+    let warnings = mask_warnings(masks, &bitmaps);
+    Ok((bitmaps, warnings))
+}
+
+fn mask_warnings(masks: &[MaskDefinition], bitmaps: &[GrayImage]) -> Vec<String> {
+    masks
         .iter()
-        .zip(&bitmaps)
+        .zip(bitmaps)
         .filter(|(_, bitmap)| !bitmap.as_raw().iter().any(|value| *value > 0))
         .map(|(mask, _)| {
             format!(
@@ -73,8 +81,7 @@ fn render_mcp_source_masks(
                 mask.name, mask.id
             )
         })
-        .collect();
-    Ok((bitmaps, warnings))
+        .collect()
 }
 
 struct Frame {
@@ -134,29 +141,16 @@ impl Bridge {
         let composite =
             crate::image_loader::composite_patches_on_image(&loaded.image, &adjustments)
                 .map_err(|e| format!("PATCH_RENDER_FAILED: {e}"))?;
-        let (image, crop_offset) =
-            crate::apply_all_transformations(Cow::Borrowed(&composite), &adjustments);
-        // Native cropping rounds source pixels; masks use the same sampled origin.
-        let crop_offset = (crop_offset.0.round(), crop_offset.1.round());
-        let image = image.into_owned();
-        let masks = crate::marigold_surface::render_masks(&adjustments);
-        let masks: Vec<_> = masks.into_iter().filter(|m| m.visible).collect();
-        // Bind image-dependent masks to this session's captured photo, even if
-        // the editor switches to another image while the MCP render is running.
-        let (bitmaps, warnings) = render_mcp_source_masks(
-            &masks,
-            &composite,
-            loaded.is_raw,
-            &adjustments,
-            image.dimensions(),
-            crop_offset,
-        )?;
+        let prepared =
+            crate::engine_commands::prepare_render_source(&composite, &adjustments, loaded.is_raw)
+                .map_err(|error| format!("MASK_RENDER_FAILED: {error}"))?;
+        let warnings = mask_warnings(&prepared.masks, &prepared.bitmaps);
         Ok(Prepared {
-            image,
+            image: prepared.image,
             adjustments,
-            masks,
-            bitmaps,
-            crop_offset,
+            masks: prepared.masks,
+            bitmaps: prepared.bitmaps,
+            crop_offset: prepared.crop_offset,
             warnings,
         })
     }
@@ -172,8 +166,7 @@ impl Bridge {
         let context = get_or_init_gpu_context(&state, &self.handle)?;
         let tm = resolve_tonemapper_override_from_handle(&self.handle, session.is_raw);
         let mut adjustments =
-            get_all_adjustments_from_json(&prepared.adjustments, session.is_raw, tm);
-        adjustments.global.show_clipping = 0;
+            crate::engine_commands::final_adjustments(&prepared.adjustments, session.is_raw, tm);
         let lut = match prepared.adjustments["lutPath"]
             .as_str()
             .filter(|p| !p.is_empty())
@@ -200,14 +193,20 @@ impl Bridge {
         } else {
             &prepared.bitmaps
         };
-        process_and_get_dynamic_image_high_precision(
+        crate::engine_commands::render_final(
             &context,
-            &prepared.image,
-            RenderRequest {
-                adjustments,
-                mask_bitmaps: bitmaps,
-                lut,
-                roi: Some(region),
+            &state,
+            crate::engine_commands::FinalRenderRequest {
+                image: &prepared.image,
+                native: RenderRequest {
+                    adjustments,
+                    mask_bitmaps: bitmaps,
+                    lut,
+                    roi: Some(region),
+                },
+                precision: RenderOutputPrecision::SixteenBit,
+                cache_key: 0,
+                caller: "mcp_render",
             },
         )
         .map_err(|e| format!("RENDER_FAILED: {e}"))
