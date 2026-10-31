@@ -120,6 +120,78 @@ pub(crate) enum ExportAdjustmentsMode {
     GlobalOverride(Value),
 }
 
+fn is_current_edit(path: &str, active_path: Option<&str>) -> bool {
+    Some(path) == active_path
+}
+
+impl ExportAdjustmentsMode {
+    fn is_current_edit(&self, path: &str) -> bool {
+        match self {
+            Self::UseSidecars { active_path, .. } => is_current_edit(path, active_path.as_deref()),
+            Self::GlobalOverride(_) => false,
+        }
+    }
+
+    fn adjustments_for(&self, path: &str) -> Value {
+        match self {
+            Self::GlobalOverride(adjustments) => adjustments.clone(),
+            Self::UseSidecars {
+                active_adjustments, ..
+            } => {
+                if self.is_current_edit(path)
+                    && let Some(adjustments) = active_adjustments
+                {
+                    return adjustments.clone();
+                }
+                let (_, sidecar) = parse_virtual_path(path);
+                crate::exif_processing::load_sidecar(&sidecar).adjustments
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod export_identity_tests {
+    use super::*;
+
+    #[test]
+    fn live_adjustments_apply_only_to_the_selected_original_or_virtual_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("photo.CR3").to_string_lossy().into_owned();
+        let copy = format!("{original}?vc=abcdef");
+        for (path, exposure) in [(&original, 1), (&copy, 2)] {
+            let (_, sidecar) = parse_virtual_path(path);
+            let metadata = crate::image_processing::ImageMetadata {
+                adjustments: serde_json::json!({"exposure":exposure}),
+                ..Default::default()
+            };
+            fs::write(sidecar, serde_json::to_vec(&metadata).unwrap()).unwrap();
+        }
+        let live = serde_json::json!({"exposure":3});
+        for (active, other, saved) in [(&original, &copy, 2), (&copy, &original, 1)] {
+            let mode = ExportAdjustmentsMode::UseSidecars {
+                active_path: Some(active.clone()),
+                active_adjustments: Some(live.clone()),
+            };
+            assert!(mode.is_current_edit(active));
+            assert!(!mode.is_current_edit(other));
+            assert_eq!(mode.adjustments_for(active), live);
+            assert_eq!(mode.adjustments_for(other)["exposure"], saved);
+            assert!(is_current_edit(active, Some(active)));
+            assert!(!is_current_edit(other, Some(active)));
+        }
+        let saved = ExportAdjustmentsMode::UseSidecars {
+            active_path: Some(copy.clone()),
+            active_adjustments: None,
+        };
+        assert_eq!(saved.adjustments_for(&copy)["exposure"], 2);
+        let global = ExportAdjustmentsMode::GlobalOverride(live.clone());
+        assert!(!global.is_current_edit(&original));
+        assert_eq!(global.adjustments_for(&original), live);
+        assert_eq!(global.adjustments_for(&copy), live);
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum WatermarkAnchor {
@@ -1253,32 +1325,11 @@ pub(crate) async fn export_images_impl(
                 ensure_export_not_cancelled(&cancellation_token_clone)?;
 
                 let state = app_handle_clone.state::<AppState>();
-                let (source_path, sidecar_path) = parse_virtual_path(&image_path_str);
+                let (source_path, _) = parse_virtual_path(&image_path_str);
                 let source_path_str = source_path.to_string_lossy().to_string();
 
-                let is_current_edit = match &adjustments_mode {
-                    ExportAdjustmentsMode::UseSidecars { active_path, .. } => {
-                        Some(&source_path_str) == active_path.as_ref()
-                    }
-                    ExportAdjustmentsMode::GlobalOverride(_) => false,
-                };
-
-                let mut js_adjustments = match &adjustments_mode {
-                    ExportAdjustmentsMode::UseSidecars {
-                        active_adjustments, ..
-                    } => {
-                        if is_current_edit {
-                            if let Some(adj) = active_adjustments {
-                                adj.clone()
-                            } else {
-                                crate::exif_processing::load_sidecar(&sidecar_path).adjustments
-                            }
-                        } else {
-                            crate::exif_processing::load_sidecar(&sidecar_path).adjustments
-                        }
-                    }
-                    ExportAdjustmentsMode::GlobalOverride(adj) => adj.clone(),
-                };
+                let is_current_edit = adjustments_mode.is_current_edit(&image_path_str);
+                let mut js_adjustments = adjustments_mode.adjustments_for(&image_path_str);
 
                 hydrate_adjustments(&state, &mut js_adjustments)?;
                 let is_raw = is_raw_file(&source_path_str);
@@ -1769,7 +1820,7 @@ pub async fn estimate_export_sizes(
     let source_path_str = source_path.to_string_lossy().to_string();
 
     let context = get_or_init_gpu_context(&state, &app_handle)?;
-    let is_current_edit = Some(&source_path_str) == current_edit_path.as_ref();
+    let is_current_edit = is_current_edit(first_path, current_edit_path.as_deref());
     let is_raw = is_raw_file(&source_path_str);
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
 

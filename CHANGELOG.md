@@ -4,6 +4,14 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### File and export reliability
+
+- Validate batch copy, move, and rename destinations before writing, including sidecars. Reject conflicting destinations instead of overwriting another selected photograph or an existing edit, and keep associated-file deletion scoped to each selected folder.
+- Match edit sidecars to their exact source image. Rename each physical image once when its original and virtual copies are selected together, preserving selection order and virtual-copy IDs. Keep the library view open after renaming, and skip deleted virtual copies when choosing the next photograph.
+- Keep nested library roots and pinned folders in sync after a folder rename without changing sibling paths that share the same prefix.
+- Export an original and its virtual copies with their own saved adjustments, using live unsaved adjustments only for the exact image open in the editor. Preserve nonzero exit codes when a headless export fails.
+- Escape XML characters and preserve literal dollar signs when reading and updating XMP tags and color labels.
+
 ### Shared editing engine
 
 - Add a versioned command registry for Open, Adjust, Mask, Render and Export, exposed by the desktop and MCP capabilities. Both entry points use shared native operations while retaining their existing preview and session controls.
