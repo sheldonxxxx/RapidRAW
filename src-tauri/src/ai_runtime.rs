@@ -139,7 +139,7 @@ fn apple_silicon_lama_cpu_threads(
         .then_some(4)
 }
 
-#[cfg(any(target_os = "linux", test))]
+#[cfg(test)]
 pub(crate) fn validate_inpaint_output(values: impl Iterator<Item = f32>) -> Result<()> {
     if values.into_iter().any(|value| !value.is_finite()) {
         return Err(anyhow!(

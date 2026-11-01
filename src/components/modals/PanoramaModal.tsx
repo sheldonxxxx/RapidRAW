@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
-import { CheckCircle, XCircle, Loader2, Save, RefreshCw, Layers } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { CheckCircle, Layers, Loader2, RefreshCw, Save, XCircle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { TextColors, TextVariants } from '../../types/typography';
 import Button from '../ui/Button';
 import Text from '../ui/Text';
-import { TextColors, TextVariants } from '../../types/typography';
 
 interface PanoramaModalProps {
   error: string | null;

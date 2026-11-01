@@ -15,6 +15,24 @@ Evidence levels are separate:
 
 Protocol/fake-worker tests verify transport, validation and lifecycle contracts. They **never** count as native or photographic evidence. A failed/empty AI mask remains a failed first attempt. A skip is never a pass.
 
+## Shared engine regressions
+
+The [shared command contract](../engine-commands.md) has deterministic checks in [engine_regression_tests.rs](../../src-tauri/src/engine_regression_tests.rs), alongside the existing [GPU precision and cache tests](../../src-tauri/src/gpu_processing.rs). Fixtures are generated in memory and temporary directories; no private photographs or model downloads are required.
+
+Run the CPU checks and then the small GPU checks on a machine with a working native GPU adapter:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --features mcp --lib engine_commands
+cargo test --manifest-path src-tauri/Cargo.toml --features mcp --lib engine_regression_tests
+cargo test --manifest-path src-tauri/Cargo.toml --features mcp --lib engine_regression_tests -- --ignored --test-threads=1 --nocapture
+cargo test --manifest-path src-tauri/Cargo.toml --features mcp --lib gpu_precision_preserves_ramp_and_tile_boundaries -- --ignored --test-threads=1
+cargo test --manifest-path src-tauri/Cargo.toml --features mcp --lib cached_preview_resources_match_fresh_renders -- --ignored --test-threads=1
+```
+
+The CPU checks use independent geometry and mask expectations. The GPU matrix checks supported exposure and local-mask operations against an independent CPU reference, ordinary eight-bit previews against sixteen-bit output with an explicit tolerance, region sampling, output errors and encoded PNG/TIFF samples and profiles. The [macOS native CI job](../../.github/workflows/mcp.yml) explicitly runs the small GPU tests; ordinary `cargo test` skips tests marked `ignore`.
+
+Run GPU checks sequentially. Do not run every ignored test as one gate: other ignored tests require models or photographs, or perform large benchmarks. These synthetic checks establish processing and delivery behavior for the cases they assert; photographic RAW and provider acceptance remains separate.
+
 ## Running the suites
 
 Build the MCP server with `npm run build --prefix mcp`. Build the native application with the optional `mcp` feature as described in [MCP.md](../../MCP.md). Set `RAPIDRAW_BINARY` to its absolute executable path, and `ORT_DYLIB_PATH` to the native runtime when exercising models. Run native GPU suites sequentially.

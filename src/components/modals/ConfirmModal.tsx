@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { TextVariants } from '../../types/typography';
 import Button from '../ui/Button';
 import Text from '../ui/Text';
-import { TextVariants } from '../../types/typography';
 
 interface ConfirmModalProps {
   cancelText?: string;

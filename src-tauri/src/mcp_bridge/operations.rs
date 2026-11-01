@@ -26,6 +26,7 @@ pub(super) const METHODS: &[&str] = &[
     "preflight",
     "sample_region",
     "inspect_adjustments",
+    "inspect_edit",
     "render_compare",
     "save_version",
     "list_versions",
@@ -89,6 +90,18 @@ fn duplicate_mask_definition(source: &Value, params: &Value) -> Result<(Value, V
     if !flag(params, "copy_adjustments", false)? {
         duplicate["adjustments"] = json!({});
     }
+    if let Some(map) = duplicate.as_object_mut() {
+        // A copy of a linked mask is an ordinary selection unless linked again.
+        map.remove(super::mask_links::LINK_KEY);
+    }
+    if flag(params, "link", false)? {
+        if !flag(params, "invert", false)? {
+            return Err(
+                "INVALID_ARGUMENT: link currently creates inverse copies; set invert=true".into(),
+            );
+        }
+        duplicate[super::mask_links::LINK_KEY] = json!(required(source, "id")?);
+    }
     let submasks = duplicate["subMasks"]
         .as_array_mut()
         .ok_or("INVALID_MASK: subMasks must be an array")?;
@@ -121,7 +134,7 @@ impl Bridge {
             "resume_job" => return self.start_denoise_job(&params, true).await,
             "capabilities" => {
                 return Ok(
-                    json!({"protocol_version":1,"engine":"RapidRAW","bridge_version":"1.2.0","methods":METHODS,"workspace":self.paths.root,"adjustment_schema":validation::adjustment_schema(),"coordinate_space":{"masks":"oriented full-resolution pixels before user crop","render_region":"output pixels after user crop, before preview resizing"},"precision":{"render":"float32 GPU / 16-bit readback","formats_16bit":["png","tiff"]},"persistence":"Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.","originals":"Never overwritten. All source files copied to session workspace.","limits":{"masks":32,"history":32,"comparison_variants":4,"comparison_long_edge":2048,"concurrent_denoise_jobs":1,"request_bytes":67108864},"model_policy":"Local generation copies and verifies installed model assets. Only install_model can download missing assets. Only explicitly selected generative retouch can send image data to a connector."}),
+                    json!({"protocol_version":1,"engine":"RapidRAW","bridge_version":"1.2.0","methods":METHODS,"engine_commands":crate::engine_commands::contract(),"workspace":self.paths.root,"adjustment_schema":validation::adjustment_schema(),"coordinate_space":{"masks":"oriented full-resolution pixels before user crop","render_region":"output pixels after user crop, before preview resizing"},"precision":{"render":"float32 GPU / 16-bit readback","formats_16bit":["png","tiff"]},"persistence":"Every edit is saved atomically inside workspace; save_session writes native .rrdata beside the working copy.","originals":"Never overwritten. All source files copied to session workspace.","limits":{"masks":32,"history":32,"comparison_variants":4,"comparison_long_edge":2048,"concurrent_denoise_jobs":1,"request_bytes":67108864},"model_policy":"Local generation copies and verifies installed model assets. Only install_model can download missing assets. Only explicitly selected generative retouch can send image data to a connector."}),
                 );
             }
             "get_engine_settings" => {
@@ -129,7 +142,12 @@ impl Bridge {
                     .map_err(|e| e.to_string());
             }
             "list_images" => return list_images(&params),
-            "open_photo" => return self.open(&params).await,
+            method
+                if crate::engine_commands::command_for_mcp(method)
+                    == Some(crate::engine_commands::CommandId::Open) =>
+            {
+                return self.open(&params).await;
+            }
             "list_sessions" => {
                 return Ok(
                     json!({"sessions":self.sessions.values().map(|s|s.info(false)).collect::<Vec<_>>(),"count":self.sessions.len()}),
@@ -153,6 +171,13 @@ impl Bridge {
             return Err(format!("METHOD_NOT_FOUND: {method}"));
         }
         let session = self.session(&params)?.clone();
+        if let Some((converted, mapping)) =
+            super::mask_coordinates::to_mask_space(method, &session, &params)?
+        {
+            let mut result = Box::pin(self.dispatch(method, converted)).await?;
+            result["coordinate_mapping"] = mapping;
+            return Ok(result);
+        }
         let id = session.id.clone();
         match method {
             "fork_session" => return self.fork_session(&session, &params),
@@ -211,16 +236,22 @@ impl Bridge {
         // All remaining calls inspect or mutate one active native image serially.
         session.check_revision(&params)?;
         self.activate(&id).await?;
+        let core_command = crate::engine_commands::command_for_mcp(method);
         match method {
             "map_coordinates" => self.map_coordinates(&session, &params),
             "preflight" => self.preflight(&session, &params),
             "sample_region" => self.sample_region(&session, &params),
             "render_compare" => self.render_compare(&session, &params),
             "inspect_adjustments" => self.inspect_adjustments(&session, &params),
-            "render" => self.render_response(&session, &params),
+            "inspect_edit" => self.inspect_edit(&session, &params),
+            _ if core_command == Some(crate::engine_commands::CommandId::Render) => {
+                self.render_response(&session, &params)
+            }
             "analyze" => self.analyze(&session, &params),
-            "export" => self.export_photo(&session, &params),
-            "set_adjustments" | "load_recipe" => {
+            _ if core_command == Some(crate::engine_commands::CommandId::Export) => {
+                self.export_photo(&session, &params)
+            }
+            _ if core_command == Some(crate::engine_commands::CommandId::Adjust) => {
                 let patch = if method == "load_recipe" {
                     let path = Path::new(required(&params, "path")?);
                     serde_json::from_slice(
@@ -244,7 +275,10 @@ impl Bridge {
             }
             "auto_adjust" => {
                 let suggestions = crate::image_processing::calculate_auto_adjustments(
+                    session.current().adjustments.clone(),
+                    None,
                     self.handle.state::<AppState>(),
+                    self.handle.clone(),
                 )?;
                 if !flag(&params, "apply", false)? {
                     return Ok(
@@ -263,7 +297,7 @@ impl Bridge {
                 result["applied"] = json!(true);
                 Ok(result)
             }
-            "mask_create" | "mask_duplicate" | "mask_update" | "mask_remove" => {
+            _ if core_command == Some(crate::engine_commands::CommandId::Mask) => {
                 self.mask_edit(&session, method, &params)
             }
             "undo" | "redo" => {
@@ -583,7 +617,7 @@ fn clear_closed_session_preview(state: &AppState, working_path: &str) -> bool {
     crate::mask_generation::clear_component_mask_cache();
     *state.original_image.lock().unwrap() = None;
     state.cached_preview.lock().unwrap().clear();
-    state.gpu_image_cache.lock().unwrap().clear();
+    state.gpu_image_cache.lock().unwrap().take();
     *state.full_warped_cache.lock().unwrap() = None;
     *state.patched_warped_cache.lock().unwrap() = None;
     *state.full_transformed_cache.lock().unwrap() = None;
@@ -768,6 +802,7 @@ mod tests {
         };
         state.register_preview_intent(old_preview).unwrap();
         *state.original_image.lock().unwrap() = Some(LoadedImage {
+            as_shot: crate::as_shot::AsShot::reference(),
             path: "closed-photo".into(),
             image: Arc::new(DynamicImage::new_rgb8(2, 2)),
             is_raw: false,
@@ -783,6 +818,7 @@ mod tests {
         assert!(state.ensure_preview_identity(old_preview).is_err());
 
         *state.original_image.lock().unwrap() = Some(LoadedImage {
+            as_shot: crate::as_shot::AsShot::reference(),
             path: "other-photo".into(),
             image: Arc::new(DynamicImage::new_rgb8(2, 2)),
             is_raw: false,

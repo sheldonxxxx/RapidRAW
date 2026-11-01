@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { INITIAL_MASK_ADJUSTMENTS, INITIAL_MASK_CONTAINER, type AiPatch, type MaskContainer } from './adjustments';
 import { Mask, type SubMask } from '../components/panel/right/Masks';
+import { INITIAL_MASK_ADJUSTMENTS, INITIAL_MASK_CONTAINER, type AiPatch, type MaskContainer } from './adjustments';
 
 const DIRECT_TYPES = new Set<Mask>([Mask.Clone, Mask.Heal, Mask.Liquify, Mask.Retouch]);
 

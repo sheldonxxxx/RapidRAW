@@ -6,10 +6,11 @@ import { resolve, join, isAbsolute } from 'node:path';
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 
-const help = `Usage: node mcp-client.mjs --server /repo/mcp/dist/index.js --binary /repo/src-tauri/target/debug/RapidRAW --workspace /job [--timeout-ms 900000]
+const help = `Usage: node mcp-client.mjs --server /repo/mcp/dist/index.js --binary /repo/src-tauri/target/debug/RapidRAW --workspace /job [--timeout-ms 900000] [--continue-on-error]
 Remote: node mcp-client.mjs --server /local/repo/mcp/dist/index.js --connection /local/ssh.json --workspace /local/evidence
 --connection reads a stdio launcher object with command, args, and optional cwd. In this mode --server only locates the local SDK, and --workspace only stores local responses. Configure native paths and timeouts in the launcher arguments.
 --timeout-ms sets the server's native-processing timeout; per-request timeout_ms separately sets the client wait.
+Errors that reject a request before anything runs (schema validation, INVALID_ARGUMENT, REVISION_CONFLICT, JOB_BUSY, MODEL_NOT_INSTALLED) are reported and the client keeps reading. Any other MCP error stops the client so queued edits do not run against state that needs review; --continue-on-error keeps going after those too.
 Keep this process open. Submit one JSON line at a time and inspect its result:
   {"tool":"capabilities","arguments":{"detail":"overview"},"timeout_ms":30000}
   {"tool":"get_session","arguments":{"session_id":"...","include_adjustments":true}}
@@ -23,6 +24,8 @@ Structured response records (opaque assets redacted) and native image blocks are
 Large requests belong in files, not terminal input. No requests are retried automatically.`;
 const options = {};
 const argv = process.argv.slice(2);
+const continueOnError = argv.includes('--continue-on-error');
+if (continueOnError) argv.splice(argv.indexOf('--continue-on-error'), 1);
 if (argv.includes('--help')) {
   console.log(help);
   process.exit(0);
@@ -98,6 +101,12 @@ const transport = new StdioClientTransport({
   stderr: 'inherit',
 });
 let sequence = 0;
+const REJECTED_BEFORE_EXECUTION = new Set(['INVALID_ARGUMENT', 'REVISION_CONFLICT', 'JOB_BUSY', 'MODEL_NOT_INSTALLED']);
+// True when the server refused the request before running it, so later queued requests are unaffected.
+const rejectedBeforeExecution = (result, data) =>
+  (!result.structuredContent &&
+    (result.content ?? []).some((b) => b.type === 'text' && /^Input validation error/.test(b.text ?? ''))) ||
+  REJECTED_BEFORE_EXECUTION.has(data?.error?.code);
 const { redactClientData, summarizeOutput } = await import(
   new URL('./model-output.js', pathToFileURL(options.server)).href
 );
@@ -228,7 +237,11 @@ try {
             ? envelope.data
             : summarizeOutput(envelope.operation, envelope.data);
       console.log(JSON.stringify({ ...envelope, data: brief, response_path: responsePath }));
-      if (result.isError) {
+      if (result.isError && rejectedBeforeExecution(result, envelope.data)) {
+        console.error('Request rejected before execution; continuing.');
+      } else if (result.isError && continueOnError) {
+        console.error('MCP error reported; continuing (--continue-on-error).');
+      } else if (result.isError) {
         // Avoid executing queued mutations after a failure whose state needs review.
         console.error('Stopping after MCP error. Inspect saved response/state before reconnecting; no replay.');
         process.exitCode = 1;

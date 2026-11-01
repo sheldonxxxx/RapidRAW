@@ -4,9 +4,43 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Editor and workflow updates
+
+- Integrate upstream black-and-white conversion and toning, Kelvin white balance, relighting, depth-based fog, nondestructive denoising and negative conversion, text and face-part masks, and persistent AI jobs.
+- Add a separate viewer, horizontal and side-by-side comparisons, configurable adjustment sections, image flags, additional translations, and optional Immich browsing and edit sync. Edits to photographs shared by other Immich users remain local.
+- Add print DPI, borders and aspect-ratio padding to desktop and MCP exports, along with source-aware AI and EXIF caches. Keep the fork's preview generation guards, precise final rendering, isolated MCP sessions and legacy destructive conversion commands.
+- Identify the optional upstream RapidRAW Cloud provider separately from this fork and describe when it receives image content. GPU inference availability remains model- and platform-dependent.
+
+### File and export reliability
+
+- Validate batch copy, move, and rename destinations before writing, including sidecars. Reject conflicting destinations instead of overwriting another selected photograph or an existing edit, and keep associated-file deletion scoped to each selected folder.
+- Match edit sidecars to their exact source image. Rename each physical image once when its original and virtual copies are selected together, preserving selection order and virtual-copy IDs. Keep the library view open after renaming, and skip deleted virtual copies when choosing the next photograph.
+- Keep nested library roots and pinned folders in sync after a folder rename without changing sibling paths that share the same prefix.
+- Export an original and its virtual copies with their own saved adjustments, using live unsaved adjustments only for the exact image open in the editor. Preserve nonzero exit codes when a headless export fails.
+- Escape XML characters and preserve literal dollar signs when reading and updating XMP tags and color labels.
+
+### Shared editing engine
+
+- Add a versioned command registry for Open, Adjust, Mask, Render and Export, exposed by the desktop and MCP capabilities. Both entry points use shared native operations while retaining their existing preview and session controls.
+- Use the same final-image geometry, sampled crop origin and visible-mask preparation for desktop export and MCP rendering. Reject incomplete mask rasterization instead of pairing adjustments with missing selection pixels.
+- Add deterministic CPU/GPU regressions for geometry, mask placement, exposure, preview parity, region rendering and sixteen-bit delivery. Run the small GPU checks explicitly in macOS native CI, alongside the existing precision and preview-cache checks.
+
+### MCP retouch
+
+- Add `replace_patch_id` to `retouch` for local inpaint and generative patches. It regenerates an existing patch in place, keeping its position, instead of appending another one, so alternatives with different seeds, profiles or prompts no longer need a fork per attempt or a stack of hidden patches. The patch's own pixels are excluded from the conditioning image, matching desktop regeneration. Selection, prompt, removal controls and generation settings are inherited unless supplied; the seed is not, so each call draws a new alternative unless one is named. The result reports the replaced receipt as `previous_generation`. Manual clone, heal, retouch and liquify patches cannot be replaced this way.
+- Decide whether generative `retouch` needs a prompt from the connector's advertised `requires_prompt` for the chosen (or default) workflow, as the desktop already does, instead of recognising only `qwen21-remove-v1`. Prompt-free removal workflows added to a connector no longer need a prompt from MCP callers. If the connector cannot be queried, the previous `qwen21-remove-v1` rule applies.
+
+### MCP edit review
+
+- Add `rapidraw_inspect_edit`, a read-only measurement of the rendered edit against an aligned reference with the same crop, geometry and retouching but default tone, colour and no masks. It reports frame brightness, bright and deep-shadow fractions and corner relationships; with a subject mask, subject-to-surround brightness in stops, warmth difference and a rim index for the band just outside the subject. `look_here` regions point at edge bands that differ from the reference relationship and at areas that looked like their neighbours but were treated much differently, such as a mask edge running across one surface or background seen through an open beak. An optional heatmap shows brightness change against the reference with those regions boxed. The results are measurements for an agent to inspect, not an aesthetic score.
+- Add `link` to `rapidraw_mask_duplicate`. A linked inverse copy (`invert: true, link: true`) stays the inverted selection of its source: refinements, brushes, grow and feather changes and added components are copied into it on every MCP edit, while its own name, opacity and adjustments are kept. The link is stored as `linkedInverseOf` on the mask; removing the source leaves an ordinary mask with a warning, and a `mask_update` patch of `{"linkedInverseOf": null}` unlinks it. Edits made in the desktop editor are picked up at the next MCP edit.
+- Add `coordinate_space` to `rapidraw_mask_create`, `rapidraw_mask_update` and `rapidraw_mask_generate`. Positions, rectangles, radii, brush sizes and linear fade widths can be given in full-resolution rendered pixels or in the pixels of an earlier preview; the bridge converts them to the pre-crop mask canvas and reports the conversion.
+- Add `stage: "aligned_original"` to `rapidraw_sample_region`: the photograph with the edit's crop, geometry and retouching but default tone and colour, so one region compares directly with the edited stage.
+- Keep the skill's MCP client connected after schema validation and other errors that reject a request before execution. Other MCP result errors stop the client by default; `--continue-on-error` keeps reading after them. Transport failures and timeouts still stop the client.
+
 ### Upstream fixes
 
-- Convert decoded float images directly to GPU upload buffers, avoiding an intermediate full-size RGBA float copy while preserving pixel values and alpha.
+- Convert decoded float images directly to GPU upload buffers, avoiding an intermediate full-size RGBA float copy while preserving the previous upload output and alpha.
 - Smooth magenta highlight correction, select Color Mixer hues in perceptual sRGB space, and prevent invalid vibrance values. Existing edits that use these controls can render differently.
 - Read embedded RAF and CR3 previews when the EXIF reader cannot parse the RAW container, preserving preview orientation and the fork's source freshness checks. Read missing Nikon lens information from RAW metadata.
 - Keep image-dependent mask caches separate for each photograph and check that the editor's loaded photograph matches a current-edit export. Empty masks no longer shift later masks onto the wrong adjustments.
@@ -71,6 +105,8 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ### Generative editing
 
+- Remove the **Klein 9B KV** and **Boogu Edit Turbo** connector profiles, their exported API graphs, model manifest entries and the now-unused Boogu workflow family and Klein KV-cache option. Use Klein 4B (closer context) or Qwen Image 2.1 instead. A catalog that still lists either profile must drop it before the connector will start.
+- Add the `qwen21-remove-fill-v1` connector profile, "Qwen Image 2.1 · Remove (gray fill)". It paints the selection flat gray in the generation input and asks Qwen Image 2.1 to fill it with the surrounding scene, so large or dominant objects that the prompt-free `qwen21-remove-v1` leaves in place are removed. It is prompt-free, uses the same Qwen model files and keeps the original photograph as the final composite.
 - Add **Qwen remove PE** as a separate 1 MP workflow. PE expands a short removal request from the crop and selection guide without referring to the guide; Qwen receives the PE instruction unchanged and only the photo crop as an image input. RapidRAW still composites through the original selection.
 
 ### Release process

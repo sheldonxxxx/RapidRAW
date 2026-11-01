@@ -1,4 +1,3 @@
-import { SubMaskMode, type Mask, type MaskParameters } from './Masks';
 import {
   INITIAL_ADJUSTMENTS,
   INITIAL_MASK_ADJUSTMENTS,
@@ -8,6 +7,7 @@ import {
   type MaskAdjustments,
   type MaskContainer,
 } from '../../../utils/adjustments';
+import { SubMaskMode, type Mask, type MaskParameters } from './Masks';
 
 const MASK_ADJUSTMENT_KEYS = Object.keys(INITIAL_MASK_ADJUSTMENTS) as (keyof Adjustments)[];
 

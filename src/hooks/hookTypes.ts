@@ -14,6 +14,7 @@ export interface PreviousAdjustments {
 }
 
 export interface LoadImageResult {
+  as_shot_white_balance: import('../utils/whiteBalance').WhiteBalance;
   generation: number;
   source_revision: string;
   width: number;

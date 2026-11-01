@@ -1,52 +1,49 @@
-import type { TFunction } from 'i18next';
-import React, { useState, useEffect, useMemo } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
-import { findForkUpdate, FORK_RELEASES_API, FORK_RELEASES_URL } from '../../utils/forkReleases';
 import { open } from '@tauri-apps/plugin-shell';
+import { AnimatePresence, motion } from 'framer-motion';
+import type { TFunction } from 'i18next';
 import {
-  AlertTriangle,
-  Check,
+  CheckCheck,
+  Columns,
   Folder,
   FolderInput,
   Home,
+  LayoutGrid,
   Loader2,
   RefreshCw,
-  Settings,
-  Search,
-  Users,
-  LayoutGrid,
-  Columns,
-  SlidersHorizontal,
   Rows3,
+  Search,
+  Settings,
+  SlidersHorizontal,
+  Users,
+  X,
 } from 'lucide-react';
-import CullingView from './library/CullingView';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import Button from '../ui/Button';
-import { ThemeProps, THEMES, DEFAULT_THEME_ID } from '../../utils/themes';
+import { useLibraryStore } from '../../store/useLibraryStore';
+import { Job, useProcessStore } from '../../store/useProcessStore';
+import { useUIStore } from '../../store/useUIStore';
+import { TextColors, TextVariants, TextWeights } from '../../types/typography';
+import { GroupBadgeInfo, GroupId } from '../../utils/imageGrouping';
+import { DEFAULT_THEME_ID, ThemeProps, THEMES } from '../../utils/themes';
 import {
   AppSettings,
-  ImageFile,
-  LibraryViewMode,
-  Progress,
-  ThumbnailSize,
-  ThumbnailAspectRatio,
-  RawStatus,
   EditedStatus,
+  FlagStatus,
+  ImageFile,
   LibraryDisplayMode,
+  LibraryViewMode,
+  RawStatus,
+  ThumbnailAspectRatio,
+  ThumbnailSize,
 } from '../ui/AppProperties';
-import { GroupBadgeInfo, GroupId } from '../../utils/imageGrouping';
+import Button from '../ui/Button';
 import { ImportState, Status } from '../ui/ExportImportProperties';
 import Text from '../ui/Text';
-import { TextColors, TextVariants, TextWeights } from '../../types/typography';
-import { useLibraryStore } from '../../store/useLibraryStore';
-import { useUIStore } from '../../store/useUIStore';
 import SettingsPanel from './SettingsPanel';
-
+import CullingView from './library/CullingView';
 import LibraryGrid from './library/LibraryGrid';
-import { SearchInput, ViewOptionsDropdown } from './library/LibraryHeader';
-
-const SPLASH_PHOTOGRAPHER = 'Timon Käch';
+import { JobsMenu, SearchInput, ViewOptionsDropdown } from './library/LibraryHeader';
 
 export interface ColumnWidths {
   thumbnail: number;
@@ -61,27 +58,28 @@ export interface ColumnWidths {
 }
 
 export interface MainLibraryProps {
+  selectionModeActive?: boolean;
   activePath: string | null;
   aiModelDownloadStatus: string | null;
+  aiTaggingJob: Job | null;
   appSettings: AppSettings | null;
   currentFolderPath: string | null;
   groupBadgeInfo: Map<GroupId, GroupBadgeInfo> | null;
   imageList: Array<ImageFile>;
   imageRatings: Record<string, number>;
   importState: ImportState;
-  indexingProgress: Progress;
   isLoading: boolean;
-  isIndexing: boolean;
   isAndroid: boolean;
   isTreeLoading: boolean;
   libraryViewMode: LibraryViewMode;
   multiSelectedPaths: Array<string>;
   onClearSelection(): void;
   onContextMenu(event: React.MouseEvent, path: string): void;
+  onNavigateToFolder(path: string): void;
   onContinueSession(): void;
   onEmptyAreaContextMenu(event: React.MouseEvent): void;
   onGoHome(): void;
-  onImageClick(path: string, event: React.MouseEvent): void;
+  onImageClick(path: string, event: React.MouseEvent, visiblePaths?: string[]): void;
   onImageDoubleClick(path: string): void;
   onImportClick(): void;
   onLibraryRefresh(): void;
@@ -94,7 +92,6 @@ export interface MainLibraryProps {
   setLibraryViewMode(mode: LibraryViewMode): void;
   theme: string;
   thumbnailAspectRatio: ThumbnailAspectRatio;
-  thumbnailProgress: Progress;
   thumbnailSize: ThumbnailSize;
   onNavigateToCommunity(): void;
 }
@@ -164,6 +161,16 @@ function DisplayModeSwitch({ displayMode, setDisplayMode, t }: DisplayModeSwitch
   );
 }
 
+function ThumbnailProgressCount() {
+  const current = useProcessStore((state) => state.thumbnailProgress?.current ?? 0);
+  const total = useProcessStore((state) => state.thumbnailProgress?.total ?? 0);
+  return (
+    <Text variant={TextVariants.small} color={TextColors.secondary} className="whitespace-nowrap">
+      ({current}/{total})
+    </Text>
+  );
+}
+
 export default function MainLibrary(props: MainLibraryProps) {
   const { t } = useTranslation();
   const setUI = useUIStore((state) => state.setUI);
@@ -173,6 +180,7 @@ export default function MainLibrary(props: MainLibraryProps) {
   const [isBusyDelayed, setIsBusyDelayed] = useState(false);
   const [isBusyLoaderMounted, setIsBusyLoaderMounted] = useState(false);
   const [isProgressHovered, setIsProgressHovered] = useState(false);
+  const [selectionModeActive, setSelectionModeActive] = useState(false);
   const isSettingsOpen = useUIStore((state) => state.isSettingsOpen);
 
   const libraryDisplayMode = props.appSettings?.libraryDisplayMode || LibraryDisplayMode.Grid;
@@ -187,6 +195,7 @@ export default function MainLibrary(props: MainLibraryProps) {
   };
 
   const searchCriteria = useLibraryStore((state) => state.searchCriteria);
+  const setLibrary = useLibraryStore((state) => state.setLibrary);
 
   const translatedRatingFilterOptions = useMemo(
     () => [
@@ -215,6 +224,16 @@ export default function MainLibrary(props: MainLibraryProps) {
       { key: EditedStatus.All, label: t('library.filters.edited.all') },
       { key: EditedStatus.EditedOnly, label: t('library.filters.edited.editedOnly') },
       { key: EditedStatus.UneditedOnly, label: t('library.filters.edited.uneditedOnly') },
+    ],
+    [t],
+  );
+
+  const translatedFlagStatusOptions = useMemo(
+    () => [
+      { key: FlagStatus.All, label: t('library.filters.flag.all') },
+      { key: FlagStatus.Picked, label: t('library.filters.flag.picked') },
+      { key: FlagStatus.ExcludeRejected, label: t('library.filters.flag.excludeRejected') },
+      { key: FlagStatus.Rejected, label: t('library.filters.flag.rejected') },
     ],
     [t],
   );
@@ -252,10 +271,13 @@ export default function MainLibrary(props: MainLibraryProps) {
     [t],
   );
 
-  const isBusy =
-    props.isLoading ||
-    ((props.thumbnailProgress?.total ?? 0) > 0 &&
-      (props.thumbnailProgress?.current ?? 0) < (props.thumbnailProgress?.total ?? 0));
+  const hasThumbnailWork = useProcessStore((state) => (state.thumbnailProgress?.total ?? 0) > 0);
+  const isGeneratingThumbnails = useProcessStore(
+    (state) =>
+      (state.thumbnailProgress?.total ?? 0) > 0 &&
+      (state.thumbnailProgress?.current ?? 0) < (state.thumbnailProgress?.total ?? 0),
+  );
+  const isBusy = props.isLoading || isGeneratingThumbnails;
 
   useEffect(() => {
     let timer: number | undefined;
@@ -276,19 +298,37 @@ export default function MainLibrary(props: MainLibraryProps) {
   }, [isBusyDelayed]);
 
   useEffect(() => {
+    const compareVersions = (v1: string, v2: string) => {
+      const parts1 = v1.split('.').map(Number);
+      const parts2 = v2.split('.').map(Number);
+      const len = Math.max(parts1.length, parts2.length);
+      for (let i = 0; i < len; i++) {
+        const p1 = parts1[i] || 0;
+        const p2 = parts2[i] || 0;
+        if (p1 < p2) return -1;
+        if (p1 > p2) return 1;
+      }
+      return 0;
+    };
+
     const checkVersion = async () => {
       try {
         const currentVersion = await getVersion();
         setAppVersion(currentVersion);
 
-        const response = await fetch(FORK_RELEASES_API);
+        const response = await fetch('https://api.github.com/repos/CyberTimon/RapidRAW/releases/latest');
         if (!response.ok) {
           console.error('Failed to fetch latest release info from GitHub.');
           return;
         }
-        const update = findForkUpdate(currentVersion, await response.json());
-        if (update) {
-          setLatestVersion(update.version);
+        const data = await response.json();
+        const latestTag = data.tag_name;
+        if (!latestTag) return;
+
+        const latestVersionStr = latestTag.startsWith('v') ? latestTag.substring(1) : latestTag;
+        setLatestVersion(latestVersionStr);
+
+        if (compareVersions(currentVersion, latestVersionStr) < 0) {
           setIsUpdateAvailable(true);
         }
       } catch (error) {
@@ -421,7 +461,7 @@ export default function MainLibrary(props: MainLibraryProps) {
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        {SPLASH_PHOTOGRAPHER}
+                        {'Timon Käch'}
                       </a>
                     </p>
                     {appVersion && (
@@ -435,7 +475,7 @@ export default function MainLibrary(props: MainLibraryProps) {
                             }`}
                             onClick={() => {
                               if (isUpdateAvailable) {
-                                open(`${FORK_RELEASES_URL}/tag/fork-v${encodeURIComponent(latestVersion)}`);
+                                open('https://github.com/CyberTimon/RapidRAW/releases/latest');
                               }
                             }}
                             data-tooltip={
@@ -487,108 +527,135 @@ export default function MainLibrary(props: MainLibraryProps) {
   }
 
   return (
-    <div className="relative z-20 flex-1 flex flex-col h-full min-w-0 bg-bg-secondary rounded-lg overflow-visible">
+    <div className="relative z-20 flex-1 flex flex-col min-w-0 min-h-0 bg-bg-secondary rounded-lg overflow-visible">
       <header
         className="p-3 shrink-0 flex justify-between items-center border-b border-surface gap-4"
         onMouseEnter={() => setIsProgressHovered(true)}
         onMouseLeave={() => setIsProgressHovered(false)}
       >
-        <div className="min-w-0">
-          <Text variant={TextVariants.headline}>{t('library.header.title')}</Text>
-          {!props.isAndroid && (
-            <div className="flex items-center gap-2">
-              {props.currentFolderPath ? (
-                <Text className="truncate">{props.currentFolderPath}</Text>
-              ) : (
-                <p className="text-sm invisible select-none pointer-events-none h-5 overflow-hidden"></p>
+        {selectionModeActive && props.isAndroid ? (
+          <>
+            <div className="min-w-0">
+              <Text variant={TextVariants.headline}>{t('library.header.selectItems')}</Text>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {props.multiSelectedPaths.length < props.imageList.length && (
+                <Button
+                  className="h-12 px-4 bg-surface text-text-primary shadow-none"
+                  onClick={() => setLibrary({ multiSelectedPaths: props.imageList.map((img: ImageFile) => img.path) })}
+                >
+                  <CheckCheck size={16} className="mr-2" />
+                  {t('library.header.selectAll')}
+                </Button>
               )}
-              <div
-                className={`flex items-center gap-2 overflow-hidden transition-all duration-300 whitespace-nowrap ${
-                  isBusyDelayed ? 'max-w-xs opacity-100' : 'max-w-0 opacity-0'
-                }`}
-                onTransitionEnd={(e) => {
-                  if (e.propertyName === 'opacity' && !isBusyDelayed) {
-                    setIsBusyLoaderMounted(false);
-                  }
+              {props.multiSelectedPaths.length === props.imageList.length && props.imageList.length > 0 && (
+                <Button
+                  className="h-12 px-4 bg-surface text-text-primary shadow-none"
+                  onClick={() => setLibrary({ multiSelectedPaths: [] })}
+                >
+                  {t('library.header.deselectAll')}
+                </Button>
+              )}
+              <Button
+                className="h-12 px-4 bg-surface text-text-primary shadow-none"
+                onClick={() => {
+                  setSelectionModeActive(false);
+                  if (props.multiSelectedPaths.length > 0) props.onClearSelection();
                 }}
               >
-                {isBusyLoaderMounted && <Loader2 size={14} className="animate-spin text-text-secondary shrink-0" />}
-                <div
-                  className={`flex items-center transition-all duration-300 ease-out overflow-hidden ${
-                    isProgressHovered && isBusyDelayed && (props.thumbnailProgress?.total ?? 0) > 0
-                      ? 'max-w-xs opacity-100'
-                      : 'max-w-0 opacity-0'
-                  }`}
-                >
-                  <Text variant={TextVariants.small} color={TextColors.secondary} className="whitespace-nowrap">
-                    ({props.thumbnailProgress?.current ?? 0}/{props.thumbnailProgress?.total ?? 0})
-                  </Text>
+                <X size={16} className="mr-2" />
+                {t('library.header.cancel')}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="min-w-0">
+              <Text variant={TextVariants.headline}>{t('library.header.title')}</Text>
+              {!props.isAndroid && (
+                <div className="flex items-center gap-2">
+                  {props.currentFolderPath ? (
+                    <Text className="truncate" data-tooltip={props.currentFolderPath}>
+                      {props.currentFolderPath}
+                    </Text>
+                  ) : (
+                    <p className="text-sm invisible select-none pointer-events-none h-5 overflow-hidden"></p>
+                  )}
+                  <div
+                    className={`flex items-center gap-2 overflow-hidden transition-all duration-300 whitespace-nowrap ${
+                      isBusyDelayed ? 'max-w-xs opacity-100' : 'max-w-0 opacity-0'
+                    }`}
+                    onTransitionEnd={(e) => {
+                      if (e.propertyName === 'opacity' && !isBusyDelayed) {
+                        setIsBusyLoaderMounted(false);
+                      }
+                    }}
+                  >
+                    {isBusyLoaderMounted && <Loader2 size={14} className="animate-spin text-text-secondary shrink-0" />}
+                    <div
+                      className={`flex items-center transition-all duration-300 ease-out overflow-hidden ${
+                        isProgressHovered && isBusyDelayed && hasThumbnailWork
+                          ? 'max-w-xs opacity-100'
+                          : 'max-w-0 opacity-0'
+                      }`}
+                    >
+                      <ThumbnailProgressCount />
+                    </div>
+                  </div>
                 </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4 shrink-0">
+              <DisplayModeSwitch displayMode={libraryDisplayMode} setDisplayMode={setLibraryDisplayMode} t={t} />
+
+              <div className="flex items-center bg-surface p-1 rounded-lg gap-1 border border-border-color/20">
+                <SearchInput indexingProgress={props.aiTaggingJob?.progress} isIndexing={!!props.aiTaggingJob} />
+                <ViewOptionsDropdown
+                  libraryViewMode={props.libraryViewMode}
+                  onSelectSize={props.onThumbnailSizeChange}
+                  onSelectAspectRatio={props.onThumbnailAspectRatioChange}
+                  onLibraryRefresh={props.onLibraryRefresh}
+                  setLibraryViewMode={props.setLibraryViewMode}
+                  thumbnailSize={props.thumbnailSize}
+                  thumbnailAspectRatio={props.thumbnailAspectRatio}
+                  thumbnailSizeOptions={translatedThumbnailSizeOptions}
+                  thumbnailAspectRatioOptions={translatedThumbnailAspectRatioOptions}
+                  ratingFilterOptions={translatedRatingFilterOptions}
+                  rawStatusOptions={translatedRawStatusOptions}
+                  editedStatusOptions={translatedEditedStatusOptions}
+                  flagStatusOptions={translatedFlagStatusOptions}
+                  sortOptions={translatedSortOptions}
+                />
+                <JobsMenu onNavigateToFolder={props.onNavigateToFolder} />
+                {props.isAndroid && (
+                  <Button
+                    className="h-12 w-12 bg-accent text-button-text shadow-none p-0 flex items-center justify-center"
+                    onClick={() => setSelectionModeActive(true)}
+                    data-tooltip={t('library.tooltips.select')}
+                  >
+                    <CheckCheck className="w-6 h-6" />
+                  </Button>
+                )}
+                {!props.isAndroid && (
+                  <Button
+                    className="h-12 w-12 bg-transparent text-text-primary shadow-none p-0 flex items-center justify-center"
+                    onClick={props.onNavigateToCommunity}
+                    data-tooltip={t('library.tooltips.communityPresets')}
+                  >
+                    <Users className="w-5 h-5" />
+                  </Button>
+                )}
+                <Button
+                  className="h-12 w-12 bg-transparent text-text-primary shadow-none p-0 flex items-center justify-center"
+                  onClick={props.onGoHome}
+                  data-tooltip={t('library.tooltips.goHome')}
+                >
+                  <Home className="w-5 h-5" />
+                </Button>
               </div>
             </div>
-          )}
-        </div>
-        <div className="flex items-center gap-4 shrink-0">
-          {props.importState.status === Status.Importing && (
-            <Text as="div" color={TextColors.accent} className="flex items-center gap-2 animate-pulse">
-              <FolderInput size={16} />
-              <span>
-                {t('library.import.progress', {
-                  current: props.importState.progress?.current,
-                  total: props.importState.progress?.total,
-                })}
-              </span>
-            </Text>
-          )}
-          {props.importState.status === Status.Success && (
-            <Text as="div" color={TextColors.success} className="flex items-center gap-2">
-              <Check size={16} />
-              <span>{t('library.import.complete')}</span>
-            </Text>
-          )}
-          {props.importState.status === Status.Error && (
-            <Text as="div" color={TextColors.error} className="flex items-center gap-2">
-              <AlertTriangle size={16} />
-              <span>{t('library.import.failed')}</span>
-            </Text>
-          )}
-          <DisplayModeSwitch displayMode={libraryDisplayMode} setDisplayMode={setLibraryDisplayMode} t={t} />
-
-          <div className="flex items-center bg-surface p-1 rounded-lg gap-1 border border-border-color/20">
-            <SearchInput indexingProgress={props.indexingProgress} isIndexing={props.isIndexing} />
-            <ViewOptionsDropdown
-              libraryViewMode={props.libraryViewMode}
-              onSelectSize={props.onThumbnailSizeChange}
-              onSelectAspectRatio={props.onThumbnailAspectRatioChange}
-              onLibraryRefresh={props.onLibraryRefresh}
-              setLibraryViewMode={props.setLibraryViewMode}
-              thumbnailSize={props.thumbnailSize}
-              thumbnailAspectRatio={props.thumbnailAspectRatio}
-              thumbnailSizeOptions={translatedThumbnailSizeOptions}
-              thumbnailAspectRatioOptions={translatedThumbnailAspectRatioOptions}
-              ratingFilterOptions={translatedRatingFilterOptions}
-              rawStatusOptions={translatedRawStatusOptions}
-              editedStatusOptions={translatedEditedStatusOptions}
-              sortOptions={translatedSortOptions}
-            />
-            {!props.isAndroid && (
-              <Button
-                className="h-12 w-12 bg-transparent text-text-primary shadow-none p-0 flex items-center justify-center"
-                onClick={props.onNavigateToCommunity}
-                data-tooltip={t('library.tooltips.communityPresets')}
-              >
-                <Users className="w-5 h-5" />
-              </Button>
-            )}
-            <Button
-              className="h-12 w-12 bg-transparent text-text-primary shadow-none p-0 flex items-center justify-center"
-              onClick={props.onGoHome}
-              data-tooltip={t('library.tooltips.goHome')}
-            >
-              <Home className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
+          </>
+        )}
       </header>
 
       {props.imageList.length > 0 ? (
@@ -598,19 +665,20 @@ export default function MainLibrary(props: MainLibraryProps) {
           <LibraryGrid
             {...props}
             libraryDisplayMode={libraryDisplayMode}
+            selectionModeActive={selectionModeActive}
             thumbnailSizeOptions={translatedThumbnailSizeOptions}
           />
         )
-      ) : props.isIndexing || props.aiModelDownloadStatus || props.importState.status === Status.Importing ? (
+      ) : props.aiTaggingJob || props.aiModelDownloadStatus || props.importState.status === Status.Importing ? (
         <div className="flex-1 flex flex-col items-center justify-center" onContextMenu={props.onEmptyAreaContextMenu}>
           <Loader2 className="h-12 w-12 text-secondary animate-spin mb-4" />
           <Text variant={TextVariants.heading} color={TextColors.secondary}>
             {props.aiModelDownloadStatus
               ? t('library.status.downloading', { status: props.aiModelDownloadStatus })
-              : props.isIndexing && props.indexingProgress.total > 0
+              : props.aiTaggingJob
                 ? t('library.status.indexing', {
-                    current: props.indexingProgress.current,
-                    total: props.indexingProgress.total,
+                    current: props.aiTaggingJob.progress.current,
+                    total: props.aiTaggingJob.progress.total,
                   })
                 : props.importState.status === Status.Importing &&
                     props.importState?.progress?.total &&

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { useUIStore } from '../store/useUIStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useUIStore } from '../store/useUIStore';
 
 declare global {
   interface Window {

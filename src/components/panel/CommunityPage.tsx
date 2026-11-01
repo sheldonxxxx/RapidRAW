@@ -1,17 +1,18 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, CheckCircle2, Loader2, Search, Users } from 'lucide-react';
-import { siGithub } from 'simple-icons';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import Button from '../ui/Button';
-import Input from '../ui/Input';
-import { Invokes, SupportedTypes, ImageFile } from '../ui/AppProperties';
-import { INITIAL_ADJUSTMENTS, type Adjustments } from '../../utils/adjustments';
-import Text from '../ui/Text';
-import { TextColors, TextVariants, TextWeights } from '../../types/typography';
-import Dropdown from '../ui/Dropdown';
+import { siGithub } from 'simple-icons';
 import { useUIStore } from '../../store/useUIStore';
+import { TextColors, TextVariants, TextWeights } from '../../types/typography';
+import type { Adjustments } from '../../utils/adjustments';
+import { INITIAL_ADJUSTMENTS } from '../../utils/adjustments';
+import { ImageFile, Invokes, SupportedTypes } from '../ui/AppProperties';
+import Button from '../ui/Button';
+import Dropdown from '../ui/Dropdown';
+import Input from '../ui/Input';
+import Text from '../ui/Text';
 
 const DEFAULT_PREVIEW_IMAGE_URL = 'https://raw.githubusercontent.com/CyberTimon/RapidRAW-Presets/main/sample-image.jpg';
 
@@ -75,6 +76,9 @@ const CommunityPage = ({ onBackToLibrary, imageList, currentFolderPath }: Commun
 
   const previewsRef = useRef(previews);
   previewsRef.current = previews;
+  const imageListRef = useRef(imageList);
+  imageListRef.current = imageList;
+  const hasImages = imageList.some((image) => !image.is_cloud_placeholder);
 
   const fetchDefaultPreviewImage = useCallback(async (): Promise<string | null> => {
     try {
@@ -116,9 +120,9 @@ const CommunityPage = ({ onBackToLibrary, imageList, currentFolderPath }: Commun
 
   useEffect(() => {
     const setupPreviewImages = async () => {
-      setPreviews({});
+      const localImages = imageListRef.current.filter((image) => !image.is_cloud_placeholder);
 
-      if (!currentFolderPath || imageList.length === 0) {
+      if (!currentFolderPath || localImages.length === 0) {
         const defaultPath = await fetchDefaultPreviewImage();
         if (defaultPath) {
           setPreviewImagePaths([defaultPath]);
@@ -126,51 +130,56 @@ const CommunityPage = ({ onBackToLibrary, imageList, currentFolderPath }: Commun
         return;
       }
 
-      const shuffled = shuffleArray(imageList);
+      const shuffled = shuffleArray(localImages);
 
-      if (imageList.length === 1) {
-        setPreviewImagePaths([imageList[0].path]);
-      } else if (imageList.length >= 2 && imageList.length <= 3) {
+      if (localImages.length === 1) {
+        setPreviewImagePaths([localImages[0].path]);
+      } else if (localImages.length >= 2 && localImages.length <= 3) {
         setPreviewImagePaths(shuffled.slice(0, 2).map((img) => img.path));
-      } else if (imageList.length >= 4) {
+      } else if (localImages.length >= 4) {
         setPreviewImagePaths(shuffled.slice(0, 4).map((img) => img.path));
       }
     };
 
     setupPreviewImages();
-  }, [imageList, currentFolderPath, fetchDefaultPreviewImage]);
+  }, [hasImages, currentFolderPath, fetchDefaultPreviewImage]);
 
   useEffect(() => {
     if (presets.length === 0 || previewImagePaths.length === 0) {
       return;
     }
 
-    const generateAllPreviews = async () => {
-      try {
-        const previewDataMap: Record<string, number[]> = await invoke(Invokes.GenerateAllCommunityPreviews, {
-          imagePaths: previewImagePaths,
-          presets: presets.map((p) => ({
-            ...p,
-            adjustments: { ...INITIAL_ADJUSTMENTS, ...p.adjustments },
-          })),
-        });
-
-        const newPreviews: Record<string, string | null> = {};
-        for (const [presetName, imageData] of Object.entries(previewDataMap)) {
-          const blob = new Blob([new Uint8Array(imageData)], { type: 'image/jpeg' });
-          newPreviews[presetName] = URL.createObjectURL(blob);
-        }
-
-        setPreviews((prev) => {
-          Object.values(prev).forEach((url) => url?.startsWith('blob:') && URL.revokeObjectURL(url));
-          return newPreviews;
-        });
-      } catch (error) {
-        console.error(`Failed to generate previews:`, error);
-      }
+    let isActive = true;
+    const onPreview = new Channel<ArrayBuffer>();
+    onPreview.onmessage = (packet) => {
+      if (!isActive) return;
+      const nameLength = new DataView(packet).getUint32(0, true);
+      const presetName = new TextDecoder().decode(new Uint8Array(packet, 4, nameLength));
+      const url = URL.createObjectURL(new Blob([new Uint8Array(packet, 4 + nameLength)], { type: 'image/jpeg' }));
+      setPreviews((prev) => {
+        const oldUrl = prev[presetName];
+        if (oldUrl?.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
+        return { ...prev, [presetName]: url };
+      });
     };
 
-    generateAllPreviews();
+    setPreviews((prev) => {
+      Object.values(prev).forEach((url) => url?.startsWith('blob:') && URL.revokeObjectURL(url));
+      return {};
+    });
+
+    invoke(Invokes.GenerateAllCommunityPreviews, {
+      imagePaths: previewImagePaths,
+      presets: presets.map((p) => ({
+        ...p,
+        adjustments: { ...INITIAL_ADJUSTMENTS, ...p.adjustments },
+      })),
+      onPreview,
+    }).catch((error) => console.error('Failed to generate previews:', error));
+
+    return () => {
+      isActive = false;
+    };
   }, [presets, previewImagePaths]);
 
   const handleDownloadPreset = async (preset: CommunityPreset) => {

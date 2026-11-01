@@ -1,20 +1,18 @@
-import type { MainLibraryProps } from '../panel/MainLibrary';
-import { type PointerEvent as ReactPointerEvent } from 'react';
-import { useShallow } from 'zustand/react/shallow';
 import clsx from 'clsx';
-import { motion, AnimatePresence } from 'framer-motion';
-
-import Editor from '../panel/Editor';
-import BottomBar from '../panel/BottomBar';
-import Resizer from '../ui/Resizer';
-import { MobilePanelSwitcher } from '../panel/PanelSwitcher';
-
+import { AnimatePresence, motion } from 'framer-motion';
+import { PointerEvent as ReactPointerEvent } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore } from '../../store/useEditorStore';
-import { useUIStore } from '../../store/useUIStore';
 import { useLibraryStore } from '../../store/useLibraryStore';
 import { useProcessStore } from '../../store/useProcessStore';
-
+import { useUIStore } from '../../store/useUIStore';
+import { getImageFlag } from '../../utils/imageFlags';
+import BottomBar from '../panel/BottomBar';
+import Editor from '../panel/Editor';
+import { MainLibraryProps } from '../panel/MainLibrary';
+import { MobilePanelSwitcher } from '../panel/PanelSwitcher';
 import { ImageFile, Orientation, Panel, ThumbnailAspectRatio } from '../ui/AppProperties';
+import Resizer from '../ui/Resizer';
 
 interface EditorViewProps {
   transformWrapperRef: React.ComponentProps<typeof Editor>['transformWrapperRef'];
@@ -84,10 +82,11 @@ export default function EditorView({
     })),
   );
 
-  const { multiSelectedPaths, imageRatings, isViewLoading } = useLibraryStore(
+  const { multiSelectedPaths, imageRatings, flag, isViewLoading } = useLibraryStore(
     useShallow((state) => ({
       multiSelectedPaths: state.multiSelectedPaths,
       imageRatings: state.imageRatings,
+      flag: getImageFlag(state.imageList, selectedImage?.path),
       isViewLoading: state.isViewLoading,
     })),
   );
@@ -133,6 +132,7 @@ export default function EditorView({
       onRequestThumbnails={requestThumbnails}
       onZoomChange={handleZoomChange}
       rating={imageRatings[selectedImage?.path || ''] || 0}
+      flag={flag}
       selectedImage={selectedImage ?? undefined}
       showFilmstrip={layoutMode !== 'compact'}
       layoutMode={layoutMode}

@@ -43,22 +43,80 @@ fn generation_options(
     Ok(Some(options))
 }
 
-fn model_assets(kind: &str) -> Result<Vec<(&'static str, &'static str)>> {
+/// The connector's own `/capabilities` decide whether a profile takes a prompt; the
+/// first removal profile id is the fallback for a connector that cannot be queried.
+async fn connector_profile_is_prompt_free(address: &str, profile: Option<&str>) -> bool {
+    match crate::ai_commands::get_ai_connector_capabilities(address.to_string(), None).await {
+        Ok(Some(capabilities)) => capabilities.requires_prompt(profile) == Some(false),
+        _ => profile == Some("qwen21-remove-v1"),
+    }
+}
+
+/// The existing generative or local-inpaint patch that `retouch` regenerates in place.
+fn replaceable_patch<'a>(adjustments: &'a Value, id: &str) -> Result<&'a Value> {
+    let patch = adjustments["aiPatches"]
+        .as_array()
+        .and_then(|patches| patches.iter().find(|patch| patch["id"] == id))
+        .ok_or_else(|| format!("PATCH_NOT_FOUND: No AI patch with id '{id}' in this session"))?;
+    let manual = patch["subMasks"].as_array().is_some_and(|submasks| {
+        submasks.iter().any(|submask| {
+            ["clone", "heal", "retouch", "liquify"]
+                .iter()
+                .any(|kind| submask["type"] == *kind)
+        })
+    });
+    if manual {
+        return Err("INVALID_ARGUMENT: replace_patch_id supports only inpaint and generative patches; redo clone, heal, retouch and liquify patches with their own mode".into());
+    }
+    Ok(patch)
+}
+
+/// Settings a regeneration keeps from the patch it replaces. The seed is dropped
+/// so each regeneration is a new alternative unless the caller names one.
+fn inherited_generation_options(
+    previous: &Value,
+) -> Result<Option<crate::ai_connector::GenerationOptions>> {
+    let Some(value) = previous.get("generationOptions").filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let mut options: crate::ai_connector::GenerationOptions = serde_json::from_value(value.clone())
+        .map_err(|error| format!("INVALID_PATCH_RESULT: saved generationOptions: {error}"))?;
+    options.seed = None;
+    Ok((options != crate::ai_connector::GenerationOptions::default()).then_some(options))
+}
+
+fn mask_model_kinds(kind: &str) -> Option<Vec<ai::AiMaskModel>> {
+    use ai::AiMaskModel::*;
+    Some(match kind {
+        "masks" => vec![Subject, Foreground, Sky, Text, Face, Depth],
+        "subject" => vec![Subject],
+        "foreground" => vec![Foreground],
+        "sky" => vec![Sky],
+        "text" => vec![Text],
+        "face" => vec![Face],
+        "depth" => vec![Depth],
+        _ => return None,
+    })
+}
+fn model_assets(kind: &str, gpu: bool) -> Result<Vec<(&'static str, &'static str)>> {
+    if let Some(kinds) = mask_model_kinds(kind) {
+        let mut assets = Vec::new();
+        for model in kinds {
+            for asset in model.assets(gpu) {
+                let hash = asset
+                    .sha256
+                    .ok_or("MODEL_NOT_PINNED: mask asset has no SHA-256")?;
+                if !assets.iter().any(|(name, _)| *name == asset.filename) {
+                    assets.push((asset.filename, hash));
+                }
+            }
+        }
+        return Ok(assets);
+    }
     Ok(match kind {
-        "masks" => vec![
-            (ai::ENCODER_FILENAME, ai::ENCODER_SHA256),
-            (ai::DECODER_FILENAME, ai::DECODER_SHA256),
-            (ai::U2NETP_FILENAME, ai::U2NETP_SHA256),
-            (ai::SKYSEG_FILENAME, ai::SKYSEG_SHA256),
-            (ai::DEPTH_FILENAME, ai::DEPTH_SHA256),
-        ],
         "inpaint" => vec![(ai::LAMA_FILENAME, ai::LAMA_SHA256)],
         "denoise" => vec![(ai::DENOISE_FILENAME, ai::DENOISE_SHA256)],
-        _ => {
-            return Err(
-                "INVALID_ARGUMENT: model kind must be masks, inpaint, denoise or nonlocal".into(),
-            );
-        }
+        _ => return Err("INVALID_ARGUMENT: unknown model kind".into()),
     })
 }
 
@@ -237,10 +295,25 @@ impl Bridge {
             "nonlocal".into(),
             crate::nonlocal_install::status(&self.paths.models),
         );
-        for kind in ["masks", "inpaint", "denoise"] {
+        for kind in [
+            "masks",
+            "subject",
+            "foreground",
+            "sky",
+            "text",
+            "face",
+            "depth",
+            "inpaint",
+            "denoise",
+        ] {
             let mut assets = Vec::new();
             let mut ready = true;
-            for (name, hash) in model_assets(kind)? {
+            for (name, hash) in model_assets(
+                kind,
+                crate::app_settings::load_settings(self.handle.clone())
+                    .unwrap_or_default()
+                    .ai_gpu_acceleration,
+            )? {
                 let path = self.paths.models.join(name);
                 let valid = path.is_file() && sha256_file(&path)? == hash;
                 ready &= valid;
@@ -303,7 +376,12 @@ impl Bridge {
             .join("models");
         let cache = super::model_cache::directory(&self.handle)?;
         let mut missing = Vec::new();
-        for (name, hash) in model_assets(kind)? {
+        for (name, hash) in model_assets(
+            kind,
+            crate::app_settings::load_settings(self.handle.clone())
+                .unwrap_or_default()
+                .ai_gpu_acceleration,
+        )? {
             let target = self.paths.models.join(name);
             if fs::symlink_metadata(&target).is_ok_and(|metadata| metadata.file_type().is_symlink())
             {
@@ -335,25 +413,42 @@ impl Bridge {
             ));
         }
         let state = self.handle.state::<AppState>();
-        match kind {
-            "masks" => {
-                ai::get_or_init_ai_models(&self.handle, &state.ai_state, &state.ai_init_lock)
+        if let Some(kinds) = mask_model_kinds(kind) {
+            for model in kinds {
+                ai::get_or_init_ai_models(
+                    &self.handle,
+                    &state.ai_state,
+                    &state.ai_init_lock,
+                    model,
+                )
+                .await
+                .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
+            }
+        } else {
+            match kind {
+                "inpaint" => {
+                    ai::get_or_init_lama_model(&self.handle, &state.ai_state, &state.ai_init_lock)
+                        .await
+                        .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
+                }
+                "denoise" => {
+                    ai::get_or_init_denoise_model(
+                        &self.handle,
+                        &state.ai_state,
+                        &state.ai_init_lock,
+                    )
                     .await
                     .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
+                }
+                _ => unreachable!(),
             }
-            "inpaint" => {
-                ai::get_or_init_lama_model(&self.handle, &state.ai_state, &state.ai_init_lock)
-                    .await
-                    .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
-            }
-            "denoise" => {
-                ai::get_or_init_denoise_model(&self.handle, &state.ai_state, &state.ai_init_lock)
-                    .await
-                    .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
-            }
-            _ => unreachable!(),
         }
-        for (name, hash) in model_assets(kind)? {
+        for (name, hash) in model_assets(
+            kind,
+            crate::app_settings::load_settings(self.handle.clone())
+                .unwrap_or_default()
+                .ai_gpu_acceleration,
+        )? {
             super::model_cache::remember(&cache, &self.paths.models.join(name), hash)?;
         }
         Ok(())
@@ -363,7 +458,18 @@ impl Bridge {
         let session = self.session(params)?.clone();
         session.check_revision(params)?;
         let kind = required(params, "kind")?;
-        if !["subject", "foreground", "sky", "depth", "normals", "albedo"].contains(&kind) {
+        if ![
+            "subject",
+            "foreground",
+            "sky",
+            "text",
+            "face",
+            "depth",
+            "normals",
+            "albedo",
+        ]
+        .contains(&kind)
+        {
             return Err("INVALID_ARGUMENT: unknown AI mask kind".into());
         }
         let provider = params
@@ -390,6 +496,8 @@ impl Bridge {
             if ![
                 "grow",
                 "feather",
+                "prompt",
+                "parts",
                 "minDepth",
                 "maxDepth",
                 "minFade",
@@ -407,6 +515,9 @@ impl Bridge {
                 return Err(format!(
                     "INVALID_ARGUMENT: unsupported AI mask parameter {key}"
                 ));
+            }
+            if (key == "prompt" && kind != "text") || (key == "parts" && kind != "face") {
+                return Err(format!("INVALID_ARGUMENT: {key} does not apply to {kind}"));
             }
             if (key.starts_with("normal") && kind != "normals")
                 || (key.starts_with("surface") && kind != "albedo")
@@ -495,7 +606,7 @@ impl Bridge {
             }
         }
         if provider == "builtin" && !matches!(kind, "normals" | "albedo") {
-            self.ensure_models("masks", false).await?;
+            self.ensure_models(kind, false).await?;
         }
         self.activate(&session.id).await?;
         let state = self.handle.state::<AppState>();
@@ -521,11 +632,48 @@ impl Bridge {
                         flip_h,
                         flip_v,
                         orientation,
+                        None,
+                        None,
                         state.clone(),
                         self.handle.clone(),
                     )
                     .await?,
                 ),
+                "text" => Ok(crate::ai_commands::generate_ai_text_mask(
+                    adjustments.clone(),
+                    session.working_path.clone(),
+                    required(&controls, "prompt")?.to_string(),
+                    rotation,
+                    flip_h,
+                    flip_v,
+                    orientation,
+                    None,
+                    state.clone(),
+                    self.handle.clone(),
+                )
+                .await?),
+                "face" => {
+                    let parts: Vec<String> = serde_json::from_value(
+                        controls
+                            .get("parts")
+                            .cloned()
+                            .ok_or("INVALID_ARGUMENT: face masks require parts")?,
+                    )
+                    .map_err(|e| format!("INVALID_ARGUMENT: face parts must be strings: {e}"))?;
+                    Ok(crate::ai_commands::generate_ai_face_mask(
+                        adjustments.clone(),
+                        session.working_path.clone(),
+                        parts,
+                        rotation,
+                        flip_h,
+                        flip_v,
+                        orientation,
+                        None,
+                        state.clone(),
+                        self.handle.clone(),
+                    )
+                    .await?)
+                }
                 "foreground" => serde_json::to_value(
                     crate::ai_commands::generate_ai_foreground_mask(
                         adjustments.clone(),
@@ -533,6 +681,7 @@ impl Bridge {
                         flip_h,
                         flip_v,
                         orientation,
+                        None,
                         state.clone(),
                         self.handle.clone(),
                     )
@@ -541,10 +690,12 @@ impl Bridge {
                 "sky" => serde_json::to_value(
                     crate::ai_commands::generate_ai_sky_mask(
                         adjustments.clone(),
+                        session.working_path.clone(),
                         rotation,
                         flip_h,
                         flip_v,
                         orientation,
+                        None,
                         state.clone(),
                         self.handle.clone(),
                     )
@@ -603,6 +754,7 @@ impl Bridge {
                         flip_h,
                         flip_v,
                         orientation,
+                        None,
                         state.clone(),
                         self.handle.clone(),
                     )
@@ -719,7 +871,7 @@ impl Bridge {
         let session = self.session(params)?.clone();
         session.check_revision(params)?;
         let enable = flag(params, "enable_blur", false)?;
-        self.ensure_models("masks", false).await?;
+        self.ensure_models("depth", false).await?;
         self.activate(&session.id).await?;
         let data = crate::ai_commands::generate_full_image_depth_map(
             session.current().adjustments.clone(),
@@ -763,17 +915,48 @@ impl Bridge {
         {
             return Err("INVALID_ARGUMENT: unknown retouch mode".into());
         }
-        let generation_options = generation_options(params, mode)?;
-        let removal_options = params
-            .get("removal_options")
-            .map(|value| {
-                let options: crate::inpainting::removal::RemovalOptions =
-                    serde_json::from_value(value.clone())
-                        .map_err(|error| format!("INVALID_ARGUMENT: removal_options: {error}"))?;
-                options.validate()?;
-                Ok::<_, String>(options)
-            })
+        let replace_id = match params.get("replace_patch_id") {
+            None => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .filter(|id| !id.is_empty())
+                    .ok_or("INVALID_ARGUMENT: replace_patch_id must be a non-empty string")?,
+            ),
+        };
+        if replace_id.is_some() && !["inpaint", "generative"].contains(&mode) {
+            return Err(
+                "INVALID_ARGUMENT: replace_patch_id requires inpaint or generative mode".into(),
+            );
+        }
+        // Fields left out of a regeneration come from the patch it replaces.
+        let previous = replace_id
+            .map(|id| replaceable_patch(&session.current().adjustments, id).cloned())
             .transpose()?;
+        let generation_options = match generation_options(params, mode)? {
+            Some(options) => Some(options),
+            None if mode == "generative" => previous
+                .as_ref()
+                .map(inherited_generation_options)
+                .transpose()?
+                .flatten(),
+            None => None,
+        };
+        let removal_options = match params.get("removal_options") {
+            Some(value) => Some(value.clone()),
+            None => previous
+                .as_ref()
+                .and_then(|patch| patch.get("removalOptions"))
+                .filter(|value| !value.is_null())
+                .cloned(),
+        }
+        .map(|value| {
+            let options: crate::inpainting::removal::RemovalOptions = serde_json::from_value(value)
+                .map_err(|error| format!("INVALID_ARGUMENT: removal_options: {error}"))?;
+            options.validate()?;
+            Ok::<_, String>(options)
+        })
+        .transpose()?;
         let preview_only = match params.get("preview_only") {
             None => false,
             Some(value) => value
@@ -785,9 +968,18 @@ impl Bridge {
             return Err("INVALID_ARGUMENT: removal_options and preview_only require inpaint or generative mode".into());
         }
 
-        let submasks = params["sub_masks"]
-            .as_array()
-            .ok_or("INVALID_ARGUMENT: sub_masks must be an array")?;
+        let submasks = match (params.get("sub_masks"), &previous) {
+            (Some(value), _) => value.as_array(),
+            (None, Some(patch)) => patch["subMasks"].as_array(),
+            (None, None) => None,
+        }
+        .ok_or("INVALID_ARGUMENT: sub_masks must be an array unless replace_patch_id names an existing patch")?
+        .clone();
+        let prompt = params["prompt"]
+            .as_str()
+            .or_else(|| previous.as_ref().and_then(|patch| patch["prompt"].as_str()))
+            .unwrap_or("")
+            .to_string();
         if submasks.is_empty() || submasks.len() > 64 {
             return Err("INVALID_ARGUMENT: require 1..64 sub_masks".into());
         }
@@ -798,9 +990,17 @@ impl Bridge {
                 "INVALID_ARGUMENT: {mode} requires at least one submask of type '{mode}'"
             ));
         }
-        let id = uuid::Uuid::new_v4().to_string();
-        let name = params["name"].as_str().unwrap_or(mode);
-        let mut patch = json!({"id":id,"name":name,"visible":true,"invert":false,"opacity":100,"prompt":params["prompt"].as_str().unwrap_or(""),"subMasks":submasks});
+        let id = replace_id.map_or_else(|| uuid::Uuid::new_v4().to_string(), str::to_string);
+        let name = params["name"]
+            .as_str()
+            .or_else(|| previous.as_ref().and_then(|patch| patch["name"].as_str()))
+            .unwrap_or(mode);
+        let (invert, opacity) = previous
+            .as_ref()
+            .map_or((json!(false), json!(100)), |patch| {
+                (patch["invert"].clone(), patch["opacity"].clone())
+            });
+        let mut patch = json!({"id":id,"name":name,"visible":true,"invert":invert,"opacity":opacity,"prompt":prompt,"subMasks":submasks});
         if let Some(options) = &generation_options {
             patch["generationOptions"] = json!(options);
         }
@@ -846,22 +1046,19 @@ impl Bridge {
                     "INVALID_ARGUMENT: cloud generative retouch requires a request token".into(),
                 );
             }
-            let prompt_free_removal = generation_options
+            let profile = generation_options
                 .as_ref()
-                .and_then(|options| options.profile.as_deref())
-                == Some("qwen21-remove-v1");
-            if prompt_free_removal
-                && params["prompt"]
-                    .as_str()
-                    .is_some_and(|text| !text.trim().is_empty())
-            {
-                return Err("INVALID_ARGUMENT: Qwen Remove does not accept a text prompt".into());
+                .and_then(|options| options.profile.as_deref());
+            let prompt_free_removal = match &settings.ai_connector_address {
+                Some(address) if settings.ai_provider.as_deref() == Some("ai-connector") => {
+                    connector_profile_is_prompt_free(address.trim(), profile).await
+                }
+                _ => false,
+            };
+            if prompt_free_removal && !prompt.trim().is_empty() {
+                return Err("INVALID_ARGUMENT: Qwen Remove does not accept a text prompt; pass prompt \"\" when replacing a prompted patch".into());
             }
-            if !prompt_free_removal
-                && params["prompt"]
-                    .as_str()
-                    .is_none_or(|text| text.trim().is_empty())
-            {
+            if !prompt_free_removal && prompt.trim().is_empty() {
                 return Err("INVALID_ARGUMENT: generative retouch requires a prompt".into());
             }
         }
@@ -876,16 +1073,24 @@ impl Bridge {
                     definition,
                     adjustments,
                     source,
+                    None,
                     state,
                 )
                 .await?
             }
             "liquify" => {
-                crate::inpainting::generate_liquify_patch(definition, adjustments, source, state)
-                    .await?
+                crate::inpainting::generate_liquify_patch(
+                    definition,
+                    adjustments,
+                    source,
+                    None,
+                    state,
+                )
+                .await?
             }
             "retouch" => {
-                crate::inpainting::generate_retouch_patch(definition, adjustments, state).await?
+                crate::inpainting::generate_retouch_patch(definition, adjustments, None, state)
+                    .await?
             }
             "inpaint" | "generative" => {
                 crate::inpainting::invoke_generative_replace_with_mask_def(
@@ -895,6 +1100,7 @@ impl Bridge {
                     mode == "inpaint",
                     Some(preview_only),
                     params["token"].as_str().map(str::to_string),
+                    None,
                     self.handle.clone(),
                     state,
                 )
@@ -925,14 +1131,36 @@ impl Bridge {
         if !next["aiPatches"].is_array() {
             next["aiPatches"] = json!([]);
         }
-        next["aiPatches"].as_array_mut().unwrap().push(patch);
+        let patches = next["aiPatches"].as_array_mut().unwrap();
+        let mut previous_generation = None;
+        if let Some(replaced) = replace_id {
+            let slot = patches
+                .iter_mut()
+                .find(|existing| existing["id"] == replaced)
+                .ok_or_else(|| format!("PATCH_NOT_FOUND: No AI patch with id '{replaced}'"))?;
+            previous_generation = slot["patchData"].get("generation").cloned();
+            *slot = patch;
+        } else {
+            patches.push(patch);
+        }
+        let verb = if replace_id.is_some() {
+            "Regenerated"
+        } else {
+            "Applied"
+        };
         let mut result = self.commit(
             &session.id,
             next,
             session.current().metadata.clone(),
-            &format!("Applied {mode} patch"),
+            &format!("{verb} {mode} patch"),
         )?;
         result["patch_id"] = json!(id);
+        if replace_id.is_some() {
+            result["replaced_patch_id"] = json!(id);
+            if let Some(generation) = previous_generation {
+                result["previous_generation"] = generation;
+            }
+        }
         result["mask_statistics"] = mask_statistics(&bitmap);
         result["image"] = image_reply(&bitmap)?;
         result["remote_generation"] = json!(mode == "generative");
@@ -1129,7 +1357,7 @@ impl Bridge {
             }
         }
         let raw = &params["parameters"];
-        let settings = crate::negative_conversion::NegativeConversionParams {
+        let settings = crate::negative_conversion_legacy::NegativeConversionParams {
             red_weight: number(raw, "red_weight", 1.0, 0.5, 2.0)? as f32,
             green_weight: number(raw, "green_weight", 1.0, 0.5, 2.0)? as f32,
             blue_weight: number(raw, "blue_weight", 1.0, 0.5, 2.0)? as f32,
@@ -1139,7 +1367,7 @@ impl Bridge {
         self.activate(&parent.id).await?;
         let state = self.handle.state::<AppState>();
         let (source, _) = crate::get_original_image(&state)?;
-        let image = crate::negative_conversion::run_pipeline(&source, &settings, None);
+        let image = crate::negative_conversion_legacy::run_pipeline(&source, &settings, None);
         let result = self
             .derived(&parent, image, "Converted film negative")
             .await?;
@@ -1258,6 +1486,31 @@ impl Bridge {
 mod tests {
     use super::*;
     #[test]
+    fn every_mask_group_has_verified_asset_pins_for_both_provider_modes() {
+        for kind in [
+            "masks",
+            "subject",
+            "foreground",
+            "sky",
+            "text",
+            "face",
+            "depth",
+        ] {
+            for gpu in [false, true] {
+                let assets = model_assets(kind, gpu).unwrap();
+                assert!(!assets.is_empty(), "{kind}");
+                for (name, hash) in assets {
+                    assert!(!name.is_empty());
+                    assert_eq!(hash.len(), 64, "{kind}: {name}");
+                    assert!(
+                        hash.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                        "{kind}: {name}"
+                    );
+                }
+            }
+        }
+    }
+    #[test]
     fn generated_component_joins_existing_parent_in_requested_mode() {
         let mut mask = json!({"id":"parent","subMasks":[{"id":"depth","type":"ai-depth","mode":"additive","parameters":{"depthArtifact":"opaque-depth"}}]});
         let id = append_generated_submask(
@@ -1311,6 +1564,41 @@ mod tests {
                 generation_options(&json!({"generation_options":invalid}), "generative").is_err()
             );
         }
+    }
+    #[test]
+    fn replacement_targets_only_existing_inpaint_patches() {
+        let adjustments = json!({"aiPatches":[
+            {"id":"gen","subMasks":[{"type":"radial"}]},
+            {"id":"clone","subMasks":[{"type":"radial"},{"type":"clone"}]}
+        ]});
+        assert_eq!(replaceable_patch(&adjustments, "gen").unwrap()["id"], "gen");
+        assert!(
+            replaceable_patch(&adjustments, "missing")
+                .unwrap_err()
+                .starts_with("PATCH_NOT_FOUND")
+        );
+        assert!(
+            replaceable_patch(&adjustments, "clone")
+                .unwrap_err()
+                .starts_with("INVALID_ARGUMENT")
+        );
+        assert!(replaceable_patch(&json!({}), "gen").is_err());
+    }
+    #[test]
+    fn regeneration_keeps_saved_settings_but_draws_a_new_seed() {
+        let saved = json!({"generationOptions":{"seed":7,"profile":"klein4-v1","megapixels":2}});
+        let inherited = inherited_generation_options(&saved).unwrap().unwrap();
+        assert_eq!(inherited.seed, None);
+        assert_eq!(inherited.profile.as_deref(), Some("klein4-v1"));
+        assert_eq!(inherited.megapixels, Some(2.0));
+        for empty in [
+            json!({}),
+            json!({"generationOptions":null}),
+            json!({"generationOptions":{"seed":7}}),
+        ] {
+            assert!(inherited_generation_options(&empty).unwrap().is_none());
+        }
+        assert!(inherited_generation_options(&json!({"generationOptions":{"unknown":1}})).is_err());
     }
     #[test]
     fn subject_regions_are_validated_before_native_inference() {

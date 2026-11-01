@@ -485,13 +485,18 @@ try {
     ['jxl', 'jxl'],
   ]) {
     const path = join(workspace, 'exports', `${stamp}-format.${extension}`);
+    const keepMetadata = ['jpeg', 'png', 'webp'].includes(format);
+    if (!keepMetadata) {
+      await call('export', { session_id, path, format, keep_metadata: true }, true);
+      await assert.rejects(stat(path), { code: 'ENOENT' });
+    }
     const output = (
       await call('export', {
         session_id,
         path,
         format,
         resize: { mode: 'width', value: 240 },
-        keep_metadata: true,
+        keep_metadata: keepMetadata,
         strip_gps: true,
         ...(['png', 'tiff'].includes(format) ? { bit_depth: 16 } : {}),
       })
@@ -500,7 +505,8 @@ try {
     assert.equal(output.height, Math.round((height * 240) / width));
     assert.ok(output.bytes > 0 && (await stat(path)).size === output.bytes);
     assert.equal(typeof output.metadata_applied, 'boolean');
-    if (!output.metadata_applied) assert.ok(output.warnings.some((warning) => /metadata|EXIF/.test(warning)));
+    if (keepMetadata && !output.metadata_applied)
+      assert.ok(output.warnings.some((warning) => /metadata|EXIF/.test(warning)));
     const external = await inspectExternally(path);
     if (external) {
       if (!external.raw_jxl_codestream) {

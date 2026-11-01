@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useAuth } from '@clerk/react';
+import { useCallback, useEffect, useState } from 'react';
 import { Invokes } from '../components/ui/AppProperties';
+import { useCloudStore } from '../store/useCloudStore';
 import { scopedCapabilities, type CapabilityState, type GenerationCapabilities } from '../utils/generationOptions';
 
 export function useGenerationCapabilities(provider: string, address: string, connected: boolean) {
-  const { getToken } = useAuth();
+  const getToken = useCloudStore((state) => state.getToken);
   const scope = JSON.stringify([provider, address]);
   const enabled = provider === 'ai-connector' && !!address.trim() && connected;
   const [state, setState] = useState<CapabilityState>({ scope: '', status: 'inactive' });

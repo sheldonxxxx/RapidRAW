@@ -1,3 +1,4 @@
+import { extendUpstreamBoundaries } from './fixtures/upstream-boundaries.mjs';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { build } from 'esbuild';
@@ -21,6 +22,10 @@ for (const name of ['Editor', 'Library', 'Settings', 'Process']) {
   stubs[`../store/use${name}Store`] =
     `export const use${name}Store = selector => selector(globalThis.__editorActionsTest.${name.toLowerCase()}); use${name}Store.getState = () => globalThis.__editorActionsTest.${name.toLowerCase()};`;
 }
+stubs['../store/useUIStore'] = 'export const useUIStore={getState:()=>({setPanel(){},activeView:"editor"})};';
+stubs['lucide-react'] =
+  'export const SignalHigh=()=>null;export const SignalLow=()=>null;export const SignalMedium=()=>null;';
+extendUpstreamBoundaries(stubs);
 const output = join(directory, 'actions.mjs');
 await build({
   stdin: {

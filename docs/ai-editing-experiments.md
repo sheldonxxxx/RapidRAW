@@ -55,8 +55,8 @@ Five native complex-edit checks preserved all unselected export pixels. The bowl
 
 ## Current conclusion
 
-**Use Klein 4B at 1 MP first.** Fix mask coverage and prompt ambiguity before increasing cost. Compare 2 MP or closer context for a visible detail problem, and Klein 9B KV or Boogu Turbo for a specific instruction failure. Keep neural upscaling off by default and inspect the final patch at native size.
+**Use Klein 4B at 1 MP first.** Fix mask coverage and prompt ambiguity before increasing cost. Compare 2 MP or closer context for a visible detail problem, The bundled Qwen Image 2.1 profiles were added after this study and are not covered by it. Keep neural upscaling off by default and inspect the final patch at native size.
 
-This small study has unequal model coverage and does not establish a general ranking. The bundled connector offers Klein 4B, closer-context Klein, Klein 9B KV and Boogu Turbo; other tested combinations remain research workflows.
+This small study has unequal model coverage and does not establish a general ranking. The bundled connector offers Klein 4B, closer-context Klein and Qwen Image 2.1; the other tested combinations, including Klein 9B KV and Boogu Turbo, remain research workflows.
 
 [Selected model versions, checksums and detailed timings](assets/ai-editing-experiments/configurations.json) · [Using the included workflows](ai-editing-workflows.md)

@@ -1,5 +1,5 @@
-import { useId, useRef, useState } from 'react';
 import { ChevronDown, ImagePlus, Loader2, X } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export default function ReferenceUpload({

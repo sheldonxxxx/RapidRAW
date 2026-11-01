@@ -1,4 +1,4 @@
-use image::DynamicImage;
+use image::{DynamicImage, GenericImageView};
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 
@@ -241,22 +241,88 @@ pub fn apply_spatial_transformations<'a, I: IntoCowImage<'a>>(
     image: I,
     adjustments: &serde_json::Value,
 ) -> (Cow<'a, DynamicImage>, (f32, f32)) {
-    let orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
     let rotation_degrees = adjustments["rotation"].as_f64().unwrap_or(0.0) as f32;
-    let flip_horizontal = adjustments["flipHorizontal"].as_bool().unwrap_or(false);
-    let flip_vertical = adjustments["flipVertical"].as_bool().unwrap_or(false);
 
-    let coarse_rotated_image = apply_coarse_rotation(image.into_cow(), orientation_steps);
-    let flipped_image = apply_flip(coarse_rotated_image, flip_horizontal, flip_vertical);
+    let flipped_image = apply_orientation_and_flip(image, adjustments);
     let rotated_image = apply_rotation(flipped_image, rotation_degrees);
 
     let crop_data: Option<Crop> = serde_json::from_value(adjustments["crop"].clone()).ok();
+    let unscaled_crop_offset = crop_data.map_or((0.0, 0.0), |crop| {
+        // Match apply_crop's native pixel sampling, including saturating casts
+        // for permissive sidecars and crops ignored outside the rotated image.
+        let x = crop.x.round() as u32;
+        let y = crop.y.round() as u32;
+        let width = crop.width.round() as u32;
+        let height = crop.height.round() as u32;
+        let (image_width, image_height) = rotated_image.dimensions();
+        if width > 0 && height > 0 && x < image_width && y < image_height {
+            (x as f32, y as f32)
+        } else {
+            (0.0, 0.0)
+        }
+    });
     let crop_json = serde_json::to_value(crop_data).unwrap_or(serde_json::Value::Null);
     let cropped_image = apply_crop(rotated_image, &crop_json);
 
-    let unscaled_crop_offset = crop_data.map_or((0.0, 0.0), |c| (c.x as f32, c.y as f32));
-
     (cropped_image, unscaled_crop_offset)
+}
+
+#[cfg(test)]
+mod crop_origin_tests {
+    use super::*;
+    use image::{ImageBuffer, Rgb};
+    use serde_json::json;
+
+    fn source() -> DynamicImage {
+        DynamicImage::ImageRgb8(ImageBuffer::from_fn(8, 6, |x, y| {
+            Rgb([x as u8, y as u8, 0])
+        }))
+    }
+
+    #[test]
+    fn fractional_crop_reports_the_origin_of_sampled_pixels() {
+        let original = source();
+        let (cropped, origin) = apply_spatial_transformations(
+            &original,
+            &json!({"crop":{"x":1.6,"y":2.4,"width":3,"height":2}}),
+        );
+        assert_eq!(origin, (2.0, 2.0));
+        assert_eq!(cropped.dimensions(), (3, 2));
+        assert_eq!(cropped.to_rgb8().get_pixel(0, 0), &Rgb([2, 2, 0]));
+    }
+
+    #[test]
+    fn ignored_crops_have_zero_origin_and_preserve_pixels() {
+        let original = source();
+        for crop in [
+            json!({"x":8,"y":1,"width":3,"height":2}),
+            json!({"x":1,"y":6,"width":3,"height":2}),
+            json!({"x":2,"y":2,"width":0.1,"height":2}),
+            json!({"x":2,"y":2,"width":3,"height":-1}),
+            json!({"x":"invalid","y":2,"width":3,"height":2}),
+        ] {
+            let (cropped, origin) = apply_spatial_transformations(&original, &json!({"crop":crop}));
+            assert_eq!(origin, (0.0, 0.0));
+            assert_eq!(cropped.to_rgb8(), original.to_rgb8());
+        }
+    }
+
+    #[test]
+    fn crop_origin_uses_saturating_casts_and_rotated_bounds() {
+        let original = source();
+        let (cropped, origin) = apply_spatial_transformations(
+            &original,
+            &json!({"crop":{"x":-2.4,"y":-0.6,"width":4,"height":3}}),
+        );
+        assert_eq!(origin, (0.0, 0.0));
+        assert_eq!(cropped.dimensions(), (4, 3));
+        let (rotated, origin) = apply_spatial_transformations(
+            &original,
+            &json!({"orientationSteps":1,"crop":{"x":5.9,"y":1,"width":3,"height":2}}),
+        );
+        assert_eq!(rotated.dimensions(), (6, 8));
+        assert_eq!(origin, (0.0, 0.0));
+    }
 }
 
 pub fn apply_all_transformations<'a, I: IntoCowImage<'a>>(
@@ -267,7 +333,9 @@ pub fn apply_all_transformations<'a, I: IntoCowImage<'a>>(
     let image = image.into_cow();
 
     let warped_image = apply_geometry_warp(image, adjustments);
-    let blurred_image = crate::lens_blur::apply_lens_blur(warped_image, adjustments);
+    let relit_image = crate::relight::apply_relight(warped_image, adjustments);
+    let fogged_image = crate::fog::apply_fog(relit_image, adjustments);
+    let blurred_image = crate::lens_blur::apply_lens_blur(fogged_image, adjustments);
 
     let (cropped_image, unscaled_crop_offset) =
         apply_spatial_transformations(blurred_image, adjustments);
@@ -441,4 +509,38 @@ mod preview_asset_tests {
         hydrate_sub_masks(&mut masks, &mut cache).unwrap();
         assert!(masks[0]["parameters"]["maskDataBase64"].is_null());
     }
+}
+
+pub fn apply_orientation_and_flip<'a, I: IntoCowImage<'a>>(
+    image: I,
+    adjustments: &serde_json::Value,
+) -> Cow<'a, DynamicImage> {
+    let orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
+    let flip_horizontal = adjustments["flipHorizontal"].as_bool().unwrap_or(false);
+    let flip_vertical = adjustments["flipVertical"].as_bool().unwrap_or(false);
+
+    let coarse_rotated_image = apply_coarse_rotation(image.into_cow(), orientation_steps);
+    apply_flip(coarse_rotated_image, flip_horizontal, flip_vertical)
+}
+
+pub fn transformed_dimensions(
+    width: u32,
+    height: u32,
+    adjustments: &serde_json::Value,
+) -> (u32, u32) {
+    let orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
+    let (w, h) = if matches!(orientation_steps, 1 | 3) {
+        (height, width)
+    } else {
+        (width, height)
+    };
+
+    let crop: Option<Crop> = serde_json::from_value(adjustments["crop"].clone()).ok();
+    crop.and_then(|c| {
+        let (x, y) = (c.x.round() as u32, c.y.round() as u32);
+        let (crop_w, crop_h) = (c.width.round() as u32, c.height.round() as u32);
+        (crop_w > 0 && crop_h > 0 && x < w && y < h)
+            .then(|| ((w - x).min(crop_w), (h - y).min(crop_h)))
+    })
+    .unwrap_or((w, h))
 }

@@ -1,3 +1,4 @@
+import { extendUpstreamBoundaries } from './fixtures/upstream-boundaries.mjs';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { build } from 'esbuild';
@@ -19,6 +20,7 @@ const stubs = {
   'react-i18next': 'export const useTranslation = () => ({t: key => key});',
   './AppProperties': 'export const GLOBAL_KEYS = {};',
 };
+extendUpstreamBoundaries(stubs);
 const output = join(directory, 'slider.mjs');
 await build({
   entryPoints: ['src/components/ui/Slider.tsx'],

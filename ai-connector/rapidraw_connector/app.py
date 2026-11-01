@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .config import Settings, load_catalog, select_profile
 from .geometry import geometry, restore_output
-from .workflows import build_pe_workflow, build_workflow, supports_reference
+from .workflows import build_pe_workflow, build_workflow, prompt_free, supports_reference
 
 MAX_IMAGE_BYTES = 128 * 1024 * 1024
 MAX_IMAGE_PIXELS = 100_000_000
@@ -114,6 +114,12 @@ def read_request_images(source_path, mask_base64, config):
     with checked_image(source_bytes) as image:
         source = ImageOps.exif_transpose(image).convert('RGB')
     return source, mask, geometry(source.size, mask, config), source_bytes, mask_bytes
+
+
+def fill_selection(source, mask, level=128):
+    """Return the source with the selection painted flat gray, weighted by mask coverage."""
+    flat = Image.new('RGB', source.size, (level, level, level))
+    return Image.composite(flat, source, mask)
 
 
 def prepare_evidence(evidence, receipt, workflow, source_bytes, mask, mask_bytes, mask_path):
@@ -273,7 +279,7 @@ def create_app(settings=None):
     @app.get('/capabilities')
     async def capabilities():
         profiles = [dict(id=name, label=item['label'], default_megapixels=item['config']['megapixels'],
-                         megapixels=item['megapixels'], requires_prompt=item['config'].get('task') != 'remove',
+                         megapixels=item['megapixels'], requires_prompt=not prompt_free(item['config']),
                          reference_image=supports_reference(item['config']))
                     for name, item in listing['profiles'].items()]
         return dict(protocol_version=2, generation=dict(seed=True, default_profile=listing['default_profile'], profiles=profiles))
@@ -312,7 +318,7 @@ def create_app(settings=None):
             profile, config = select_profile(listing, request.profile, request.megapixels)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        if config.get('task') == 'remove':
+        if prompt_free(config):
             if request.prompt.strip():
                 raise HTTPException(400, 'Remove workflow does not accept a text prompt')
         elif not request.prompt.strip():
@@ -348,6 +354,15 @@ def create_app(settings=None):
             await asyncio.to_thread(write_private, path, data)
             reference_paths.append(path.relative_to(settings.input_dir).as_posix())
         source_name = source_path.relative_to(settings.input_dir).as_posix()
+        filled_path = None
+        if config.get('task') == 'remove_fill':
+            # The generator sees the selection as flat gray; the original still owns the final composite.
+            filled_path = settings.cache_dir/(request_id+'-filled.png')
+            stream = io.BytesIO()
+            await asyncio.to_thread(lambda: fill_selection(source, mask).save(stream, format='PNG'))
+            filled_bytes = stream.getvalue()
+            await asyncio.to_thread(write_private, filled_path, filled_bytes)
+            source_name = filled_path.relative_to(settings.input_dir).as_posix()
         mask_name = mask_path.relative_to(settings.input_dir).as_posix()
         pe_graph = build_pe_workflow(source_name, mask_name, request.prompt, g, config) if config.get('task') == 'remove_pe' else None
         graph = None if pe_graph else build_workflow(source_name, mask_name, request.prompt, seed, g, config, reference_paths)
@@ -363,15 +378,19 @@ def create_app(settings=None):
                        workflow_sha256=None if pe_graph else hashlib.sha256(json.dumps(graph['workflow'], sort_keys=True).encode()).hexdigest(),
                        prompt=request.prompt, negative_prompt=request.negative_prompt,
                        status='prepared', created_unix=time.time(), execution_events=[])
-        if config.get('task') == 'remove' or (config['family'] == 'qwen21' and references):
+        if prompt_free(config) or (config['family'] == 'qwen21' and references):
             receipt['effective_prompt'] = graph['workflow']['7']['inputs']['prompt']
         if pe_graph:
             receipt['pe_workflow_sha256'] = hashlib.sha256(json.dumps(pe_graph['workflow'], sort_keys=True).encode()).hexdigest()
+        if filled_path:
+            receipt['filled_sha256'] = hashlib.sha256(filled_bytes).hexdigest()
         if reference_bytes:
             receipt['reference_sha256'] = [hashlib.sha256(data).hexdigest() for data in reference_bytes]
         await asyncio.to_thread(prepare_evidence, evidence, receipt, initial_graph['workflow'], source_bytes, mask, mask_bytes, mask_path)
         if pe_graph:
             (evidence/'workflow.json').replace(evidence/'pe-workflow.json')
+        if filled_path:
+            await asyncio.to_thread(write_private, evidence/'filled.png', filled_bytes)
         for index, data in enumerate(reference_bytes):
             await asyncio.to_thread(write_private, evidence/f'reference-{index + 1}.png', data)
 

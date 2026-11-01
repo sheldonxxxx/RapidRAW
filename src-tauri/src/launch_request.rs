@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicI32, Ordering};
 use tauri::Emitter;
 
 use crate::export_processing::TiffBitDepth;
@@ -31,6 +32,23 @@ pub enum LaunchRequest {
     EditSession(ExternalEditSession),
     HeadlessExport(HeadlessExportSession),
     InvalidHeadless(String),
+}
+
+static PROCESS_EXIT_CODE: AtomicI32 = AtomicI32::new(0);
+
+pub fn set_process_exit_code(code: i32) {
+    PROCESS_EXIT_CODE.store(code, Ordering::SeqCst);
+}
+
+pub fn process_exit_code() -> i32 {
+    PROCESS_EXIT_CODE.load(Ordering::SeqCst)
+}
+
+pub fn resolve_exit_code(requested: Option<i32>, recorded: i32) -> i32 {
+    match requested {
+        Some(code) if code != 0 => code,
+        _ => recorded,
+    }
 }
 
 #[derive(Serialize, Default)]
@@ -162,6 +180,27 @@ pub fn parse_launch_args(args: &[String]) -> LaunchRequest {
     }
 }
 
+pub fn resolve_gui_launch_paths(request: LaunchRequest, cwd: &Path) -> LaunchRequest {
+    let resolve = |path: String| {
+        if path.is_empty() || Path::new(&path).is_absolute() || !cwd.is_absolute() {
+            return path;
+        }
+        let joined = cwd.join(&path);
+        std::path::absolute(&joined)
+            .unwrap_or(joined)
+            .to_string_lossy()
+            .into_owned()
+    };
+    match request {
+        LaunchRequest::OpenFile(path) => LaunchRequest::OpenFile(resolve(path)),
+        LaunchRequest::EditSession(mut session) => {
+            session.source = resolve(session.source);
+            LaunchRequest::EditSession(session)
+        }
+        other => other,
+    }
+}
+
 fn handle_file_open(app_handle: &tauri::AppHandle, path: PathBuf) {
     if let Some(path_str) = path.to_str()
         && let Err(e) = app_handle.emit("open-with-file", path_str)
@@ -189,5 +228,28 @@ pub fn emit_launch_request(app_handle: &tauri::AppHandle, request: LaunchRequest
             log::error!("Invalid headless export request: {}", error);
         }
         LaunchRequest::None => {}
+    }
+}
+
+#[cfg(test)]
+mod exit_code_tests {
+    use super::resolve_exit_code;
+
+    #[test]
+    fn requested_failures_keep_their_codes() {
+        assert_eq!(resolve_exit_code(Some(1), 0), 1);
+        assert_eq!(resolve_exit_code(Some(2), 1), 2);
+    }
+
+    #[test]
+    fn recorded_failure_survives_a_plain_exit() {
+        assert_eq!(resolve_exit_code(None, 1), 1);
+        assert_eq!(resolve_exit_code(Some(0), 1), 1);
+    }
+
+    #[test]
+    fn success_and_window_close_exit_zero() {
+        assert_eq!(resolve_exit_code(Some(0), 0), 0);
+        assert_eq!(resolve_exit_code(None, 0), 0);
     }
 }

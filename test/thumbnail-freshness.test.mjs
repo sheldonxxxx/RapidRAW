@@ -1,3 +1,4 @@
+import { extendUpstreamBoundaries } from './fixtures/upstream-boundaries.mjs';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { build } from 'esbuild';
@@ -40,6 +41,7 @@ const stubs = {
   '../utils/previewDiagnostics': 'export const tracePreview = () => {};',
 };
 
+extendUpstreamBoundaries(stubs);
 const output = join(directory, 'thumbnail-boundaries.mjs');
 await build({
   stdin: {

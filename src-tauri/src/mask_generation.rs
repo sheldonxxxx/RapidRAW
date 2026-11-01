@@ -1440,7 +1440,7 @@ fn generate_sub_mask_bitmap_uncached(
         "ai-subject" => {
             generate_ai_subject_bitmap(&sub_mask.parameters, width, height, scale, crop_offset)
         }
-        "ai-foreground" => {
+        "ai-text" | "ai-face" | "ai-foreground" => {
             generate_ai_foreground_bitmap(&sub_mask.parameters, width, height, scale, crop_offset)
         }
         "ai-sky" => generate_ai_sky_bitmap(&sub_mask.parameters, width, height, scale, crop_offset),
@@ -1706,14 +1706,15 @@ fn generate_mask_overlay_inner(
     });
     state.ensure_preview_identity(identity)?;
 
-    if let Some(gray_mask) = generate_mask_bitmap(
-        &parsed_mask_def,
-        width,
-        height,
-        scale,
-        scaled_crop_offset,
-        warped_image.as_deref(),
-    ) {
+    if let Some(gray_mask) =
+        crate::engine_commands::rasterize_mask(crate::engine_commands::MaskRasterRequest {
+            definition: &parsed_mask_def,
+            dimensions: (width, height),
+            scale,
+            crop_offset: scaled_crop_offset,
+            warped_image: warped_image.as_deref(),
+        })
+    {
         state.ensure_preview_identity(identity)?;
         let mut rgba_mask = RgbaImage::new(width, height);
         for (x, y, pixel) in gray_mask.enumerate_pixels() {
@@ -2064,5 +2065,99 @@ mod composite_cache_tests {
                 .unwrap_err()
                 .contains("requires its own source")
         );
+    }
+}
+
+fn build_full_source_image(base_image: &DynamicImage, is_raw: bool) -> Cow<'_, DynamicImage> {
+    let mut image = Cow::Borrowed(base_image);
+    if is_raw {
+        apply_cpu_default_raw_processing(image.to_mut());
+    }
+    image
+}
+
+pub fn build_converted_source_image<'a>(
+    base_image: &'a DynamicImage,
+    is_raw: bool,
+    adjustments: &serde_json::Value,
+) -> Cow<'a, DynamicImage> {
+    let mut image = crate::negative_conversion::apply_negative_conversion(
+        Cow::Borrowed(base_image),
+        adjustments,
+    );
+    if crate::negative_conversion::effective_is_raw(is_raw, adjustments) {
+        apply_cpu_default_raw_processing(image.to_mut());
+    }
+    image
+}
+
+pub fn build_full_warped_image<'a>(
+    base_image: &'a DynamicImage,
+    is_raw: bool,
+    adjustments: &serde_json::Value,
+) -> Cow<'a, DynamicImage> {
+    apply_geometry_warp(build_full_source_image(base_image, is_raw), adjustments)
+}
+
+pub fn build_full_warped_image_rgb8(
+    base_image: &DynamicImage,
+    is_raw: bool,
+    adjustments: &serde_json::Value,
+) -> DynamicImage {
+    let warped = build_full_warped_image(base_image, is_raw, adjustments);
+    let rgb8 = match warped.as_rgb32f() {
+        Some(buffer) => {
+            let data: Vec<u8> = buffer
+                .as_raw()
+                .par_iter()
+                .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
+                .collect();
+            image::RgbImage::from_raw(buffer.width(), buffer.height(), data)
+                .expect("RGB8 buffer matches image dimensions")
+        }
+        None => warped.to_rgb8(),
+    };
+    DynamicImage::ImageRgb8(rgb8)
+}
+
+pub struct GeneratedMasks {
+    pub bitmaps: Vec<GrayImage>,
+    pub cache_key: u64,
+}
+
+/// Keep the definition-to-bitmap mapping stable even when one bitmap is missing.
+#[allow(clippy::too_many_arguments)]
+pub fn get_cached_or_generate_masks(
+    state: &tauri::State<AppState>,
+    path: &str,
+    definitions: &[MaskDefinition],
+    width: u32,
+    height: u32,
+    scale: f32,
+    crop_offset: (f32, f32),
+    adjustments: &Value,
+) -> GeneratedMasks {
+    let mut h = DefaultHasher::new();
+    path.hash(&mut h);
+    let bitmaps = definitions
+        .iter()
+        .map(|definition| {
+            let (key, bitmap) = get_cached_or_generate_mask_with_key(
+                state,
+                path,
+                definition,
+                width,
+                height,
+                scale,
+                crop_offset,
+                adjustments,
+            );
+            key.hash(&mut h);
+            bitmap.unwrap_or_else(|| GrayImage::new(width, height))
+        })
+        .collect();
+    GeneratedMasks {
+        bitmaps,
+        cache_key: h.finish(),
     }
 }

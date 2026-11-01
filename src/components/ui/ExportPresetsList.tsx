@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { Check, Plus, Save, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Save, X, Check } from 'lucide-react';
-import { ExportPreset } from './ExportImportProperties';
+import { v4 as uuidv4 } from 'uuid';
+import { TextVariants } from '../../types/typography';
 import { AppSettings } from './AppProperties';
 import Dropdown from './Dropdown';
+import { ExportPreset } from './ExportImportProperties';
 import Text from './Text';
-import { TextVariants } from '../../types/typography';
 
 interface ExportPresetsListProps {
   appSettings: AppSettings | null;

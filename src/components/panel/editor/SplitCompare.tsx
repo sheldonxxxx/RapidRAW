@@ -1,6 +1,6 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCallback, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEditorStore } from '../../../store/useEditorStore';
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));

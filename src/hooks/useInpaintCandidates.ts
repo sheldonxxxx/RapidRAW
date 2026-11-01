@@ -1,17 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useAuth } from '@clerk/react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { v4 as uuidv4 } from 'uuid';
 import { Invokes } from '../components/ui/AppProperties';
+import { useCloudStore } from '../store/useCloudStore';
 import { useEditorStore } from '../store/useEditorStore';
-import { debouncedSave } from './useEditorActions';
 import type { Adjustments, AiPatchData, GenerationOptions, InpaintCandidate } from '../utils/adjustments';
-import { applyInpaintCandidate, inpaintSpatialKey, MAX_INPAINT_BATCH, variationOptions } from '../utils/inpaintHistory';
 import { globalImageCache } from '../utils/ImageLRUCache';
+import { applyInpaintCandidate, inpaintSpatialKey, MAX_INPAINT_BATCH, variationOptions } from '../utils/inpaintHistory';
+import { debouncedSave } from './useEditorActions';
 
 export function useInpaintCandidates() {
-  const { getToken } = useAuth();
+  const getToken = useCloudStore((state) => state.getToken);
   const cancelled = useRef(false);
   const [progress, setProgress] = useState<{ completed: number; total: number } | null>(null);
   useEffect(

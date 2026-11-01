@@ -1,26 +1,18 @@
+import { useCloudStore } from '../../../store/useCloudStore';
+import { useCloudUsage } from '../../../hooks/useCloudUsage';
+import { ClipboardPaste, Copy, Eye, EyeOff, FileEdit, Plus, PlusSquare, RotateCcw, Trash2, Wand2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { v4 as uuidv4 } from 'uuid';
-import { ClipboardPaste, Copy, Eye, EyeOff, FileEdit, Plus, PlusSquare, RotateCcw, Trash2, Wand2 } from 'lucide-react';
-import { useAuth, useUser } from '@clerk/react';
-import { useEditorStore } from '../../../store/useEditorStore';
-import { useSettingsStore } from '../../../store/useSettingsStore';
-import { useProcessStore } from '../../../store/useProcessStore';
-import { useEditorActions } from '../../../hooks/useEditorActions';
+import { useContextMenu } from '../../../context/ContextMenuContext';
 import { useAiMasking } from '../../../hooks/useAiMasking';
+import { useEditorActions } from '../../../hooks/useEditorActions';
 import { useGenerationCapabilities } from '../../../hooks/useGenerationCapabilities';
 import { usePresets } from '../../../hooks/usePresets';
-import {
-  cloneLocalAdjustment,
-  cloneLocalRepair,
-  cloneSelectionComponent,
-  copyMaskSelectionToRepair,
-  copyRepairSelectionToMask,
-  isDirectToolPatch,
-} from '../../../utils/localEdits';
-import { useContextMenu } from '../../../context/ContextMenuContext';
-import { OPTION_SEPARATOR, type Option } from '../../ui/AppProperties';
-import { isSurfaceMask } from '../../../utils/surfaceGeometry';
+import { useEditorStore } from '../../../store/useEditorStore';
+import { useProcessStore } from '../../../store/useProcessStore';
+import { useSettingsStore } from '../../../store/useSettingsStore';
+import type { AdjustmentSection } from '../../../utils/adjustments';
 import {
   INITIAL_MASK_ADJUSTMENTS,
   INITIAL_MASK_CONTAINER,
@@ -29,21 +21,30 @@ import {
   type MaskContainer,
   type SectionVisibility,
 } from '../../../utils/adjustments';
-import type { AdjustmentSection } from '../../../utils/adjustments';
+import {
+  cloneLocalAdjustment,
+  cloneLocalRepair,
+  cloneSelectionComponent,
+  copyMaskSelectionToRepair,
+  copyRepairSelectionToMask,
+  isDirectToolPatch,
+} from '../../../utils/localEdits';
+import { createSubMask } from '../../../utils/maskUtils';
+import { isSurfaceMask } from '../../../utils/surfaceGeometry';
+import { OPTION_SEPARATOR, type Option } from '../../ui/AppProperties';
+import { AISettingsPanel, ConnectionStatus } from './AIPanel';
 import type { SubMask } from './Masks';
 import {
+  getSubMaskName,
   Mask,
   MASK_AI_TYPES,
   MASK_BASIC_TYPES,
-  MASK_RANGE_TYPES,
   MASK_ICON_MAP,
+  MASK_RANGE_TYPES,
   SubMaskMode,
   ToolType,
-  getSubMaskName,
 } from './Masks';
-import { createSubMask } from '../../../utils/maskUtils';
 import { MaskSettingsPanel } from './MasksPanel';
-import { AISettingsPanel, ConnectionStatus } from './AIPanel';
 
 type EditKind = 'adjustment' | 'repair';
 const modes: SubMaskMode[] = [SubMaskMode.Additive, SubMaskMode.Subtractive, SubMaskMode.Intersect];
@@ -68,10 +69,10 @@ export default function LocalEditsPanel() {
   const { setAdjustments } = useEditorActions();
   const appSettings = useSettingsStore((s) => s.appSettings);
   const aiModelDownloadStatus = useProcessStore((s) => s.aiModelDownloadStatus);
-  const { user, isSignedIn } = useUser();
-  const { getToken } = useAuth();
+  const user = useCloudStore((s) => s.user);
+  const isSignedIn = !!user;
   const isPro = user?.publicMetadata?.plan === 'pro';
-  const [cloudUsage, setCloudUsage] = useState<{ requests: number; limit: number; month: string } | null>(null);
+  const { cloudUsage } = useCloudUsage();
   const { presets } = usePresets(adjustments);
   const {
     handleGenerateAiForegroundMask,
@@ -88,23 +89,6 @@ export default function LocalEditsPanel() {
   );
   const isGenerativeAvailable =
     (provider === 'cloud' && !!isSignedIn && isPro) || (provider === 'ai-connector' && isAIConnectorConnected);
-
-  useEffect(() => {
-    if (provider !== 'cloud' || !isSignedIn || !isPro) return;
-    const fetchUsage = async () => {
-      try {
-        const token = await getToken();
-        if (!token) return;
-        const response = await fetch('http://127.0.0.1:5000/usage', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (response.ok) setCloudUsage(await response.json());
-      } catch (error) {
-        console.error('Failed to fetch cloud usage', error);
-      }
-    };
-    void fetchUsage();
-  }, [provider, isSignedIn, isPro, getToken]);
 
   const [pickerFor, setPickerFor] = useState<EditKind | null>(null);
   const [copiedEdit, setCopiedEdit] = useState<
@@ -681,7 +665,7 @@ export default function LocalEditsPanel() {
           onContextMenu={(event) => showEditMenu(event, kind, entry)}
         >
           <div className="flex items-center gap-1 p-1">
-            {renaming?.id === entry.id && !renaming.component ? (
+            {renaming?.id === entry.id && !renaming?.component ? (
               <input
                 autoFocus
                 className="min-w-0 flex-1 rounded border border-accent bg-bg-primary p-2 text-sm outline-none"

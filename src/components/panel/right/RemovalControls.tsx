@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEditorStore } from '../../../store/useEditorStore';
-import type { AiPatch, Adjustments, RemovalOptions } from '../../../utils/adjustments';
+import type { Adjustments, AiPatch, RemovalOptions } from '../../../utils/adjustments';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 

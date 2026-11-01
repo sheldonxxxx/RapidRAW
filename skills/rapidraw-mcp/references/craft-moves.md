@@ -15,11 +15,16 @@ How to carry out the light-shaping moves a direction skill (such as Lightweft's 
    {"tool":"mask_update","arguments":{"session_id":"…","expected_revision":3,"mask_id":"ENV_MASK_ID",
      "patch":{"adjustments":{"exposure":-0.5,"saturation":-20,"clarity":-15,"temperature":-6}}}}
    ```
-   Render the subject mask (`render(mask_id, mask_mode: "grayscale")`) before duplicating it. If it misses high-contrast parts (white patches on dark plumage, beak, eye, prey), refine it with `mask_generate(kind: "subject", refine: {mask_id}, include_points: [...])` in pre-crop coordinates. A duplicate isn't linked to its source: after refining, `mask_remove` the old environment mask and duplicate again.
+   Render the subject mask (`render(mask_id, mask_mode: "grayscale")`) before duplicating it. If it misses high-contrast parts (white patches on dark plumage, beak, eye, prey), refine it with `mask_generate(kind: "subject", refine: {mask_id}, include_points: [...])` in pre-crop coordinates. By default, a duplicate isn't linked to its source: after refining, `mask_remove` the old environment mask and duplicate again.
    `mask_generate` accepts `adjustments` directly. `region` is in pre-crop full-resolution pixels and should box the whole animal, including anything it's holding. `mask_duplicate` clears the copy's adjustments by default, so set them with `mask_update`.
-4. **Burns and dodges:** `mask_create` with `type: "linear"` for sky, foreground or bright strips (the start→end line is the boundary; left→right selects above it). Use `type: "radial"` with `feather` 0.7–0.9 for an eye dodge or corner burns.
+   **Environment in parts and local control.** To grade only part of the environment (for example sky and trees apart from snow), set the duplicated environment's `ai-subject` submask to `invert: true` and add a geometric submask with `mode: "intersect"` through `mask_update` `submask_operations` (omit `id`; the engine generates it). A parent-level invert does not combine with an intersect. For local control on the subject (a clipped sunlit patch), duplicate the subject mask, intersect a radial, and adjust only highlights and whites. Cut a stray background object the AI selection grabbed with a subtractive geometric submask, since exclude points often do not remove it.
+4. **Burns and dodges:** `mask_create` with `type: "linear"` for sky, foreground or bright strips (see [linear gradients](#linear-gradients)). Use `type: "radial"` with `feather` 0.7–0.9 for an eye dodge or corner burns.
 5. **Vignette:** `vignetteAmount` −15 to −35, `vignetteMidpoint` 30–50, `vignetteFeather` 50–80. It applies to the cropped frame.
 6. **Finish:** `sharpness` 15–30 globally at most; subject detail via `structure` or `clarity` inside the subject mask.
+
+## Linear gradients
+
+A linear mask's start and end points define its boundary line, and the mask covers one side of it; left→right selects above the line. For a horizontal burn, give both points the same y and choose the selected side by the order of the x values. `range` is a width in pre-crop pixels: 0.5 produces a hard step, while about 600 on a 4640 px frame gives a broad blend. Render the mask in grayscale before judging the effect.
 
 ## Gaps inside the subject
 

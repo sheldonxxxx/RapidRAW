@@ -1,36 +1,35 @@
-import type { ImageMetadata } from '../ui/AppProperties';
-import { useState, useEffect, useCallback, useRef, useLayoutEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useTranslation } from 'react-i18next';
 import {
   CheckCircle,
-  XCircle,
-  Loader2,
-  Save,
   Crop,
-  Proportions,
   LayoutTemplate,
-  Shuffle,
+  Loader2,
+  Palette,
+  Proportions,
   RectangleHorizontal,
   RectangleVertical,
-  Palette,
+  Save,
+  Shuffle,
+  XCircle,
 } from 'lucide-react';
-import { ImageFile, Invokes } from '../ui/AppProperties';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { TextVariants } from '../../types/typography';
+import { LAYOUTS, Layout, LayoutDefinition } from '../../utils/CollageVariants';
+import { ImageFile, ImageMetadata, Invokes } from '../ui/AppProperties';
 import Button from '../ui/Button';
 import Slider from '../ui/Slider';
 import Switch from '../ui/Switch';
-import clsx from 'clsx';
-import { LAYOUTS, type Layout, type LayoutDefinition } from '../../utils/CollageVariants';
 import Text from '../ui/Text';
-import { TextVariants } from '../../types/typography';
 
 interface CollageModalProps {
   isOpen: boolean;
   onClose(): void;
   onSave(base64Data: string, firstPath: string): Promise<string>;
   sourceImages: Array<Pick<ImageFile, 'path'>>;
-  thumbnails: Record<string, string>;
+  thumbnails?: Record<string, string>;
 }
 
 interface LoadedImage {
@@ -389,7 +388,7 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
   };
 
   const handleExportDimChange = (e: React.ChangeEvent<HTMLInputElement>, dimension: 'width' | 'height') => {
-    const value = parseInt(e.target.value, 10) || 0;
+    const value = parseInt(String(e.target.value), 10) || 0;
     const ratio = activeAspectRatio.value;
     if (dimension === 'width') {
       setExportWidth(value);

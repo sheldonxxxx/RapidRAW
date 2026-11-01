@@ -215,12 +215,21 @@ fn norm(e: [f64; 2]) -> f64 {
 impl Bridge {
     pub(crate) fn sample_region(&self, session: &Session, params: &Value) -> Result<Value> {
         let stage = params["stage"].as_str().unwrap_or("edited");
-        if !["edited", "original"].contains(&stage) {
-            return Err("INVALID_ARGUMENT: stage must be edited or original".into());
+        if !["edited", "original", "aligned_original"].contains(&stage) {
+            return Err(
+                "INVALID_ARGUMENT: stage must be edited, original or aligned_original".into(),
+            );
         }
         if params.get("region").is_none() {
             return Err("INVALID_ARGUMENT: sample_region requires region in the selected stage's rendered coordinates".into());
         }
+        let aligned;
+        let session = if stage == "aligned_original" {
+            aligned = super::inspection::aligned_reference(session);
+            &aligned
+        } else {
+            session
+        };
         let prepared = self.prepare_render(session, stage == "original")?;
         let region = parse_region(params.get("region"), prepared.image.dimensions())?;
         if region.width as u64 * region.height as u64 > 4_000_000 {
@@ -232,7 +241,7 @@ impl Bridge {
         let image = self.render_prepared(session, &prepared, region, None)?;
         let stats = robust_statistics(&image);
         let mut response = json!({"session_id":session.id,"revision":session.revision,"stage":stage,
-            "processing_stage":"Native rendered display sRGB after tone mapping, before preview resize/encoding; original bypasses user edits, retaining source decode and native baseline processing",
+            "processing_stage":"Native rendered display sRGB after tone mapping, before preview resize/encoding; original bypasses user edits, retaining source decode and native baseline processing; aligned_original keeps the edit's crop, geometry and retouching with default tone and colour, so its regions match edited",
             "region":{"x":region.x,"y":region.y,"width":region.width,"height":region.height},
             "rgb_encoding":"sRGB normalized 0..1, 16-bit readback", "luminance_encoding":"linear sRGB Rec.709 luminance, normalized 0..1", "statistics":stats,"state_unchanged":true});
         if flag(params, "suggest_white_balance", false)? {

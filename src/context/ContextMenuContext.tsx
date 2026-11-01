@@ -1,9 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Option as AppOption, OPTION_SEPARATOR } from '../components/ui/AppProperties';
-import clsx from 'clsx';
 
 interface ContextMenuProviderProps {
   children: React.ReactNode;
@@ -57,10 +57,20 @@ function SubMenu({ cancelCloseSubmenu, closeSubmenu, hideContextMenu, options, p
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [style, setStyle] = useState<React.CSSProperties>({ opacity: 0 });
   const [safeAreaPath, setSafeAreaPath] = useState<string | null>(null);
+  const [menuHeight, setMenuHeight] = useState(0);
 
   const customOption = options.length === 1 && options[0].renderContent ? options[0] : null;
   const renderContent = customOption?.renderContent;
   const isInteractiveSubmenu = Boolean(customOption);
+
+  useEffect(() => {
+    if (!menuRef.current) {
+      return;
+    }
+    const resizeObserver = new ResizeObserver(([entry]) => setMenuHeight(entry.contentRect.height));
+    resizeObserver.observe(menuRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     if (parentRef?.current && menuRef?.current) {
@@ -115,7 +125,7 @@ function SubMenu({ cancelCloseSubmenu, closeSubmenu, hideContextMenu, options, p
       }
       setSafeAreaPath(path);
     }
-  }, [parentRef, options]);
+  }, [parentRef, options, menuHeight]);
 
   const menuMarkup = (
     <>
@@ -245,7 +255,7 @@ function MenuItem({ option, path, hideContextMenu }: MenuItemProps) {
           {option.icon && <option.icon size={16} />}
           <span>{option.label}</span>
         </div>
-        {option.submenu && <ChevronRight size={16} />}
+        {option.submenu && <ChevronRight className="shrink-0" size={16} />}
       </button>
 
       <AnimatePresence>
@@ -301,7 +311,7 @@ export function ContextMenuProvider({ children }: ContextMenuProviderProps) {
   const submenuTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const showContextMenu = useCallback((x: number, y: number, options: Array<Option>) => {
-    const menuWidth = 256;
+    const menuWidth = 320;
     const menuHeight =
       options.reduce((acc: number, opt: Option) => acc + (opt.type === OPTION_SEPARATOR ? 9 : 40), 0) + 16;
     const adjustedX = x + menuWidth > window.innerWidth ? window.innerWidth - menuWidth - 10 : x;

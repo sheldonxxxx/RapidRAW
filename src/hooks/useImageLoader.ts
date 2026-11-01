@@ -1,17 +1,16 @@
-import { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useEffect } from 'react';
 import { toast } from 'react-toastify';
+import { ImageMetadata, Invokes } from '../components/ui/AppProperties';
 import { useEditorStore } from '../store/useEditorStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useUIStore } from '../store/useUIStore';
-import { Invokes, ImageMetadata } from '../components/ui/AppProperties';
 import { INITIAL_ADJUSTMENTS, normalizeLoadedAdjustments } from '../utils/adjustments';
-
-import { globalImageCache, type ImageCacheEntry } from '../utils/ImageLRUCache';
+import { globalImageCache, ImageCacheEntry } from '../utils/ImageLRUCache';
 import { tracePreview } from '../utils/previewDiagnostics';
 import { latestPreviewRevision } from '../utils/previewIntent';
-import type { LoadImageResult } from './hookTypes';
+import { LoadImageResult } from './hookTypes';
 
 export function useImageLoader(
   cachedEditStateRef: React.RefObject<ImageCacheEntry | null>,
@@ -135,6 +134,7 @@ export function useImageLoader(
                   : {}),
                 selectedImage: {
                   ...state.selectedImage,
+                  asShotWhiteBalance: loadImageResult.as_shot_white_balance,
                   exif: loadImageResult.exif,
                   height: loadImageResult.height,
                   isRaw: loadImageResult.is_raw,
@@ -146,15 +146,6 @@ export function useImageLoader(
                   preserveCachedAdjustments: false,
                   width: loadImageResult.width,
                 },
-              };
-            }
-            return state;
-          });
-
-          setEditor((state) => {
-            if (!state.adjustments.aspectRatio && !state.adjustments.crop) {
-              return {
-                adjustments: { ...state.adjustments, aspectRatio: loadImageResult.width / loadImageResult.height },
               };
             }
             return state;

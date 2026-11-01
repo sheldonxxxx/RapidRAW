@@ -26,9 +26,9 @@ def png(image):
 
 
 class GraphContract(unittest.TestCase):
-    def test_four_profile_graphs_and_geometry_match_fixtures(self):
+    def test_profile_graphs_and_geometry_match_fixtures(self):
         fixtures = json.loads((ROOT/'tests/fixtures/profile-graphs.json').read_text())
-        self.assertEqual(len(fixtures), 4)
+        self.assertEqual(len(fixtures), 2)
         with tempfile.TemporaryDirectory() as directory:
             settings = Settings(Path(directory), ROOT/'profiles', Path(directory)/'state')
             listing = load_catalog(settings)

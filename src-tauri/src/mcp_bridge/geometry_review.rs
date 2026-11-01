@@ -14,7 +14,7 @@ pub(super) struct CoordinateMap {
     source: (u32, u32),
     canvas: (u32, u32),
     pub(super) rendered: (u32, u32),
-    crop: Point,
+    pub(super) crop: Point,
     steps: u64,
     flip_h: bool,
     flip_v: bool,
@@ -183,12 +183,12 @@ impl CoordinateMap {
 }
 
 #[derive(Clone, Copy)]
-struct Preview {
-    dimensions: (u32, u32),
-    region: (f64, f64, f64, f64),
+pub(super) struct Preview {
+    pub(super) dimensions: (u32, u32),
+    pub(super) region: (f64, f64, f64, f64),
 }
 
-fn parse_preview(value: Option<&Value>, map: &CoordinateMap) -> Result<Option<Preview>> {
+pub(super) fn parse_preview(value: Option<&Value>, map: &CoordinateMap) -> Result<Option<Preview>> {
     let Some(v) = value else {
         return Ok(None);
     };

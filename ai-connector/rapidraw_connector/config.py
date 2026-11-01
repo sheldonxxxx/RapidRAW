@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class Profile(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
     id: str = Field(pattern=r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')
-    family: Literal['klein', 'boogu', 'qwen21']
+    family: Literal['klein', 'qwen21']
     model: str
     text_encoder: str
     vae: str
@@ -21,12 +21,11 @@ class Profile(BaseModel):
     cfg: float = Field(ge=0, le=30)
     megapixels: float = Field(ge=.0625, le=16)
     mode: Literal['masked', 'context'] = 'masked'
-    task: Literal['edit', 'remove', 'remove_pe'] = 'edit'
+    task: Literal['edit', 'remove', 'remove_fill', 'remove_pe'] = 'edit'
     pe_encoder: str | None = None
     margin_fraction: float = Field(default=.5, ge=0, le=4)
     min_margin: int = Field(default=64, ge=16, le=8192)
     dimension_multiple: Literal[16, 32] = 16
-    kv_cache: bool = False
     shift: float | None = Field(default=None, ge=0, le=100)
     sampler: Literal['euler', 'lcm'] = 'euler'
     scheduler: Literal['simple', 'sgm_uniform'] = 'simple'
@@ -46,13 +45,11 @@ class Profile(BaseModel):
             path = Path(name)
             if path.is_absolute() or '..' in path.parts or '\\' in name or not name.endswith('.safetensors'):
                 raise ValueError('Model names must be relative .safetensors paths')
-        if self.kv_cache and self.family != 'klein':
-            raise ValueError('KV cache requires a Klein profile')
         if self.pure_noise_output and self.family != 'klein':
             raise ValueError('Pure-noise native edit requires a Klein profile')
         if self.family == 'qwen21' and (self.mode != 'context' or self.dimension_multiple != 32):
             raise ValueError('Qwen Image 2.1 requires context mode and 32-pixel dimensions')
-        if self.task == 'remove' and self.family != 'qwen21':
+        if self.task in ('remove', 'remove_fill') and self.family != 'qwen21':
             raise ValueError('Prompt-free removal requires a Qwen Image 2.1 profile')
         if self.task == 'remove_pe' and (self.family != 'qwen21' or not self.pe_encoder):
             raise ValueError('PE removal requires Qwen Image 2.1 and a PE encoder')

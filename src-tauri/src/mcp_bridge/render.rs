@@ -2,7 +2,10 @@
 //! all transformations, masks, color processing and export options reuse the
 //! native engine. Initially previews render at source resolution then resize, so
 //! detail-dependent effects match final exports exactly.
+#[cfg(test)]
+use image::ImageFormat;
 mod comparison;
+mod inspection;
 mod review;
 use super::sessions::{Bridge, Session, atomic_write};
 use super::{Result, flag, number, required, validation};
@@ -10,17 +13,17 @@ use crate::app_state::AppState;
 use crate::delivery::{self, normalize_webp_metadata_header};
 use crate::export_processing::{
     ExportSettings, ResizeMode, ResizeOptions, TiffBitDepth, WatermarkSettings,
-    apply_export_resize_and_watermark, calculate_resize_target, encode_image_to_bytes,
+    apply_export_resize_and_watermark, encode_image_to_bytes,
     export_adjustments_as_lut_high_precision,
 };
-use crate::gpu_processing::{RenderRequest, Roi, process_and_get_dynamic_image_high_precision};
+use crate::gpu_processing::{RenderOutputPrecision, RenderRequest, Roi};
 use crate::image_processing::{
-    calculate_histogram_from_image, calculate_waveform_from_image, get_all_adjustments_from_json,
-    get_or_init_gpu_context, resolve_tonemapper_override_from_handle,
+    calculate_histogram_from_image, calculate_waveform_from_image, get_or_init_gpu_context,
+    resolve_tonemapper_override_from_handle,
 };
-use crate::mask_generation::{MaskDefinition, render_source_mask_bitmaps};
+use crate::mask_generation::MaskDefinition;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, imageops};
+use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, Luma, imageops};
 use serde_json::{Value, json};
 use std::{
     borrow::Cow,
@@ -38,8 +41,10 @@ struct Prepared {
     bitmaps: Vec<GrayImage>,
     crop_offset: (f32, f32),
     warnings: Vec<String>,
+    as_shot: crate::as_shot::AsShot,
 }
 
+#[cfg(test)]
 fn render_mcp_source_masks(
     masks: &[MaskDefinition],
     composited_source: &DynamicImage,
@@ -48,23 +53,30 @@ fn render_mcp_source_masks(
     dimensions: (u32, u32),
     crop_offset: (f32, f32),
 ) -> Result<(Vec<GrayImage>, Vec<String>)> {
-    let bitmaps = render_source_mask_bitmaps(
-        masks,
-        Some(composited_source),
-        is_raw,
-        adjustments,
-        dimensions.0,
-        dimensions.1,
-        1.0,
-        crop_offset,
+    let bitmaps = crate::engine_commands::source_masks(
+        crate::engine_commands::MaskRequest {
+            definitions: masks,
+            source: composited_source,
+            is_raw,
+            adjustments,
+            dimensions,
+            scale: 1.0,
+            crop_offset,
+        },
+        || Ok(()),
     )
     .map_err(|error| format!("MASK_RENDER_FAILED: {error}"))?;
     if bitmaps.len() != masks.len() {
         return Err("MASK_RENDER_FAILED: Could not rasterize every visible mask".into());
     }
-    let warnings = masks
+    let warnings = mask_warnings(masks, &bitmaps);
+    Ok((bitmaps, warnings))
+}
+
+fn mask_warnings(masks: &[MaskDefinition], bitmaps: &[GrayImage]) -> Vec<String> {
+    masks
         .iter()
-        .zip(&bitmaps)
+        .zip(bitmaps)
         .filter(|(_, bitmap)| !bitmap.as_raw().iter().any(|value| *value > 0))
         .map(|(mask, _)| {
             format!(
@@ -72,8 +84,7 @@ fn render_mcp_source_masks(
                 mask.name, mask.id
             )
         })
-        .collect();
-    Ok((bitmaps, warnings))
+        .collect()
 }
 
 struct Frame {
@@ -130,33 +141,54 @@ impl Bridge {
             session.current().adjustments.clone()
         };
         validation::validate_adjustments(&adjustments, session.dimensions)?;
+        if crate::ai_denoise::is_enabled(&adjustments)
+            && adjustments["aiDenoiseAmount"].as_f64().unwrap_or(100.0) > 0.0
+        {
+            let method = crate::ai_denoise::DenoiseMethod::from_adjustments(&adjustments);
+            if method == crate::ai_denoise::DenoiseMethod::Nind {
+                tauri::async_runtime::block_on(self.ensure_models("denoise", false))?;
+            }
+            if !crate::ai_denoise::generate_for_base(
+                &self.handle,
+                &loaded.path,
+                &loaded.image,
+                method,
+            )? {
+                return Err(
+                    "AI_RESULT_PENDING: Denoising is still running; retry when the result is ready"
+                        .into(),
+                );
+            }
+        }
+        for (tool, enabled, map) in [
+            ("relight", "relightEnabled", "relightNormalMap"),
+            ("fog", "fogEnabled", "fogDepthMap"),
+            ("lensBlur", "lensBlurEnabled", "lensBlurDepthMap"),
+        ] {
+            if crate::image_processing::is_effect_enabled(&adjustments, tool, enabled)
+                && adjustments[map].as_str().is_none_or(str::is_empty)
+            {
+                return Err(format!(
+                    "AI_MAP_REQUIRED: {tool} requires {map}; generate or supply the map before rendering"
+                ));
+            }
+        }
+
         let composite =
-            crate::image_loader::composite_patches_on_image(&loaded.image, &adjustments)
+            crate::image_loader::prepare_base_image_cow(&loaded.image, &loaded.path, &adjustments)
                 .map_err(|e| format!("PATCH_RENDER_FAILED: {e}"))?;
-        let (image, crop_offset) =
-            crate::apply_all_transformations(Cow::Borrowed(&composite), &adjustments);
-        // Native cropping rounds source pixels; masks use the same sampled origin.
-        let crop_offset = (crop_offset.0.round(), crop_offset.1.round());
-        let image = image.into_owned();
-        let masks = crate::marigold_surface::render_masks(&adjustments);
-        let masks: Vec<_> = masks.into_iter().filter(|m| m.visible).collect();
-        // Bind image-dependent masks to this session's captured photo, even if
-        // the editor switches to another image while the MCP render is running.
-        let (bitmaps, warnings) = render_mcp_source_masks(
-            &masks,
-            &composite,
-            loaded.is_raw,
-            &adjustments,
-            image.dimensions(),
-            crop_offset,
-        )?;
+        let prepared =
+            crate::engine_commands::prepare_render_source(&composite, &adjustments, loaded.is_raw)
+                .map_err(|error| format!("MASK_RENDER_FAILED: {error}"))?;
+        let warnings = mask_warnings(&prepared.masks, &prepared.bitmaps);
         Ok(Prepared {
-            image,
+            image: prepared.image,
             adjustments,
-            masks,
-            bitmaps,
-            crop_offset,
+            masks: prepared.masks,
+            bitmaps: prepared.bitmaps,
+            crop_offset: prepared.crop_offset,
             warnings,
+            as_shot: loaded.as_shot,
         })
     }
 
@@ -170,9 +202,19 @@ impl Bridge {
         let state = self.handle.state::<AppState>();
         let context = get_or_init_gpu_context(&state, &self.handle)?;
         let tm = resolve_tonemapper_override_from_handle(&self.handle, session.is_raw);
-        let mut adjustments =
-            get_all_adjustments_from_json(&prepared.adjustments, session.is_raw, tm);
-        adjustments.global.show_clipping = 0;
+        let mut adjustments = crate::engine_commands::effective_adjustments_with_render_options(
+            crate::engine_commands::AdjustRequest {
+                adjustments: &prepared.adjustments,
+                is_raw: session.is_raw,
+                tonemapper_override: tm,
+                show_clipping: false,
+            },
+            prepared.as_shot,
+            crate::image_processing::resolve_render_options_from_handle(
+                &self.handle,
+                session.is_raw,
+            ),
+        );
         let lut = match prepared.adjustments["lutPath"]
             .as_str()
             .filter(|p| !p.is_empty())
@@ -199,14 +241,21 @@ impl Bridge {
         } else {
             &prepared.bitmaps
         };
-        process_and_get_dynamic_image_high_precision(
+        crate::engine_commands::render_final(
             &context,
-            &prepared.image,
-            RenderRequest {
-                adjustments,
-                mask_bitmaps: bitmaps,
-                lut,
-                roi: Some(region),
+            &state,
+            crate::engine_commands::FinalRenderRequest {
+                image: &prepared.image,
+                native: RenderRequest {
+                    mask_cache_key: None,
+                    adjustments,
+                    mask_bitmaps: bitmaps,
+                    lut,
+                    roi: Some(region),
+                },
+                precision: RenderOutputPrecision::SixteenBit,
+                cache_key: 0,
+                caller: "mcp_render",
             },
         )
         .map_err(|e| format!("RENDER_FAILED: {e}"))
@@ -408,6 +457,9 @@ impl Bridge {
                 "resize",
                 "bit_depth",
                 "watermark",
+                "dpi",
+                "pad",
+                "border",
                 "export_masks",
                 "quality",
                 "keep_metadata",
@@ -471,6 +523,9 @@ impl Bridge {
             return Err("INVALID_ARGUMENT: 16-bit output is supported by PNG and TIFF only; bit_depth must be 8 or 16".into());
         }
         let mut settings = export_settings(params, quality)?;
+        if settings.dpi.is_some() && !matches!(format, "jpeg" | "png" | "tiff") {
+            return Err("INVALID_ARGUMENT: dpi is supported for JPEG, PNG and TIFF only".into());
+        }
         let metadata_default_disabled = params.get("keep_metadata").is_none()
             && crate::exif_processing::preflight_metadata_retention(
                 &session.working_path,
@@ -622,9 +677,30 @@ impl Bridge {
             settings.keep_metadata,
         )?;
         let mut bytes = if embed_profile && matches!(format, "png" | "tiff") {
-            delivery::encode_profiled_raster(image, format, bit_depth, false)?
+            delivery::encode_profiled_raster_with_density(
+                image,
+                format,
+                bit_depth,
+                false,
+                settings.dpi,
+            )?
         } else {
-            encode_at_depth(image, format, bit_depth, settings.jpeg_quality)?
+            let native = if bit_depth == 16 {
+                DynamicImage::ImageRgba16(image.to_rgba16())
+            } else {
+                DynamicImage::ImageRgba8(image.to_rgba8())
+            };
+            crate::export_processing::encode_native_with_options(
+                &native,
+                format,
+                settings.jpeg_quality,
+                if bit_depth == 16 {
+                    TiffBitDepth::Sixteen
+                } else {
+                    TiffBitDepth::Eight
+                },
+                settings.dpi,
+            )?
         };
         if format == "webp" && settings.keep_metadata {
             // Upgrade first: little_exif cannot upgrade a simple lossy WebP and
@@ -637,7 +713,13 @@ impl Bridge {
             format,
             settings.keep_metadata,
             settings.strip_gps,
+            &crate::exif_processing::ExportXmp::from_metadata(
+                &serde_json::from_value(session.current().metadata.clone())
+                    .map_err(|e| format!("Invalid session metadata: {e}"))?,
+            ),
+            settings.dpi,
         )?;
+        crate::export_processing::apply_print_density(&mut bytes, format, settings.dpi);
         if embed_profile && matches!(format, "jpeg" | "webp") {
             delivery::add_profile(&mut bytes, format)?;
         }
@@ -952,7 +1034,52 @@ fn export_settings(params: &Value, quality: u8) -> Result<ExportSettings> {
         }
         None => None,
     };
+    let dpi = params
+        .get("dpi")
+        .map(|_| integer(params, "dpi", 300, 1, 65535).map(|v| v as u16))
+        .transpose()?;
+    let color = |value: &Value| -> Result<()> {
+        let text = required(value, "color")?;
+        let hex = text.strip_prefix('#').unwrap_or(text);
+        if ![3, 6].contains(&hex.len()) || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(
+                "INVALID_ARGUMENT: color must be an RGB hex color (#rgb or #rrggbb)".into(),
+            );
+        }
+        Ok(())
+    };
+    let pad = params
+        .get("pad")
+        .map(|value| -> Result<crate::export_processing::PadOptions> {
+            only_export_keys(value, &["ratioWidth", "ratioHeight", "color"])?;
+            color(value)?;
+            let width = number(value, "ratioWidth", 0.0, 0.001, 1000.0)?;
+            let height = number(value, "ratioHeight", 0.0, 0.001, 1000.0)?;
+            if !(0.001..=1000.0).contains(&(width / height)) {
+                return Err("INVALID_ARGUMENT: pad aspect ratio is out of range".into());
+            }
+            serde_json::from_value(value.clone())
+                .map_err(|e| format!("INVALID_ARGUMENT: Invalid pad: {e}"))
+        })
+        .transpose()?;
+    let border = params
+        .get("border")
+        .map(|value| -> Result<crate::export_processing::BorderOptions> {
+            only_export_keys(
+                value,
+                &["basis", "horizontalPercent", "verticalPercent", "color"],
+            )?;
+            color(value)?;
+            number(value, "horizontalPercent", 0.0, 0.0, 100.0)?;
+            number(value, "verticalPercent", 0.0, 0.0, 100.0)?;
+            serde_json::from_value(value.clone())
+                .map_err(|e| format!("INVALID_ARGUMENT: Invalid border: {e}"))
+        })
+        .transpose()?;
     Ok(ExportSettings {
+        dpi,
+        pad,
+        border,
         jpeg_quality: quality,
         // The MCP export flow threads channel depth through the separate
         // `bit_depth` argument at encode time; keep the upstream default here.
@@ -971,17 +1098,17 @@ fn export_settings(params: &Value, quality: u8) -> Result<ExportSettings> {
 }
 
 fn preflight_resize(dimensions: (u32, u32), settings: &ExportSettings) -> Result<()> {
-    if let Some(options) = &settings.resize {
-        let (width, height) = calculate_resize_target(dimensions.0, dimensions.1, options);
-        if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 100_000_000 {
-            return Err(format!(
-                "INVALID_ARGUMENT: Requested resize produces {width}x{height}; output must be nonempty and at most 100 megapixels"
-            ));
-        }
+    let (width, height) =
+        crate::export_processing::compute_export_output_size(dimensions.0, dimensions.1, settings);
+    if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 100_000_000 {
+        return Err(format!(
+            "INVALID_ARGUMENT: Requested export produces {width}x{height}; output must be nonempty and at most 100 megapixels"
+        ));
     }
     Ok(())
 }
 
+#[cfg(test)]
 fn encode_at_depth(
     image: &DynamicImage,
     format: &str,
@@ -1213,9 +1340,36 @@ fn reject_source_destination(target: &Path, source: &Path) -> Result<()> {
     Ok(())
 }
 
+fn only_export_keys(value: &Value, allowed: &[&str]) -> Result<()> {
+    let fields = value
+        .as_object()
+        .ok_or("INVALID_ARGUMENT: Export option must be an object")?;
+    if let Some(key) = fields.keys().find(|key| !allowed.contains(&key.as_str())) {
+        return Err(format!("INVALID_ARGUMENT: Unknown export option {key}"));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn print_export_options_are_validated_before_rendering() {
+        let settings = export_settings(&json!({"dpi":300,"pad":{"ratioWidth":1,"ratioHeight":1,"color":"#fff"},"border":{"basis":"shortEdge","horizontalPercent":2,"verticalPercent":3,"color":"#112233"}}), 95).unwrap();
+        assert_eq!(settings.dpi, Some(300));
+        assert!(settings.pad.is_some() && settings.border.is_some());
+        assert!(preflight_resize((400, 200), &settings).is_ok());
+        for invalid in [
+            json!({"dpi":0}),
+            json!({"dpi":300.5}),
+            json!({"pad":{"ratioWidth":0,"ratioHeight":1,"color":"#fff"}}),
+            json!({"border":{"horizontalPercent":101,"verticalPercent":1,"color":"#000"}}),
+            json!({"border":{"horizontalPercent":1,"verticalPercent":1,"color":"red"}}),
+        ] {
+            assert!(export_settings(&invalid, 95).is_err(), "accepted {invalid}");
+        }
+    }
 
     #[test]
     fn mcp_source_masks_follow_the_session_photo_when_editor_selection_changes() {

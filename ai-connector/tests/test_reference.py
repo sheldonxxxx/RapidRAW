@@ -30,7 +30,7 @@ class ReferenceImages(unittest.TestCase):
         config = dict(family='klein', model='model', text_encoder='encoder', vae='vae', steps=4, cfg=1)
         geometry = dict(x=0, y=0, width=512, height=512, gen_width=512, gen_height=512)
         self.assertTrue(supports_reference(config))
-        for unsupported in ({**config, 'task': 'remove'}, {**config, 'family': 'boogu'}):
+        for unsupported in ({**config, 'task': 'remove'}, {**config, 'task': 'remove_pe'}):
             self.assertFalse(supports_reference(unsupported))
             with self.assertRaises(ValueError):
                 build_workflow('source.png', 'mask.png', 'edit', 7, geometry, unsupported, ['reference.png'])

@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { discardMarigoldResult, isMarigoldPending } from '../../../hooks/useAiMasking';
 import { useEditorStore } from '../../../store/useEditorStore';
+import { displayedLightDirection } from '../../../utils/surfaceEditing';
 import { isSurfaceMask, surfaceGeometryHash, surfaceGeometrySnapshot } from '../../../utils/surfaceGeometry';
 import Slider from '../../ui/Slider';
-import { displayedLightDirection } from '../../../utils/surfaceEditing';
 import type { MaskParameters, SubMask } from './Masks';
 
 export default function MarigoldSurfaceControls({

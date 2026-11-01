@@ -1,24 +1,33 @@
-import { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
-import { useLibraryStore } from '../store/useLibraryStore';
-import { useEditorStore } from '../store/useEditorStore';
-import { useUIStore } from '../store/useUIStore';
-import { useProcessStore } from '../store/useProcessStore';
-import { useSettingsStore } from '../store/useSettingsStore';
-import { Invokes, ImageFile } from '../components/ui/AppProperties';
+import { ImageFile, ImageFlag, Invokes } from '../components/ui/AppProperties';
 import { Status } from '../components/ui/ExportImportProperties';
+import { useEditorStore } from '../store/useEditorStore';
+import { useLibraryStore } from '../store/useLibraryStore';
+import { JobKind, useProcessStore } from '../store/useProcessStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useUIStore } from '../store/useUIStore';
+import { ImportSettings } from './hookTypes';
 
-import type { ImportSettings } from './hookTypes';
+export const transferFiles = (kind: JobKind.Copy | JobKind.Move, sourcePaths: string[], destinationFolder: string) =>
+  useProcessStore
+    .getState()
+    .runJob(kind, { progress: { total: sourcePaths.length }, detail: destinationFolder }, () =>
+      invoke(kind === JobKind.Copy ? Invokes.CopyFiles : Invokes.MoveFiles, { sourcePaths, destinationFolder }),
+    );
 
 export function useFileOperations(
   refreshImageList: () => Promise<void>,
   refreshAllFolderTrees: () => Promise<void>,
-  handleImageSelect: (path: string) => void,
+  handleImageSelect: (path: string, openInEditor?: boolean) => void,
   handleBackToLibrary: () => void,
   sortedImageList: ImageFile[],
 ) {
+  const { t } = useTranslation();
+
   const getParentDir = (filePath: string): string => {
     const separator = filePath.includes('/') ? '/' : '\\';
     const lastSeparatorIndex = filePath.lastIndexOf(separator);
@@ -37,6 +46,7 @@ export function useFileOperations(
       // Determine the active path based on the current view
       const activePath = selectedImage && activeView === 'editor' ? selectedImage.path : libraryActivePath;
       let nextImagePath: string | null = null;
+      const isDeleted = (path: string) => pathsToDelete.includes(path) || pathsToDelete.includes(path.split('?vc=')[0]);
 
       if (activePath) {
         const physicalPath = activePath.split('?vc=')[0];
@@ -45,9 +55,7 @@ export function useFileOperations(
         if (isActiveImageDeleted) {
           const currentIndex = sortedImageList.findIndex((img) => img.path === activePath);
           if (currentIndex !== -1) {
-            const nextCandidate = sortedImageList
-              .slice(currentIndex + 1)
-              .find((img) => !pathsToDelete.includes(img.path));
+            const nextCandidate = sortedImageList.slice(currentIndex + 1).find((img) => !isDeleted(img.path));
 
             if (nextCandidate) {
               nextImagePath = nextCandidate.path;
@@ -55,7 +63,7 @@ export function useFileOperations(
               const prevCandidate = sortedImageList
                 .slice(0, currentIndex)
                 .reverse()
-                .find((img) => !pathsToDelete.includes(img.path));
+                .find((img) => !isDeleted(img.path));
 
               if (prevCandidate) {
                 nextImagePath = prevCandidate.path;
@@ -149,6 +157,37 @@ export function useFileOperations(
     });
   }, [executeDelete]);
 
+  const handleDeleteRejected = useCallback(() => {
+    const { imageList } = useLibraryStore.getState();
+    const rejectedPaths = imageList.filter((image) => image.flag === ImageFlag.Reject).map((image) => image.path);
+
+    if (rejectedPaths.length === 0) {
+      toast.info(t('library.reject.noneToDelete'));
+      return;
+    }
+
+    const rejectedSet = new Set(rejectedPaths);
+    const affectedCopyCount = imageList.filter(
+      (image) =>
+        image.path.includes('?vc=') && !rejectedSet.has(image.path) && rejectedSet.has(image.path.split('?vc=')[0]),
+    ).length;
+    const deleteMessage = t('library.reject.deleteMessage', { count: rejectedPaths.length });
+
+    useUIStore.getState().setUI({
+      confirmModalState: {
+        confirmText: t('library.reject.deleteConfirm'),
+        confirmVariant: 'destructive',
+        isOpen: true,
+        message:
+          affectedCopyCount > 0
+            ? `${deleteMessage}\n\n${t('library.reject.virtualCopiesWarning', { count: affectedCopyCount })}`
+            : deleteMessage,
+        onConfirm: () => executeDelete(rejectedPaths, { includeAssociated: false }),
+        title: t('library.reject.deleteTitle'),
+      },
+    });
+  }, [executeDelete, t]);
+
   const handleCreateFolder = useCallback(
     async (folderName: string) => {
       const { folderActionTarget } = useUIStore.getState();
@@ -182,25 +221,26 @@ export function useFileOperations(
           const separator = oldPath.includes('/') ? '/' : '\\';
           const newPath = parentDir ? `${parentDir}${separator}${trimmedNewName}` : trimmedNewName;
 
+          const isInRenamedFolder = (path: string) =>
+            path === oldPath || path.startsWith(`${oldPath}/`) || path.startsWith(`${oldPath}\\`);
+          const renamePath = (path: string) => (isInRenamedFolder(path) ? newPath + path.slice(oldPath.length) : path);
+
           const newAppSettings = { ...appSettings };
           let settingsChanged = false;
 
-          if (rootPaths.includes(oldPath)) {
-            const newRoots = rootPaths.map((r) => (r === oldPath ? newPath : r));
+          if (rootPaths.some(isInRenamedFolder)) {
+            const newRoots = rootPaths.map(renamePath);
             setLibrary({ rootPaths: newRoots });
             newAppSettings.rootFolders = newRoots;
             settingsChanged = true;
           }
-          if (currentFolderPath?.startsWith(oldPath)) {
-            const newCurrentPath = currentFolderPath.replace(oldPath, newPath);
-            setLibrary({ currentFolderPath: newCurrentPath });
+          if (currentFolderPath && isInRenamedFolder(currentFolderPath)) {
+            setLibrary({ currentFolderPath: renamePath(currentFolderPath) });
           }
 
           const currentPins = appSettings?.pinnedFolders || [];
-          if (currentPins.includes(oldPath)) {
-            const newPins = currentPins
-              .map((p: string) => (p === oldPath ? newPath : p))
-              .sort((a: string, b: string) => a.localeCompare(b));
+          if (currentPins.some(isInRenamedFolder)) {
+            const newPins = currentPins.map(renamePath).sort((a: string, b: string) => a.localeCompare(b));
             newAppSettings.pinnedFolders = newPins;
             settingsChanged = true;
           }
@@ -220,7 +260,7 @@ export function useFileOperations(
 
   const handleSaveRename = useCallback(
     async (nameTemplate: string) => {
-      const { renameTargetPaths, setUI } = useUIStore.getState();
+      const { renameTargetPaths, activeView, setUI } = useUIStore.getState();
       const { selectedImage } = useEditorStore.getState();
       const { libraryActivePath, setLibrary } = useLibraryStore.getState();
 
@@ -236,8 +276,8 @@ export function useFileOperations(
           if (selectedImage && renameTargetPaths.includes(selectedImage.path)) {
             const oldPathIndex = renameTargetPaths.indexOf(selectedImage.path);
             if (newPaths[oldPathIndex]) {
-              handleImageSelect(newPaths[oldPathIndex]);
-            } else {
+              handleImageSelect(newPaths[oldPathIndex], activeView === 'editor');
+            } else if (activeView === 'editor') {
               handleBackToLibrary();
             }
           }
@@ -389,9 +429,9 @@ export function useFileOperations(
 
       try {
         if (mode === 'copy') {
-          await invoke(Invokes.CopyFiles, { sourcePaths: copiedFilePaths, destinationFolder: currentFolderPath });
+          await transferFiles(JobKind.Copy, copiedFilePaths, currentFolderPath);
         } else {
-          await invoke(Invokes.MoveFiles, { sourcePaths: copiedFilePaths, destinationFolder: currentFolderPath });
+          await transferFiles(JobKind.Move, copiedFilePaths, currentFolderPath);
           setProcess({ copiedFilePaths: [] });
           setLibrary({ multiSelectedPaths: [] });
           await refreshAllFolderTrees();
@@ -407,6 +447,7 @@ export function useFileOperations(
   return {
     executeDelete,
     handleDeleteSelected,
+    handleDeleteRejected,
     handleCreateFolder,
     handleRenameFolder,
     handleSaveRename,

@@ -1,14 +1,14 @@
-import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ImageOff, Upload, X, Trash2 } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { open } from '@tauri-apps/plugin-dialog';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useContextMenu } from '../../context/ContextMenuContext';
+import { ChevronDown, ImageOff, Trash2, Upload, X } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
-import Slider from './Slider';
+import { useContextMenu } from '../../context/ContextMenuContext';
 import { useEditorStore } from '../../store/useEditorStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import Slider from './Slider';
 
 interface LutEntry {
   name: string;
@@ -232,7 +232,7 @@ export default function LUTControl({
             <ImageOff size={18} />
           </div>
         )}
-        <span className="absolute inset-x-0 bottom-0 px-1 py-0.5 text-[10px] text-white bg-black/60 truncate text-left backdrop-blur-xs">
+        <span className="absolute inset-x-0 bottom-0 px-1 py-0.5 text-[10px] text-white bg-black/60 truncate text-left">
           {entry.name}
         </span>
       </button>

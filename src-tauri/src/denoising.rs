@@ -518,11 +518,12 @@ pub(crate) fn denoise_image(
 
     let mut out_dynamic = if method == "ai" {
         let session_arc = ai_session.ok_or_else(|| "AI Session not provided".to_string())?;
-        crate::ai_processing::run_ai_denoise(
+        crate::ai_processing::run_ai_denoise_controlled(
             &rgb_img_for_denoiser,
             intensity,
             &session_arc,
             &app_handle,
+            None,
         )
         .map_err(|e| e.to_string())?
     } else if method == "nonlocal" {

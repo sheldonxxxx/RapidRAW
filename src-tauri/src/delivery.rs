@@ -17,11 +17,22 @@ pub(crate) fn supports_icc(format: &str) -> bool {
     matches!(canonical_format(format), "jpeg" | "png" | "tiff" | "webp")
 }
 
+#[cfg(test)]
 pub(crate) fn encode_profiled_raster(
     image: &DynamicImage,
     format: &str,
     depth: u32,
     preserve_alpha: bool,
+) -> Result<Vec<u8>> {
+    encode_profiled_raster_with_density(image, format, depth, preserve_alpha, None)
+}
+
+pub(crate) fn encode_profiled_raster_with_density(
+    image: &DynamicImage,
+    format: &str,
+    depth: u32,
+    preserve_alpha: bool,
+    dpi: Option<u16>,
 ) -> Result<Vec<u8>> {
     let profile = srgb_profile()?;
     let alpha = preserve_alpha && canonical_format(format) == "png" && image.color().has_alpha();
@@ -46,17 +57,33 @@ pub(crate) fn encode_profiled_raster(
                 .map_err(|e| e.to_string())?;
         }
         "tiff" => {
-            let mut encoder = image::codecs::tiff::TiffEncoder::new(&mut output);
-            encoder
-                .set_icc_profile(profile)
-                .map_err(|e| e.to_string())?;
-            raster
-                .write_with_encoder(encoder)
-                .map_err(|e| e.to_string())?;
+            let mut encoder =
+                tiff::encoder::TiffEncoder::new(&mut output).map_err(|e| e.to_string())?;
+            if depth == 16 {
+                crate::export_processing::write_tiff::<tiff::encoder::colortype::RGB16, _>(
+                    &mut encoder,
+                    raster.width(),
+                    raster.height(),
+                    raster.to_rgb16().as_raw(),
+                    dpi,
+                    Some(&profile),
+                )?;
+            } else {
+                crate::export_processing::write_tiff::<tiff::encoder::colortype::RGB8, _>(
+                    &mut encoder,
+                    raster.width(),
+                    raster.height(),
+                    raster.to_rgb8().as_raw(),
+                    dpi,
+                    Some(&profile),
+                )?;
+            }
         }
         _ => return Err("INVALID_ARGUMENT: Profiled raster encoder supports PNG/TIFF".into()),
     }
-    Ok(output.into_inner())
+    let mut bytes = output.into_inner();
+    crate::export_processing::apply_print_density(&mut bytes, format, dpi);
+    Ok(bytes)
 }
 
 pub(crate) fn add_profile(bytes: &mut Vec<u8>, format: &str) -> Result<()> {

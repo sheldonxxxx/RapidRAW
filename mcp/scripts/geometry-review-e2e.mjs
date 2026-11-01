@@ -55,6 +55,20 @@ function sample(image, x, y) {
   return image.pixels.slice((y * image.width + x) * 3, (y * image.width + x) * 3 + 3);
 }
 try {
+  await test('shared_engine_commands_survive_native_capability_discovery', ['tool:capabilities'], async () => {
+    const capabilities = (await h.call('capabilities', { detail: 'overview' })).data;
+    const registry = capabilities.engine_commands;
+    assert.equal(registry?.version, 1);
+    assert.deepEqual(
+      registry.commands.map((command) => command.id),
+      ['open', 'adjust', 'mask', 'render', 'export'],
+    );
+    for (const command of registry.commands) {
+      assert.ok(command.desktop_commands.length > 0);
+      assert.ok(command.mcp_methods.length > 0);
+      for (const method of command.mcp_methods) assert.ok(capabilities.methods.includes(method));
+    }
+  });
   for (const path of [source, neutral, clipping])
     await h.fixture(path, 'synthetic native review regression; not a photographic quality benchmark');
   sid = (await h.call('open_photo', { path: source, inherit_sidecar: false })).data.session_id;

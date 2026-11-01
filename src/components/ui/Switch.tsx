@@ -1,8 +1,7 @@
-import React from 'react';
 import clsx from 'clsx';
 import { motion } from 'framer-motion';
-import Text from './Text';
 import { TextVariants } from '../../types/typography';
+import Text from './Text';
 
 interface SwitchProps {
   checked: boolean;

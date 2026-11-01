@@ -1,53 +1,53 @@
-import type { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
-import type { Folder, Option } from '../../ui/AppProperties';
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import {
   DndContext,
+  DragEndEvent,
   DragOverlay,
+  DragStartEvent,
   PointerSensor,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { useTranslation } from 'react-i18next';
-import { PresetImportFailure, PresetListType, usePresets, UserPreset } from '../../../hooks/usePresets';
-import { useContextMenu } from '../../../context/ContextMenuContext';
+import { invoke } from '@tauri-apps/api/core';
+import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   CopyPlus,
+  Crop,
   Edit,
   FileDown,
   FileUp,
   Folder as FolderIcon,
   FolderOpen,
   FolderPlus,
+  Layers,
   Loader2,
+  Palette,
   Plus,
+  Save,
+  Settings2,
   SortAsc,
   Trash2,
   Users,
-  Layers,
-  Crop,
-  Save,
   Wrench,
-  Palette,
-  Settings2,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useContextMenu } from '../../../context/ContextMenuContext';
+import { useEditorActions } from '../../../hooks/useEditorActions';
+import { PresetImportFailure, PresetListType, usePresets, UserPreset } from '../../../hooks/usePresets';
+import { useEditorStore } from '../../../store/useEditorStore';
+import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
+import { ADJUSTMENT_GROUPS, Adjustments, INITIAL_ADJUSTMENTS, MaskContainer } from '../../../utils/adjustments';
+import { applyPresetIntensity } from '../../../utils/presetIntensity';
 import ConfigurePresetModal from '../../modals/ConfigurePresetModal';
 import CreateFolderModal from '../../modals/CreateFolderModal';
 import RenameFolderModal from '../../modals/RenameFolderModal';
+import { Folder, Invokes, Option, OPTION_SEPARATOR, Preset } from '../../ui/AppProperties';
 import Button from '../../ui/Button';
-import Text from '../../ui/Text';
 import Slider from '../../ui/Slider';
-import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
-import { Adjustments, INITIAL_ADJUSTMENTS, ADJUSTMENT_GROUPS } from '../../../utils/adjustments';
-import { applyPresetIntensity } from '../../../utils/presetIntensity';
-import { Invokes, OPTION_SEPARATOR, Preset } from '../../ui/AppProperties';
-import { useEditorStore } from '../../../store/useEditorStore';
-import { useEditorActions } from '../../../hooks/useEditorActions';
+import Text from '../../ui/Text';
 
 type ActivePresetItem = { type: PresetListType.Preset; data: Preset } | { type: PresetListType.Folder; data: Folder };
 
@@ -505,6 +505,7 @@ export default function PresetsPanel({ onNavigateToCommunity }: PresetsPanelProp
   const previewQueue = useRef<{ preset: Preset; folderId: string | null }[]>([]);
   const isProcessingQueue = useRef(false);
   const currentImagePathRef = useRef<string | null>(selectedImage?.path || null);
+  const hiddenPresetMasks = useRef<Array<MaskContainer> | null>(null);
 
   const handleDragStateChange = useCallback(
     (isDragging: boolean) => {
@@ -800,6 +801,8 @@ export default function PresetsPanel({ onNavigateToCommunity }: PresetsPanelProp
   ]);
 
   const handleApplyPreset = (preset: Preset) => {
+    hiddenPresetMasks.current = null;
+
     if (activePresetId === preset.id) {
       setActivePresetId(null);
       if (baseAdjustments) {

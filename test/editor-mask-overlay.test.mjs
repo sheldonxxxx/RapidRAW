@@ -36,6 +36,10 @@ const stubs = {
   '../../../utils/cropUtils': 'export const calculateStraightenAngle = () => 0;',
   'react-toastify': 'export const toast = { error() {} };',
 };
+stubs['../components/panel/right/Masks'] = stubs['../right/Masks'];
+stubs['../../ui/AppProperties'] = 'export const Panel={Adjustments: "adjustments"};';
+stubs['../../../store/useUIStore'] =
+  'export const useUIStore = () => false; export const isPanelVisible = () => false;';
 const output = join(directory, 'overlay.mjs');
 await build({
   stdin: {
