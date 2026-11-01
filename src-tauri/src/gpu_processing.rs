@@ -4237,6 +4237,58 @@ mod precision_tests {
     use super::*;
 
     #[test]
+    fn direct_float_upload_preserves_rgb_alpha_and_half_float_bits() {
+        let samples = [
+            0.0,
+            -0.0,
+            0.5,
+            1.0,
+            -0.25,
+            16.0,
+            f32::MIN_POSITIVE,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NAN,
+        ];
+        for (width, height) in [(0, 0), (1, 1), (7, 3)] {
+            let rgb =
+                DynamicImage::ImageRgb32F(image::Rgb32FImage::from_fn(width, height, |x, y| {
+                    let i = (x + y * width) as usize;
+                    image::Rgb([
+                        samples[i % samples.len()],
+                        samples[(i + 1) % samples.len()],
+                        samples[(i + 2) % samples.len()],
+                    ])
+                }));
+            let rgba =
+                DynamicImage::ImageRgba32F(image::Rgba32FImage::from_fn(width, height, |x, y| {
+                    let i = (x + y * width) as usize;
+                    image::Rgba([
+                        samples[i % samples.len()],
+                        samples[(i + 1) % samples.len()],
+                        samples[(i + 2) % samples.len()],
+                        (i % 3) as f32 / 2.0,
+                    ])
+                }));
+            let byte_image = DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+                width,
+                height,
+                image::Rgba([17, 99, 251, 128]),
+            ));
+            for input in [rgb, rgba, byte_image] {
+                let expected: Vec<u16> = input
+                    .to_rgba32f()
+                    .into_raw()
+                    .into_iter()
+                    .map(|v| f16::from_f32(v).to_bits())
+                    .collect();
+                let actual: Vec<u16> = to_rgba_f16(&input).into_iter().map(f16::to_bits).collect();
+                assert_eq!(actual, expected);
+            }
+        }
+    }
+
+    #[test]
     fn ordinary_render_rejects_nonidentity_oversize_and_unaligned_limit() {
         let mut adjusted = request(None);
         adjusted.adjustments.global.exposure = 0.75;
@@ -5078,7 +5130,9 @@ mod preview_perf_bench {
                 })
                 .collect();
             let mask_json: Vec<serde_json::Value> = (0..4)
-                .map(|m| serde_json::json!({ "id": format!("m{m}"), "name": "m", "visible": true, "invert": false, "subMasks": [], "adjustments": { "exposure": 0.2 } }))
+                .map(|m| serde_json::json!({ "id": format!("m{m}"), "name": "m", "visible": true, "invert": false,
+                    "subMasks": [{ "id": format!("s{m}"), "type": "brush", "visible": true, "mode": "additive", "parameters": { "lines": [] } }],
+                    "adjustments": { "exposure": 0.2 } }))
                 .collect();
             for (label, reuse_input, mask_count) in [
                 ("slider drag", true, 0),

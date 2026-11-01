@@ -2664,9 +2664,10 @@ pub async fn estimate_export_sizes(
         let loaded_image = state
             .original_image
             .lock()
-            .unwrap()
+            .unwrap_or_else(|error| error.into_inner())
             .clone()
-            .ok_or("No original image loaded")?;
+            .filter(|loaded| parse_virtual_path(&loaded.path).0 == source_path)
+            .ok_or("The selected image changed while estimating its export size")?;
         let mut adjustments_clone = current_edit_adjustments.clone().unwrap();
         hydrate_adjustments(&state, &mut adjustments_clone)?;
 

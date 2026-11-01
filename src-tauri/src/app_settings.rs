@@ -418,6 +418,29 @@ pub struct AdjustmentLayout {
     pub collapsed_tools: Vec<String>,
 }
 
+#[cfg(test)]
+mod export_preset_tests {
+    use super::*;
+
+    #[test]
+    fn export_presets_retain_depth_and_timestamps_and_read_older_presets() {
+        let mut preset = default_export_presets().remove(0);
+        preset.tiff_bit_depth = Some(8);
+        preset.preserve_timestamps = Some(true);
+        let mut stored = serde_json::to_value(&preset).unwrap();
+        assert_eq!(stored["tiffBitDepth"], 8);
+        assert_eq!(stored["preserveTimestamps"], true);
+        let restored: ExportPreset = serde_json::from_value(stored.clone()).unwrap();
+        assert_eq!(restored.tiff_bit_depth, Some(8));
+        assert_eq!(restored.preserve_timestamps, Some(true));
+        stored.as_object_mut().unwrap().remove("tiffBitDepth");
+        stored.as_object_mut().unwrap().remove("preserveTimestamps");
+        let older: ExportPreset = serde_json::from_value(stored).unwrap();
+        assert_eq!(older.tiff_bit_depth, None);
+        assert_eq!(older.preserve_timestamps, None);
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceState {

@@ -10,6 +10,8 @@ Use RapidRAW on its own, connect it to your preferred MCP client, or pair it wit
 
 **[Agent setup](AGENT_SETUP.md)** · **[MCP package](mcp/README.md)** · **[MCP docs](docs/mcp/README.md)** · **[Use the desktop editor](docs/desktop-guide.md)** · **[Explore Lightweft](https://github.com/sheldonxxxx/lightweft)**
 
+Source changes awaiting a fork release are listed under [Unreleased in the changelog](CHANGELOG.md#unreleased), including lower GPU upload memory use and fixes for RAW previews, colour adjustments, local masks and export presets.
+
 > A beautiful, non-destructive, and GPU-accelerated RAW image editor built with performance in mind.
 
 RapidRAW is a modern, high-performance alternative to Adobe Lightroom®. The fork release workflow packages Apple Silicon and Linux x86_64, each with the native MCP bridge. The published 0.4.0 release also includes Intel Mac packages.

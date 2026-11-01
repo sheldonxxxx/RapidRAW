@@ -670,6 +670,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn clipped_red_sensor_noise_does_not_create_a_green_discontinuity() {
+        let below = recover_clipped_pixel(2.0, 0.02 - 0.000001, 0.02);
+        let above = recover_clipped_pixel(2.0, 0.02 + 0.000001, 0.02);
+        for (first, second) in [(below.0, above.0), (below.1, above.1), (below.2, above.2)] {
+            assert!((first - second).abs() < 0.0001);
+        }
+    }
+
+    #[test]
     fn constant_rgb_black_level_repeat_matches_channel_white_levels() {
         let mut black_level = BlackLevel::new(
             &[64_u16, 128, 256, 64, 128, 256, 64, 128, 256, 64, 128, 256],

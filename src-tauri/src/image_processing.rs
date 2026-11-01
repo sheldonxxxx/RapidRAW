@@ -5026,6 +5026,19 @@ mod scope_tests {
 mod clipping_overlay_tests {
     use super::get_all_adjustments_from_json;
 
+    #[test]
+    fn empty_mask_does_not_shift_the_next_masks_adjustments() {
+        let adjustments = serde_json::json!({"masks": [
+            {"id":"empty", "name":"Empty", "visible":true, "invert":false, "adjustments":{"exposure":4}, "subMasks":[]},
+            {"id":"real", "name":"Brush", "visible":true, "invert":false, "adjustments":{"exposure":1}, "subMasks":[
+                {"id":"brush", "type":"brush", "visible":true, "mode":"additive", "parameters":{"lines":[]}}
+            ]}
+        ]});
+        let parsed = get_all_adjustments_from_json(&adjustments, false, None);
+        assert_eq!(parsed.mask_count, 1);
+        assert_eq!(parsed.mask_adjustments[0].exposure, 1.25);
+    }
+
     /// Thumbnails, exports, and other renders parse saved edits directly; an
     /// older edit that stored the overlay must not show clipping colors there.
     #[test]

@@ -4810,6 +4810,33 @@ fn compute_thumbnail_cache_hash_legacy(path_str: &str, adjustments_bytes: &[u8])
 mod thumbnail_cache_revision_tests {
     use super::*;
 
+    #[test]
+    #[ignore = "requires RAPIDRAW_TEST_RAW pointing to a RAW with an embedded preview and no TIFF EXIF container"]
+    fn raw_container_preview_reaches_thumbnail_loader() {
+        let path = PathBuf::from(std::env::var("RAPIDRAW_TEST_RAW").unwrap());
+        let bytes = fs::read(&path).unwrap();
+        assert!(exif_processing::read_exif(&bytes).is_none());
+        let expected = crate::raw_processing::extract_embedded_preview(&bytes).unwrap();
+        let actual = try_load_embedded_raw_preview(&path, 1280).unwrap();
+        assert_eq!(actual.dimensions(), expected.dimensions());
+        assert_eq!(actual.to_rgb8(), expected.to_rgb8());
+        let colors: std::collections::HashSet<_> = actual
+            .to_rgb8()
+            .pixels()
+            .step_by(127)
+            .map(|pixel| pixel.0)
+            .collect();
+        assert!(
+            colors.len() > 16,
+            "Embedded preview must contain photo pixels"
+        );
+        assert!(
+            try_load_embedded_raw_preview(&path, expected.width().max(expected.height()) * 2)
+                .is_none(),
+            "A preview too small for the requested thumbnail must be rejected"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn atomic_source_replacement_changes_key_with_same_size_and_mtime() {
