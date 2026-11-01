@@ -1,12 +1,12 @@
+import { Loader2, RotateCw } from 'lucide-react';
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, RotateCw } from 'lucide-react';
+import { TextVariants } from '../../../types/typography';
+import type { AiPatchGeneration } from '../../../utils/adjustments';
+import { resolveGenerationOptions, type CapabilityState, type GenerationDraft } from '../../../utils/generationOptions';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Text from '../../ui/Text';
-import { TextVariants } from '../../../types/typography';
-import { resolveGenerationOptions, type CapabilityState, type GenerationDraft } from '../../../utils/generationOptions';
-import type { AiPatchGeneration } from '../../../utils/adjustments';
 
 interface Props {
   state: CapabilityState;

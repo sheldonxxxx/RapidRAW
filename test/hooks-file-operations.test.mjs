@@ -1,3 +1,4 @@
+import { extendUpstreamBoundaries } from './fixtures/upstream-boundaries.mjs';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { build } from 'esbuild';
@@ -21,6 +22,7 @@ for (const name of ['Editor', 'Library', 'UI', 'Process', 'Settings']) {
   stubs[`../store/use${name}Store`] =
     `export const use${name}Store = {getState: () => globalThis.__fileOperations.${name.toLowerCase()}};`;
 }
+extendUpstreamBoundaries(stubs);
 const output = join(directory, 'operations.mjs');
 await build({
   entryPoints: ['src/hooks/useFileOperations.ts'],

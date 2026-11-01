@@ -1,12 +1,16 @@
+use crate::baseline_exposure::BaselineOptions;
+use crate::image_loader::composite_patches_on_image;
+use crate::image_processing::resolve_tonemapper_override_from_handle;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
-use std::io::Cursor;
+use std::io::{Cursor, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use image::codecs::jpeg::JpegEncoder;
+use image::codecs::jpeg::{JpegEncoder, PixelDensity};
+use image::codecs::png::PngEncoder;
 use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, imageops};
 use jxl_encoder::{
     LossyConfig, PixelLayout,
@@ -16,6 +20,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::Emitter;
 use tauri::Manager;
+use tiff::encoder::{Rational, TiffEncoder, TiffValue, colortype};
+use tiff::tags::ResolutionUnit;
 
 use crate::AppState;
 use crate::delivery;
@@ -24,19 +30,18 @@ use crate::file_management::{
     generate_filename_from_template, parse_virtual_path, read_file_mapped,
 };
 use crate::formats::is_raw_file;
-use crate::image_loader::{
-    composite_patches_on_image, load_and_composite, load_base_image_from_bytes,
-};
+use crate::image_loader::{load_and_composite, load_base_image_from_bytes, prepare_base_image_cow};
 use crate::image_processing::{
-    AllAdjustments, Crop, GpuContext, RenderOutputPrecision, RenderRequest, downscale_f32_image,
-    get_all_adjustments_from_json, get_or_init_gpu_context, process_and_get_dynamic_image,
-    process_and_get_dynamic_image_with_precision, resolve_tonemapper_override_from_handle,
+    AllAdjustments, Crop, GpuContext, RenderOptions, RenderOutputPrecision, RenderRequest,
+    downscale_f32_image, get_or_init_gpu_context, process_and_get_dynamic_image,
+    process_and_get_dynamic_image_with_precision, resolve_render_options_from_handle,
 };
 use crate::lut_processing::{
     convert_image_to_cube_lut, generate_identity_lut_image, get_or_load_lut,
 };
 use crate::mask_generation::render_source_mask_bitmaps;
 
+use crate::as_shot::as_shot;
 use crate::cache_utils::{calculate_full_job_hash, calculate_transform_hash};
 use crate::{
     apply_all_transformations, generate_transformed_preview, hydrate_adjustments, load_settings,
@@ -88,6 +93,34 @@ pub struct ResizeOptions {
     pub dont_enlarge: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+#[allow(clippy::enum_variant_names)]
+pub enum BorderBasis {
+    #[default]
+    LongEdge,
+    ShortEdge,
+    EachEdge,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BorderOptions {
+    #[serde(default)]
+    pub basis: BorderBasis,
+    pub horizontal_percent: f32,
+    pub vertical_percent: f32,
+    pub color: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PadOptions {
+    pub ratio_width: f32,
+    pub ratio_height: f32,
+    pub color: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportSettings {
@@ -95,6 +128,10 @@ pub struct ExportSettings {
     #[serde(default)]
     pub tiff_bit_depth: TiffBitDepth,
     pub resize: Option<ResizeOptions>,
+    #[serde(default)]
+    pub border: Option<BorderOptions>,
+    #[serde(default)]
+    pub pad: Option<PadOptions>,
     pub keep_metadata: bool,
     #[serde(default)]
     pub preserve_timestamps: bool,
@@ -109,6 +146,8 @@ pub struct ExportSettings {
     pub destination_type: Option<String>,
     #[serde(default)]
     pub subfolder: Option<String>,
+    #[serde(default)]
+    pub dpi: Option<u16>,
 }
 
 #[derive(Clone)]
@@ -216,12 +255,86 @@ pub struct WatermarkSettings {
     pub opacity: f32,
 }
 
+struct WatermarkCacheEntry {
+    path: String,
+    modified: Option<std::time::SystemTime>,
+    len: Option<u64>,
+    image: Arc<DynamicImage>,
+    scaled: Option<((u32, u32), Arc<DynamicImage>)>,
+}
+
+static WATERMARK_CACHE: Mutex<Option<WatermarkCacheEntry>> = Mutex::new(None);
+
+struct WatermarkCacheGuard;
+
+impl Drop for WatermarkCacheGuard {
+    fn drop(&mut self) {
+        *WATERMARK_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+}
+
+fn load_watermark_image(path: &str) -> Result<Arc<DynamicImage>, String> {
+    let metadata = fs::metadata(path).ok();
+    let modified = metadata.as_ref().and_then(|m| m.modified().ok());
+    let len = metadata.as_ref().map(|m| m.len());
+    let mut cache = WATERMARK_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(entry) = cache.as_ref()
+        && entry.path == path
+        && entry.modified.is_some()
+        && entry.modified == modified
+        && entry.len == len
+    {
+        return Ok(Arc::clone(&entry.image));
+    }
+    let image =
+        Arc::new(image::open(path).map_err(|e| format!("Failed to open watermark image: {}", e))?);
+    *cache = Some(WatermarkCacheEntry {
+        path: path.to_string(),
+        modified,
+        len,
+        image: Arc::clone(&image),
+        scaled: None,
+    });
+    Ok(image)
+}
+
+fn scaled_watermark_image(
+    path: &str,
+    watermark_img: &Arc<DynamicImage>,
+    new_wm_w: u32,
+    new_wm_h: u32,
+) -> Arc<DynamicImage> {
+    {
+        let cache = WATERMARK_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = cache.as_ref()
+            && entry.path == path
+            && Arc::ptr_eq(&entry.image, watermark_img)
+            && let Some((size, scaled)) = &entry.scaled
+            && *size == (new_wm_w, new_wm_h)
+        {
+            return Arc::clone(scaled);
+        }
+    }
+    let scaled = Arc::new(watermark_img.resize_exact(
+        new_wm_w,
+        new_wm_h,
+        image::imageops::FilterType::Lanczos3,
+    ));
+    let mut cache = WATERMARK_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(entry) = cache.as_mut()
+        && entry.path == path
+        && Arc::ptr_eq(&entry.image, watermark_img)
+    {
+        entry.scaled = Some(((new_wm_w, new_wm_h), Arc::clone(&scaled)));
+    }
+    scaled
+}
+
 fn apply_watermark(
     base_image: &mut DynamicImage,
     watermark_settings: &WatermarkSettings,
 ) -> Result<(), String> {
-    let watermark_img = image::open(&watermark_settings.path)
-        .map_err(|e| format!("Failed to open watermark image: {}", e))?;
+    let watermark_img = load_watermark_image(&watermark_settings.path)?;
 
     let (base_w, base_h) = base_image.dimensions();
     let base_min_dim = base_w.min(base_h) as f32;
@@ -236,7 +349,7 @@ fn apply_watermark(
     }
 
     let scaled_watermark =
-        watermark_img.resize_exact(new_wm_w, new_wm_h, image::imageops::FilterType::Lanczos3);
+        scaled_watermark_image(&watermark_settings.path, &watermark_img, new_wm_w, new_wm_h);
     let opacity_factor = (watermark_settings.opacity / 100.0).clamp(0.0, 1.0);
 
     let spacing_pixels = (base_min_dim * (watermark_settings.spacing / 100.0)) as i64;
@@ -289,16 +402,46 @@ fn apply_watermark(
         image::imageops::overlay(&mut base_rgba, &watermark_rgba, x, y);
         *base_image = DynamicImage::ImageRgba32F(base_rgba);
     } else {
-        let mut base_rgba = base_image.to_rgba8();
         let mut watermark_rgba = scaled_watermark.to_rgba8();
         for pixel in watermark_rgba.pixels_mut() {
             pixel[3] = (pixel[3] as f32 * opacity_factor).round() as u8;
         }
-        image::imageops::overlay(&mut base_rgba, &watermark_rgba, x, y);
-        *base_image = DynamicImage::ImageRgba8(base_rgba);
+        if let DynamicImage::ImageRgba8(base_rgba) = base_image {
+            image::imageops::overlay(base_rgba, &watermark_rgba, x, y);
+        } else {
+            let mut base_rgba = base_image.to_rgba8();
+            image::imageops::overlay(&mut base_rgba, &watermark_rgba, x, y);
+            *base_image = DynamicImage::ImageRgba8(base_rgba);
+        }
     }
 
     Ok(())
+}
+
+const PAD_RATIO_EPSILON: f64 = 0.001;
+const MAX_PAD_DIMENSION: u32 = 65_535;
+const MAX_BORDER_PERCENT: f64 = 100.0;
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ExportGeometry {
+    pub canvas_w: u32,
+    pub canvas_h: u32,
+    pub photo_w: u32,
+    pub photo_h: u32,
+    pub offset_x: u32,
+    pub offset_y: u32,
+    pub border_x: u32,
+    pub border_y: u32,
+}
+
+impl ExportGeometry {
+    fn has_border(&self) -> bool {
+        self.border_x > 0 || self.border_y > 0
+    }
+
+    fn is_identity(&self) -> bool {
+        self.canvas_w == self.photo_w && self.canvas_h == self.photo_h
+    }
 }
 
 pub(crate) fn calculate_resize_target(
@@ -332,6 +475,390 @@ pub(crate) fn calculate_resize_target(
     } else {
         let w = ((value as f64 * (current_w as f64 / current_h as f64)).round() as u32).max(1);
         (w, value)
+    }
+}
+
+fn parse_hex_color(hex: &str) -> Option<[u8; 3]> {
+    let raw = hex.trim().trim_start_matches('#');
+    let normalized: String = match raw.len() {
+        3 => raw.chars().flat_map(|c| [c, c]).collect(),
+        6 => raw.to_string(),
+        8 => raw[..6].to_string(),
+        _ => return None,
+    };
+    Some([
+        u8::from_str_radix(&normalized[0..2], 16).ok()?,
+        u8::from_str_radix(&normalized[2..4], 16).ok()?,
+        u8::from_str_radix(&normalized[4..6], 16).ok()?,
+    ])
+}
+
+fn fill_color(hex: Option<&str>) -> [u8; 3] {
+    hex.and_then(parse_hex_color).unwrap_or([0, 0, 0])
+}
+
+fn resize_target(width: u32, height: u32, resize_opts: Option<&ResizeOptions>) -> (u32, u32) {
+    match resize_opts {
+        Some(opts) => calculate_resize_target(width, height, opts),
+        None => (width, height),
+    }
+}
+
+fn bordered_size(width: u32, height: u32, border_x: u32, border_y: u32) -> (u32, u32) {
+    (
+        width.saturating_add(border_x.saturating_mul(2)),
+        height.saturating_add(border_y.saturating_mul(2)),
+    )
+}
+
+fn exceeds_max_dimension(label: &str, width: u32, height: u32) -> bool {
+    let exceeds = width > MAX_PAD_DIMENSION || height > MAX_PAD_DIMENSION;
+    if exceeds {
+        log::warn!(
+            "{} {}x{} exceeds the maximum supported dimension; skipping.",
+            label,
+            width,
+            height
+        );
+    }
+    exceeds
+}
+
+fn calculate_pad_target(current_w: u32, current_h: u32, pad: &PadOptions) -> Option<(u32, u32)> {
+    let ratio_w = pad.ratio_width as f64;
+    let ratio_h = pad.ratio_height as f64;
+    if !ratio_w.is_finite() || !ratio_h.is_finite() || ratio_w <= 0.0 || ratio_h <= 0.0 {
+        return None;
+    }
+
+    let target_ratio = ratio_w / ratio_h;
+    let original_ratio = current_w as f64 / current_h as f64;
+    if (original_ratio - target_ratio).abs() < PAD_RATIO_EPSILON {
+        return None;
+    }
+
+    let (new_w, new_h) = if original_ratio > target_ratio {
+        (current_w, (current_w as f64 / target_ratio).round() as u32)
+    } else {
+        ((current_h as f64 * target_ratio).round() as u32, current_h)
+    };
+
+    let new_w = new_w.max(current_w);
+    let new_h = new_h.max(current_h);
+
+    if exceeds_max_dimension("Pad target", new_w, new_h)
+        || (new_w == current_w && new_h == current_h)
+    {
+        return None;
+    }
+
+    Some((new_w, new_h))
+}
+
+fn calculate_border_thickness(
+    src_w: u32,
+    src_h: u32,
+    border: &BorderOptions,
+) -> Option<(u32, u32)> {
+    let horizontal = border.horizontal_percent as f64;
+    let vertical = border.vertical_percent as f64;
+    if !horizontal.is_finite() || !vertical.is_finite() {
+        return None;
+    }
+
+    if horizontal < 0.0
+        || vertical < 0.0
+        || horizontal > MAX_BORDER_PERCENT
+        || vertical > MAX_BORDER_PERCENT
+    {
+        log::warn!(
+            "Border percentages {}/{} are outside 0..={}; skipping border.",
+            horizontal,
+            vertical,
+            MAX_BORDER_PERCENT
+        );
+        return None;
+    }
+
+    let (basis_x, basis_y) = match border.basis {
+        BorderBasis::LongEdge => {
+            let edge = src_w.max(src_h) as f64;
+            (edge, edge)
+        }
+        BorderBasis::ShortEdge => {
+            let edge = src_w.min(src_h) as f64;
+            (edge, edge)
+        }
+        BorderBasis::EachEdge => (src_w as f64, src_h as f64),
+    };
+
+    let border_x = (basis_x * horizontal / 100.0).round() as u32;
+    let border_y = (basis_y * vertical / 100.0).round() as u32;
+
+    if border_x == 0 && border_y == 0 {
+        return None;
+    }
+
+    let (bordered_w, bordered_h) = bordered_size(src_w, src_h, border_x, border_y);
+    if exceeds_max_dimension("Bordered size", bordered_w, bordered_h) {
+        return None;
+    }
+
+    Some((border_x, border_y))
+}
+
+fn compute_export_geometry(
+    src_w: u32,
+    src_h: u32,
+    settings: &ExportSettings,
+) -> Option<ExportGeometry> {
+    if src_w == 0 || src_h == 0 {
+        return None;
+    }
+
+    let border = settings
+        .border
+        .as_ref()
+        .and_then(|border| calculate_border_thickness(src_w, src_h, border));
+    let (border_src_x, border_src_y) = border.unwrap_or((0, 0));
+    let (bordered_w, bordered_h) = bordered_size(src_w, src_h, border_src_x, border_src_y);
+
+    let pad_target = settings
+        .pad
+        .as_ref()
+        .and_then(|pad| calculate_pad_target(bordered_w, bordered_h, pad));
+
+    if border.is_none() && pad_target.is_none() {
+        return None;
+    }
+
+    let (canvas_w, canvas_h) = pad_target.unwrap_or((bordered_w, bordered_h));
+
+    Some(compute_fused_geometry(
+        src_w,
+        src_h,
+        border_src_x,
+        border_src_y,
+        canvas_w,
+        canvas_h,
+        settings.resize.as_ref(),
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compute_fused_geometry(
+    src_w: u32,
+    src_h: u32,
+    border_src_x: u32,
+    border_src_y: u32,
+    canvas_w: u32,
+    canvas_h: u32,
+    resize_opts: Option<&ResizeOptions>,
+) -> ExportGeometry {
+    let (final_w, final_h) = resize_target(canvas_w, canvas_h, resize_opts);
+    let (final_w, final_h) = (final_w.max(1), final_h.max(1));
+
+    let photo_w =
+        ((src_w as f64 * final_w as f64 / canvas_w as f64).round() as u32).clamp(1, final_w);
+    let photo_h =
+        ((src_h as f64 * final_h as f64 / canvas_h as f64).round() as u32).clamp(1, final_h);
+
+    let border_x = ((border_src_x as f64 * final_w as f64 / canvas_w as f64).round() as u32)
+        .min(final_w.saturating_sub(photo_w) / 2);
+    let border_y = ((border_src_y as f64 * final_h as f64 / canvas_h as f64).round() as u32)
+        .min(final_h.saturating_sub(photo_h) / 2);
+
+    ExportGeometry {
+        canvas_w: final_w,
+        canvas_h: final_h,
+        photo_w,
+        photo_h,
+        offset_x: (final_w - photo_w) / 2,
+        offset_y: (final_h - photo_h) / 2,
+        border_x,
+        border_y,
+    }
+}
+
+pub(crate) fn compute_export_output_size(
+    src_w: u32,
+    src_h: u32,
+    settings: &ExportSettings,
+) -> (u32, u32) {
+    match compute_export_geometry(src_w, src_h, settings) {
+        Some(geometry) => (geometry.canvas_w, geometry.canvas_h),
+        None => resize_target(src_w, src_h, settings.resize.as_ref()),
+    }
+}
+
+trait FillChannel: image::Primitive {
+    fn from_u8(value: u8) -> Self;
+}
+
+impl FillChannel for u8 {
+    fn from_u8(value: u8) -> Self {
+        value
+    }
+}
+
+impl FillChannel for u16 {
+    fn from_u8(value: u8) -> Self {
+        value as u16 * 257
+    }
+}
+
+impl FillChannel for f32 {
+    fn from_u8(value: u8) -> Self {
+        value as f32 / 255.0
+    }
+}
+
+trait SolidFill: image::Pixel + 'static {
+    fn from_rgb8(color: [u8; 3]) -> Self;
+}
+
+impl<T: FillChannel> SolidFill for image::Rgb<T>
+where
+    image::Rgb<T>: image::Pixel<Subpixel = T> + 'static,
+{
+    fn from_rgb8([r, g, b]: [u8; 3]) -> Self {
+        image::Rgb([T::from_u8(r), T::from_u8(g), T::from_u8(b)])
+    }
+}
+
+impl<T: FillChannel> SolidFill for image::Rgba<T>
+where
+    image::Rgba<T>: image::Pixel<Subpixel = T> + 'static,
+{
+    fn from_rgb8([r, g, b]: [u8; 3]) -> Self {
+        image::Rgba([
+            T::from_u8(r),
+            T::from_u8(g),
+            T::from_u8(b),
+            T::DEFAULT_MAX_VALUE,
+        ])
+    }
+}
+
+fn fill_border_frame<P>(
+    canvas: &mut ImageBuffer<P, Vec<P::Subpixel>>,
+    geometry: &ExportGeometry,
+    fill: P,
+) where
+    P: image::Pixel + 'static,
+    P::Subpixel: 'static,
+{
+    let box_x = geometry.offset_x.saturating_sub(geometry.border_x);
+    let box_y = geometry.offset_y.saturating_sub(geometry.border_y);
+    let box_w = geometry
+        .photo_w
+        .saturating_add(geometry.border_x.saturating_mul(2));
+    let below_photo = geometry.offset_y.saturating_add(geometry.photo_h);
+    let right_of_photo = geometry.offset_x.saturating_add(geometry.photo_w);
+
+    let strips = [
+        (box_x, box_y, box_w, geometry.border_y),
+        (box_x, below_photo, box_w, geometry.border_y),
+        (
+            box_x,
+            geometry.offset_y,
+            geometry.border_x,
+            geometry.photo_h,
+        ),
+        (
+            right_of_photo,
+            geometry.offset_y,
+            geometry.border_x,
+            geometry.photo_h,
+        ),
+    ];
+
+    for (x, y, width, height) in strips {
+        let x_end = x.saturating_add(width).min(canvas.width());
+        let y_end = y.saturating_add(height).min(canvas.height());
+        for row in y..y_end {
+            for col in x..x_end {
+                canvas.put_pixel(col, row, fill);
+            }
+        }
+    }
+}
+
+fn place_photo_on_canvas<P>(
+    src: &ImageBuffer<P, Vec<P::Subpixel>>,
+    geometry: &ExportGeometry,
+    outer_fill: P,
+    border_fill: Option<P>,
+) -> ImageBuffer<P, Vec<P::Subpixel>>
+where
+    P: image::Pixel + 'static,
+    P::Subpixel: 'static,
+{
+    let mut canvas = ImageBuffer::from_pixel(geometry.canvas_w, geometry.canvas_h, outer_fill);
+
+    if let Some(fill) = border_fill
+        && geometry.has_border()
+    {
+        fill_border_frame(&mut canvas, geometry, fill);
+    }
+
+    imageops::replace(
+        &mut canvas,
+        src,
+        geometry.offset_x as i64,
+        geometry.offset_y as i64,
+    );
+    canvas
+}
+
+fn compose_image_on_canvas(
+    image: &DynamicImage,
+    geometry: &ExportGeometry,
+    pad_color: [u8; 3],
+    border_color: [u8; 3],
+) -> DynamicImage {
+    fn compose<P: SolidFill>(
+        src: &ImageBuffer<P, Vec<P::Subpixel>>,
+        geometry: &ExportGeometry,
+        pad_color: [u8; 3],
+        border_color: [u8; 3],
+    ) -> ImageBuffer<P, Vec<P::Subpixel>>
+    where
+        P::Subpixel: 'static,
+    {
+        place_photo_on_canvas(
+            src,
+            geometry,
+            P::from_rgb8(pad_color),
+            Some(P::from_rgb8(border_color)),
+        )
+    }
+
+    match image {
+        DynamicImage::ImageRgb8(buffer) => {
+            DynamicImage::ImageRgb8(compose(buffer, geometry, pad_color, border_color))
+        }
+        DynamicImage::ImageRgba8(buffer) => {
+            DynamicImage::ImageRgba8(compose(buffer, geometry, pad_color, border_color))
+        }
+        DynamicImage::ImageRgb16(buffer) => {
+            DynamicImage::ImageRgb16(compose(buffer, geometry, pad_color, border_color))
+        }
+        DynamicImage::ImageRgba16(buffer) => {
+            DynamicImage::ImageRgba16(compose(buffer, geometry, pad_color, border_color))
+        }
+        DynamicImage::ImageRgb32F(buffer) => {
+            DynamicImage::ImageRgb32F(compose(buffer, geometry, pad_color, border_color))
+        }
+        DynamicImage::ImageRgba32F(buffer) => {
+            DynamicImage::ImageRgba32F(compose(buffer, geometry, pad_color, border_color))
+        }
+        other => DynamicImage::ImageRgba8(compose(
+            &other.to_rgba8(),
+            geometry,
+            pad_color,
+            border_color,
+        )),
     }
 }
 
@@ -397,25 +924,108 @@ fn relative_export_dir_for_preserved_folders(
         })
 }
 
-pub(crate) fn apply_export_resize_and_watermark(
+fn apply_export_geometry(
     mut image: DynamicImage,
     export_settings: &ExportSettings,
-) -> Result<DynamicImage, String> {
-    if let Some(resize_opts) = &export_settings.resize {
-        let (current_w, current_h) = image.dimensions();
-        let (target_w, target_h) = calculate_resize_target(current_w, current_h, resize_opts);
+) -> Result<(DynamicImage, ExportGeometry), String> {
+    let (src_w, src_h) = image.dimensions();
 
-        if target_w != current_w || target_h != current_h {
-            // The aspect ratio was already resolved above. Fitting a second time
-            // can shorten the requested axis after the companion axis rounds.
-            image = image.resize_exact(target_w, target_h, imageops::FilterType::Lanczos3);
+    match compute_export_geometry(src_w, src_h, export_settings) {
+        None => {
+            let (target_w, target_h) = resize_target(src_w, src_h, export_settings.resize.as_ref());
+            if target_w != src_w || target_h != src_h {
+                image = image.resize_exact(target_w, target_h, imageops::FilterType::Lanczos3);
+            }
+
+            let (width, height) = image.dimensions();
+            Ok((
+                image,
+                ExportGeometry {
+                    canvas_w: width,
+                    canvas_h: height,
+                    photo_w: width,
+                    photo_h: height,
+                    offset_x: 0,
+                    offset_y: 0,
+                    border_x: 0,
+                    border_y: 0,
+                },
+            ))
+        }
+        Some(geometry) => {
+            if geometry.photo_w != src_w || geometry.photo_h != src_h {
+                image = image.resize_exact(
+                    geometry.photo_w,
+                    geometry.photo_h,
+                    imageops::FilterType::Lanczos3,
+                );
+            }
+
+            let pad_color = fill_color(export_settings.pad.as_ref().map(|pad| pad.color.as_str()));
+            let border_color = fill_color(
+                export_settings
+                    .border
+                    .as_ref()
+                    .map(|border| border.color.as_str()),
+            );
+
+            Ok((
+                compose_image_on_canvas(&image, &geometry, pad_color, border_color),
+                geometry,
+            ))
         }
     }
+}
+
+pub(crate) fn apply_export_resize_and_watermark(
+    image: DynamicImage,
+    settings: &ExportSettings,
+) -> Result<DynamicImage, String> {
+    apply_export_geometry_and_watermark(image, settings).map(|(image, _)| image)
+}
+
+fn apply_export_geometry_and_watermark(
+    image: DynamicImage,
+    export_settings: &ExportSettings,
+) -> Result<(DynamicImage, ExportGeometry), String> {
+    let (mut image, geometry) = apply_export_geometry(image, export_settings)?;
 
     if let Some(watermark_settings) = &export_settings.watermark {
         apply_watermark(&mut image, watermark_settings)?;
     }
-    Ok(image)
+    Ok((image, geometry))
+}
+
+const FALLBACK_EXPORT_MEMORY: u64 = 4 * 1024 * 1024 * 1024;
+
+fn estimate_export_memory(
+    source_path: &str,
+    is_raw: bool,
+    loaded_dimensions: Option<(u32, u32)>,
+    mask_count: usize,
+    output_format: &str,
+    jpeg_quality: u8,
+) -> u64 {
+    let pixels = loaded_dimensions
+        .map(|(w, h)| w as u64 * h as u64)
+        .or_else(|| crate::memory_budget::image_pixel_count(Path::new(source_path), is_raw));
+
+    let Some(pixels) = pixels else {
+        return FALLBACK_EXPORT_MEMORY;
+    };
+
+    let bytes_per_pixel = if is_raw { 48 } else { 40 }
+        + 6 * mask_count.min(crate::image_processing::MAX_MASKS) as u64
+        + encoder_bytes_per_pixel(output_format, jpeg_quality);
+    pixels * bytes_per_pixel
+}
+
+fn encoder_bytes_per_pixel(output_format: &str, jpeg_quality: u8) -> u64 {
+    match output_format.to_lowercase().as_str() {
+        "jxl" if jpeg_quality == 100 => 90,
+        "jxl" => 170,
+        _ => 0,
+    }
 }
 
 fn ensure_export_not_cancelled(cancellation_token: &AtomicBool) -> Result<(), String> {
@@ -597,6 +1207,7 @@ fn process_image_for_export_pipeline(
     let unique_hash = calculate_full_job_hash(path, js_adjustments);
 
     let request = RenderRequest {
+        mask_cache_key: None,
         adjustments: all_adjustments,
         mask_bitmaps: &prepared.bitmaps,
         lut,
@@ -663,10 +1274,11 @@ fn set_timestamps_from_exif(src: &Path, dst: &Path) {
     }
 }
 
-fn save_image_with_metadata(
+fn save_image_with_metadata_and_xmp(
     image: &DynamicImage,
     output_path: &std::path::Path,
     source_path_str: &str,
+    export_xmp: &exif_processing::ExportXmp,
     export_settings: &ExportSettings,
 ) -> Result<(), String> {
     let extension = output_path
@@ -701,7 +1313,13 @@ fn save_image_with_metadata(
     };
 
     let mut image_bytes = if matches!(format, "png" | "tiff") {
-        delivery::encode_profiled_raster(image, format, depth, true)?
+        delivery::encode_profiled_raster_with_density(
+            image,
+            format,
+            depth,
+            true,
+            export_settings.dpi,
+        )?
     } else {
         encode_image_to_bytes(
             image,
@@ -721,8 +1339,11 @@ fn save_image_with_metadata(
         &extension,
         export_settings.keep_metadata,
         export_settings.strip_gps,
+        export_xmp,
+        export_settings.dpi,
     )?;
 
+    apply_print_density(&mut image_bytes, format, export_settings.dpi);
     if matches!(format, "jpeg" | "webp") {
         delivery::add_profile(&mut image_bytes, format)?;
     }
@@ -752,8 +1373,14 @@ fn save_image_with_metadata(
     }
 
     #[cfg(not(target_os = "android"))]
-    fs::write(output_path, image_bytes)
-        .map_err(|e| format!("Failed to write file to '{}': {}", output_path.display(), e))?;
+    {
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create folder '{}': {}", parent.display(), e))?;
+        }
+        fs::write(output_path, image_bytes)
+            .map_err(|e| format!("Failed to write file to '{}': {}", output_path.display(), e))?;
+    }
 
     Ok(())
 }
@@ -796,7 +1423,7 @@ fn process_image_for_export(
         render_output_precision(output_format, export_settings),
     )?;
 
-    apply_export_resize_and_watermark(processed_image, export_settings)
+    apply_export_geometry_and_watermark(processed_image, export_settings).map(|(image, _)| image)
 }
 
 fn build_single_mask_adjustments(all: &AllAdjustments, mask_index: usize) -> AllAdjustments {
@@ -850,9 +1477,9 @@ pub(crate) fn encode_image_to_bytes(
 pub(crate) fn encode_image_to_bytes_native(
     image: &DynamicImage,
     output_format: &str,
-    jpeg_quality: u8,
-    tiff_bit_depth: TiffBitDepth,
+    export_settings: &ExportSettings,
 ) -> Result<Vec<u8>, String> {
+    let jpeg_quality = export_settings.jpeg_quality;
     let mut image_bytes = Vec::new();
     let mut cursor = Cursor::new(&mut image_bytes);
 
@@ -925,31 +1552,61 @@ pub(crate) fn encode_image_to_bytes_native(
             return Ok(webp_mem.to_vec());
         }
         "jpg" | "jpeg" => {
-            let rgb_image = image.to_rgb8();
-            let encoder = JpegEncoder::new_with_quality(&mut cursor, jpeg_quality);
+            let rgb_image = image
+                .as_rgb8()
+                .map_or_else(|| Cow::Owned(image.to_rgb8()), Cow::Borrowed);
+            let mut encoder = JpegEncoder::new_with_quality(&mut cursor, jpeg_quality);
+            if let Some(dpi) = export_settings.dpi {
+                encoder.set_pixel_density(PixelDensity::dpi(dpi));
+            }
             rgb_image
                 .write_with_encoder(encoder)
                 .map_err(|e| e.to_string())?;
         }
         "png" => {
+            let converted;
             let image_to_encode = if image.as_rgb32f().is_some() {
-                DynamicImage::ImageRgb16(image.to_rgb16())
+                converted = DynamicImage::ImageRgb16(image.to_rgb16());
+                &converted
             } else {
-                image.clone()
+                image
             };
 
+            let encoder = PngEncoder::new(&mut cursor);
             image_to_encode
-                .write_to(&mut cursor, image::ImageFormat::Png)
+                .write_with_encoder(encoder)
                 .map_err(|e| e.to_string())?;
+            if let Some(dpi) = export_settings.dpi {
+                insert_png_phys_chunk(&mut image_bytes, dpi);
+            }
         }
         "tif" | "tiff" => {
-            let image_to_encode = match tiff_bit_depth {
-                TiffBitDepth::Eight => DynamicImage::ImageRgb8(image.to_rgb8()),
-                TiffBitDepth::Sixteen => DynamicImage::ImageRgb16(image.to_rgb16()),
-            };
-            image_to_encode
-                .write_to(&mut cursor, image::ImageFormat::Tiff)
-                .map_err(|e| e.to_string())?;
+            let (width, height) = image.dimensions();
+            let mut encoder = TiffEncoder::new(&mut cursor).map_err(|e| e.to_string())?;
+            match export_settings.tiff_bit_depth {
+                TiffBitDepth::Eight => write_tiff::<colortype::RGB8, _>(
+                    &mut encoder,
+                    width,
+                    height,
+                    image
+                        .as_rgb8()
+                        .map_or_else(|| Cow::Owned(image.to_rgb8()), Cow::Borrowed)
+                        .as_raw(),
+                    export_settings.dpi,
+                    None,
+                )?,
+                TiffBitDepth::Sixteen => write_tiff::<colortype::RGB16, _>(
+                    &mut encoder,
+                    width,
+                    height,
+                    image
+                        .as_rgb16()
+                        .map_or_else(|| Cow::Owned(image.to_rgb16()), Cow::Borrowed)
+                        .as_raw(),
+                    export_settings.dpi,
+                    None,
+                )?,
+            }
         }
         "avif" => {
             image
@@ -961,6 +1618,99 @@ pub(crate) fn encode_image_to_bytes_native(
     Ok(image_bytes)
 }
 
+pub(crate) fn write_tiff<C: colortype::ColorType, W: Write + Seek>(
+    encoder: &mut TiffEncoder<W>,
+    width: u32,
+    height: u32,
+    data: &[C::Inner],
+    dpi: Option<u16>,
+    profile: Option<&[u8]>,
+) -> Result<(), String>
+where
+    [C::Inner]: TiffValue,
+{
+    let mut image = encoder
+        .new_image::<C>(width, height)
+        .map_err(|e| e.to_string())?;
+    if let Some(dpi) = dpi {
+        image.resolution(
+            ResolutionUnit::Inch,
+            Rational {
+                n: dpi.into(),
+                d: 1,
+            },
+        );
+    }
+    if let Some(profile) = profile {
+        image
+            .encoder()
+            .write_tag(tiff::tags::Tag::Unknown(34675), profile)
+            .map_err(|e| e.to_string())?;
+    }
+    image.write_data(data).map_err(|e| e.to_string())
+}
+
+/// Print density is independent of retaining source capture metadata.
+pub(crate) fn apply_print_density(bytes: &mut Vec<u8>, format: &str, dpi: Option<u16>) {
+    let Some(dpi) = dpi else {
+        return;
+    };
+    match delivery::canonical_format(format) {
+        "png" => insert_png_phys_chunk(bytes, dpi),
+        "jpeg" => {
+            let mut offset = 2;
+            while offset + 4 <= bytes.len() && bytes[offset] == 0xff {
+                let marker = bytes[offset + 1];
+                if marker == 0xda || marker == 0xd9 {
+                    break;
+                }
+                let len = u16::from_be_bytes([bytes[offset + 2], bytes[offset + 3]]) as usize;
+                if len < 2 || offset + len + 2 > bytes.len() {
+                    break;
+                }
+                if marker == 0xe0 && len >= 16 && &bytes[offset + 4..offset + 9] == b"JFIF\0" {
+                    bytes[offset + 11] = 1;
+                    bytes[offset + 12..offset + 14].copy_from_slice(&dpi.to_be_bytes());
+                    bytes[offset + 14..offset + 16].copy_from_slice(&dpi.to_be_bytes());
+                    return;
+                }
+                offset += len + 2;
+            }
+            let mut jfif = vec![0xff, 0xe0, 0, 16, b'J', b'F', b'I', b'F', 0, 1, 2, 1];
+            jfif.extend_from_slice(&dpi.to_be_bytes());
+            jfif.extend_from_slice(&dpi.to_be_bytes());
+            jfif.extend_from_slice(&[0, 0]);
+            bytes.splice(2..2, jfif);
+        }
+        _ => {}
+    }
+}
+
+fn insert_png_phys_chunk(image_bytes: &mut Vec<u8>, dpi: u16) {
+    let mut offset = 8;
+    while offset + 12 <= image_bytes.len() {
+        let len = u32::from_be_bytes(image_bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        let Some(end) = offset
+            .checked_add(len)
+            .and_then(|n| n.checked_add(12))
+            .filter(|end| *end <= image_bytes.len())
+        else {
+            break;
+        };
+        if &image_bytes[offset + 4..offset + 8] == b"pHYs" {
+            image_bytes.drain(offset..end);
+        } else {
+            offset = end;
+        }
+    }
+    let pixels_per_meter = (f64::from(dpi) / 0.0254).round() as u32;
+    let mut data = Vec::with_capacity(9);
+    data.extend_from_slice(&pixels_per_meter.to_be_bytes());
+    data.extend_from_slice(&pixels_per_meter.to_be_bytes());
+    data.push(1);
+    exif_processing::insert_png_chunk(image_bytes, b"pHYs", &data);
+}
+
 #[allow(clippy::too_many_arguments)]
 fn export_masks_for_image(
     base_image: &DynamicImage,
@@ -968,6 +1718,7 @@ fn export_masks_for_image(
     export_settings: &ExportSettings,
     output_path_obj: &std::path::Path,
     source_path_str: &str,
+    export_xmp: &exif_processing::ExportXmp,
     context: &Arc<GpuContext>,
     state: &tauri::State<AppState>,
     is_raw: bool,
@@ -1019,6 +1770,7 @@ fn export_masks_for_image(
                 RenderRequest {
                     adjustments: single_adjustments,
                     mask_bitmaps: &single_bitmaps,
+                    mask_cache_key: None,
                     lut: lut.clone(),
                     roi: None,
                 },
@@ -1027,25 +1779,32 @@ fn export_masks_for_image(
             )?;
             ensure_export_not_cancelled(cancellation_token)?;
 
-            let with_options = apply_export_resize_and_watermark(processed, export_settings)?;
-            let (out_w, out_h) = with_options.dimensions();
+            let (with_options, geometry) =
+                apply_export_geometry_and_watermark(processed, export_settings)?;
 
-            let alpha_resized = imageops::resize(
+            let alpha_scaled = imageops::resize(
                 &mask_bitmaps[i],
-                out_w,
-                out_h,
+                geometry.photo_w,
+                geometry.photo_h,
                 imageops::FilterType::Lanczos3,
             );
+
+            let alpha_resized: GrayImage = if geometry.is_identity() {
+                alpha_scaled
+            } else {
+                place_photo_on_canvas(&alpha_scaled, &geometry, Luma([0u8]), None)
+            };
             ensure_export_not_cancelled(cancellation_token)?;
 
             let mask_image_path =
                 output_dir.join(format!("{}_mask_{}_image.{}", stem, i, extension));
             let mask_alpha_path = output_dir.join(format!("{}_mask_{}_alpha.png", stem, i));
 
-            save_image_with_metadata(
+            save_image_with_metadata_and_xmp(
                 &with_options,
                 &mask_image_path,
                 source_path_str,
+                export_xmp,
                 export_settings,
             )?;
             ensure_export_not_cancelled(cancellation_token)?;
@@ -1132,8 +1891,16 @@ fn export_adjustments_as_lut_inner(
     let lut_size = 33;
     let identity_image = generate_identity_lut_image(lut_size);
 
-    let tm_override = resolve_tonemapper_override_from_handle(app_handle, false);
-    let mut all_adjustments = get_all_adjustments_from_json(js_adjustments, false, tm_override);
+    let render = RenderOptions {
+        baseline: BaselineOptions::default(),
+        ..resolve_render_options_from_handle(app_handle, false)
+    };
+    let mut all_adjustments = crate::image_processing::get_all_adjustments_with_render_options(
+        js_adjustments,
+        false,
+        as_shot(source_path_str),
+        render,
+    );
 
     all_adjustments.global.show_clipping = 0;
     all_adjustments.global.vignette_amount = 0.0;
@@ -1169,6 +1936,7 @@ fn export_adjustments_as_lut_inner(
             context,
             &identity_image,
             RenderRequest {
+                mask_cache_key: None,
                 adjustments: all_adjustments,
                 mask_bitmaps: &[],
                 lut,
@@ -1182,6 +1950,7 @@ fn export_adjustments_as_lut_inner(
             &identity_image,
             unique_hash,
             RenderRequest {
+                mask_cache_key: None,
                 adjustments: all_adjustments,
                 mask_bitmaps: &[],
                 lut,
@@ -1211,6 +1980,7 @@ pub(crate) async fn export_images_impl(
     completion_tx: Option<tokio::sync::oneshot::Sender<Result<(), usize>>>,
 ) -> Result<(), String> {
     let cancellation_token = register_export_task(&state.export_task_token)?;
+    *WATERMARK_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
     let task_guard = ExportTaskGuard::with_app_handle(
         Arc::clone(&state.export_task_token),
         Arc::clone(&cancellation_token),
@@ -1242,23 +2012,33 @@ pub(crate) async fn export_images_impl(
     let mut sys = sysinfo::System::new();
     sys.refresh_memory();
 
-    let available_ram_gb = sys.available_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
-    let ram_based_limit = (available_ram_gb / 4.0).floor() as usize;
+    let app_settings = load_settings(app_handle.clone()).unwrap_or_default();
+    let memory_limit = app_settings.export_memory_limit.unwrap_or(80).clamp(25, 95);
+
+    let available_ram = sys.available_memory();
+    let available_ram_gb = available_ram as f64 / 1024.0 / 1024.0 / 1024.0;
+    let memory_budget = crate::memory_budget::MemoryBudget::new(
+        (available_ram as f64 * memory_limit as f64 / 100.0) as u64,
+    );
 
     let num_threads = if paths.len() == 1 {
         1
     } else {
-        available_cores.min(ram_based_limit).clamp(1, 4)
+        match app_settings.export_worker_threads {
+            Some(threads) if threads > 0 => (threads as usize).clamp(1, 8),
+            _ => available_cores.clamp(1, 4),
+        }
     };
 
     log::info!(
-        "Batch Export: {} cores, {:.1} GB free RAM -> {} threads",
+        "Batch Export: {} cores, {:.1} GB free RAM -> up to {} threads",
         available_cores,
         available_ram_gb,
         num_threads
     );
 
     let _export_task = tokio::spawn(async move {
+        let _watermark_cache_guard = WatermarkCacheGuard;
         let _task_guard = task_guard;
         let output_folder_path = std::path::Path::new(&output_folder_or_file);
         let total_paths = paths.len();
@@ -1320,15 +2100,28 @@ pub(crate) async fn export_images_impl(
             let cancellation_token_clone = Arc::clone(&cancellation_token);
             let adjustments_mode = adjustments_mode.clone();
             let used_paths_clone = Arc::clone(&used_paths);
+            let memory_budget = Arc::clone(&memory_budget);
 
             let handle = tokio::task::spawn_blocking(move || {
                 ensure_export_not_cancelled(&cancellation_token_clone)?;
 
                 let state = app_handle_clone.state::<AppState>();
                 let (source_path, _) = parse_virtual_path(&image_path_str);
+                let export_xmp = exif_processing::ExportXmp::from_metadata(
+                    &exif_processing::load_sidecar(&parse_virtual_path(&image_path_str).1),
+                );
                 let source_path_str = source_path.to_string_lossy().to_string();
+                tauri::async_runtime::block_on(crate::immich::ensure_local(
+                    &app_handle_clone,
+                    &source_path,
+                ))?;
 
                 let is_current_edit = adjustments_mode.is_current_edit(&image_path_str);
+                if !is_current_edit
+                    && matches!(adjustments_mode, ExportAdjustmentsMode::UseSidecars { .. })
+                {
+                    crate::ai_jobs::ensure_ready(&app_handle_clone, &image_path_str)?;
+                }
                 let mut js_adjustments = adjustments_mode.adjustments_for(&image_path_str);
 
                 hydrate_adjustments(&state, &mut js_adjustments)?;
@@ -1455,28 +2248,57 @@ pub(crate) async fn export_images_impl(
                         return Ok(());
                     }
 
-                    let base_image = if is_current_edit {
-                        match crate::get_original_image(&state) {
-                            Ok((orig_data_arc, _)) => {
-                                composite_patches_on_image(&orig_data_arc, &js_adjustments)
-                                    .map_err(|e| format!("Failed to composite AI patches: {}", e))?
-                            }
-                            Err(_) => {
-                                let bytes =
-                                    fs::read(&source_path_str).map_err(|e| e.to_string())?;
-                                load_and_composite(
-                                    &bytes,
-                                    &source_path_str,
-                                    &js_adjustments,
-                                    false,
-                                    &settings,
-                                    None,
-                                )
-                                .map_err(|e| format!("Failed to load fallback image: {}", e))?
-                            }
-                        }
+                    let loaded_image = if is_current_edit {
+                        state
+                            .original_image
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .clone()
+                            .filter(|loaded| {
+                                parse_virtual_path(&loaded.path).0
+                                    == parse_virtual_path(&source_path_str).0
+                            })
                     } else {
-                        match read_file_mapped(Path::new(&source_path_str)) {
+                        None
+                    };
+
+                    let estimated_memory = estimate_export_memory(
+                        &source_path_str,
+                        is_raw,
+                        loaded_image
+                            .as_ref()
+                            .map(|loaded| (loaded.image.width(), loaded.image.height())),
+                        js_adjustments["masks"].as_array().map_or(0, |m| m.len()),
+                        &output_format,
+                        export_settings.jpeg_quality,
+                    );
+                    let Some(_export_reservation) =
+                        memory_budget.reserve(estimated_memory, Some(&cancellation_token_clone))
+                    else {
+                        return Err("Export cancelled".to_string());
+                    };
+                    let Some(_app_reservation) = state
+                        .memory_budget
+                        .reserve(estimated_memory, Some(&cancellation_token_clone))
+                    else {
+                        return Err("Export cancelled".to_string());
+                    };
+
+                    let cached_patched = loaded_image.as_ref().and_then(|loaded_image| {
+                        crate::cached_patched_image(&state, &loaded_image.image, &js_adjustments)
+                    });
+
+                    let base_image: Cow<DynamicImage> = if let Some(patched) = &cached_patched {
+                        Cow::Borrowed(patched)
+                    } else if let Some(loaded_image) = &loaded_image {
+                        prepare_base_image_cow(
+                            &loaded_image.image,
+                            &loaded_image.path,
+                            &js_adjustments,
+                        )
+                        .map_err(|e| format!("Failed to composite AI patches: {}", e))?
+                    } else {
+                        Cow::Owned(match read_file_mapped(Path::new(&source_path_str)) {
                             Ok(mmap) => load_and_composite(
                                 &mmap,
                                 &source_path_str,
@@ -1499,8 +2321,9 @@ pub(crate) async fn export_images_impl(
                                 )
                                 .map_err(|e| format!("Failed to load from bytes: {}", e))?
                             }
-                        }
+                        })
                     };
+                    let mut base_image = Some(base_image);
                     ensure_export_not_cancelled(&cancellation_token_clone)?;
 
                     let mut main_export_adjustments = js_adjustments.clone();
@@ -1517,7 +2340,7 @@ pub(crate) async fn export_images_impl(
 
                     let final_image = process_image_for_export(
                         &source_path_str,
-                        &base_image,
+                        base_image.as_ref().unwrap(),
                         &main_export_adjustments,
                         &export_settings,
                         &context_clone,
@@ -1526,11 +2349,15 @@ pub(crate) async fn export_images_impl(
                         &app_handle_clone,
                         actual_output_format,
                     )?;
+                    if !export_settings.export_masks {
+                        base_image = None;
+                    }
                     ensure_export_not_cancelled(&cancellation_token_clone)?;
-                    save_image_with_metadata(
+                    save_image_with_metadata_and_xmp(
                         &final_image,
                         &output_path,
                         &source_path_str,
+                        &export_xmp,
                         &export_settings,
                     )?;
                     ensure_export_not_cancelled(&cancellation_token_clone)?;
@@ -1540,13 +2367,16 @@ pub(crate) async fn export_images_impl(
                     }
                     ensure_export_not_cancelled(&cancellation_token_clone)?;
 
-                    if export_settings.export_masks {
+                    if export_settings.export_masks
+                        && let Some(base_image) = &base_image
+                    {
                         export_masks_for_image(
-                            &base_image,
+                            base_image,
                             &js_adjustments,
                             &export_settings,
                             &output_path,
                             &source_path_str,
+                            &export_xmp,
                             &context_clone,
                             &state,
                             is_raw,
@@ -1555,7 +2385,7 @@ pub(crate) async fn export_images_impl(
                         )?;
                     }
 
-                    Ok(())
+                    crate::immich::on_exported(&app_handle_clone, &source_path_str, &output_path)
                 })();
 
                 if !cancellation_token_clone.load(Ordering::SeqCst) {
@@ -1677,7 +2507,7 @@ pub async fn run_headless_export(
     session: crate::launch_request::HeadlessExportSession,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    println!("Starting headless export...");
+    cli_println!("Starting headless export...");
     let state = app_handle.state::<crate::AppState>();
 
     let source_path = std::path::Path::new(&session.source);
@@ -1690,7 +2520,8 @@ pub async fn run_headless_export(
         let images = crate::file_management::list_images_recursive(
             session.source.clone(),
             app_handle.clone(),
-        )?;
+        )
+        .await?;
         paths = images.into_iter().map(|img| img.path).collect();
     } else {
         paths.push(session.source.clone());
@@ -1714,12 +2545,14 @@ pub async fn run_headless_export(
             .map_err(|e| format!("Failed to create output directory: {}", e))?;
     }
 
-    println!("Found {} images to export. Processing...", paths.len());
+    cli_println!("Found {} images to export. Processing...", paths.len());
 
     let export_settings = ExportSettings {
         jpeg_quality: session.quality,
         tiff_bit_depth: session.tiff_bit_depth,
         resize: None,
+        border: None,
+        pad: None,
         keep_metadata: session.keep_metadata,
         preserve_timestamps: true,
         strip_gps: false,
@@ -1729,6 +2562,7 @@ pub async fn run_headless_export(
         preserve_folders: true,
         destination_type: None,
         subfolder: None,
+        dpi: None,
     };
 
     let mut custom_adjustments = None;
@@ -1738,7 +2572,7 @@ pub async fn run_headless_export(
         let json: serde_json::Value = serde_json::from_str(&content)
             .map_err(|e| format!("Failed to parse adjustments JSON: {}", e))?;
         custom_adjustments = Some(json);
-        println!(
+        cli_println!(
             "Loaded custom adjustments to override sidecars from: {}",
             adj_path
         );
@@ -1848,7 +2682,7 @@ pub async fn estimate_export_sizes(
             .cloned();
 
         let (preview_image, scale, unscaled_crop_offset) = if let Some(cached) = cached {
-            let owned_img = Arc::try_unwrap(cached.image).unwrap_or_else(|arc| (*arc).clone());
+            let owned_img = cached.image;
             (owned_img, cached.scale, cached.unscaled_crop_offset)
         } else {
             generate_transformed_preview(&state, &loaded_image, &adjustments_clone, preview_dim)?
@@ -1879,9 +2713,13 @@ pub async fn estimate_export_sizes(
             scaled_crop_offset,
         )?;
 
-        let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
-        let mut all_adjustments =
-            get_all_adjustments_from_json(&adjustments_clone, is_raw, tm_override);
+        let render = resolve_render_options_from_handle(&app_handle, is_raw);
+        let mut all_adjustments = crate::image_processing::get_all_adjustments_with_render_options(
+            &adjustments_clone,
+            is_raw,
+            loaded_image.as_shot,
+            render,
+        );
         all_adjustments.global.show_clipping = 0;
 
         let lut = adjustments_clone["lutPath"]
@@ -1896,6 +2734,7 @@ pub async fn estimate_export_sizes(
             &preview_image,
             unique_hash,
             RenderRequest {
+                mask_cache_key: None,
                 adjustments: all_adjustments,
                 mask_bitmaps: &mask_bitmaps,
                 lut,
@@ -1905,23 +2744,18 @@ pub async fn estimate_export_sizes(
             render_output_precision(&output_format, &export_settings),
         )?;
 
-        let preview_bytes = encode_image_to_bytes(
-            &processed_preview,
-            &output_format,
-            export_settings.jpeg_quality,
-            export_settings.tiff_bit_depth,
-        )?;
+        let preview_bytes =
+            encode_image_to_bytes_native(&processed_preview, &output_format, &export_settings)?;
         let preview_byte_size = preview_bytes.len();
 
-        let (transformed_full_res, _) =
-            apply_all_transformations(&loaded_image.image, &adjustments_clone);
-        let (full_w, full_h) = transformed_full_res.dimensions();
+        let (full_w, full_h) = crate::adjustment_utils::transformed_dimensions(
+            loaded_image.image.width(),
+            loaded_image.image.height(),
+            &adjustments_clone,
+        );
 
-        let (final_full_w, final_full_h) = if let Some(resize_opts) = &export_settings.resize {
-            calculate_resize_target(full_w, full_h, resize_opts)
-        } else {
-            (full_w, full_h)
-        };
+        let (final_full_w, final_full_h) =
+            compute_export_output_size(full_w, full_h, &export_settings);
 
         let (processed_preview_w, processed_preview_h) = processed_preview.dimensions();
         let pixel_ratio = if processed_preview_w > 0 && processed_preview_h > 0 {
@@ -2030,9 +2864,13 @@ pub async fn estimate_export_sizes(
             scaled_crop_offset,
         )?;
 
-        let tm_override = resolve_tonemapper_override_from_handle(&app_handle, is_raw);
-        let mut all_adjustments =
-            get_all_adjustments_from_json(&js_adjustments, is_raw, tm_override);
+        let render = resolve_render_options_from_handle(&app_handle, is_raw);
+        let mut all_adjustments = crate::image_processing::get_all_adjustments_with_render_options(
+            &js_adjustments,
+            is_raw,
+            as_shot(&source_path_str),
+            render,
+        );
         all_adjustments.global.show_clipping = 0;
 
         let lut = js_adjustments["lutPath"]
@@ -2047,6 +2885,7 @@ pub async fn estimate_export_sizes(
             &preview_base,
             unique_hash,
             RenderRequest {
+                mask_cache_key: None,
                 adjustments: all_adjustments,
                 mask_bitmaps: &mask_bitmaps,
                 lut,
@@ -2056,22 +2895,15 @@ pub async fn estimate_export_sizes(
             render_output_precision(&output_format, &export_settings),
         )?;
 
-        let preview_bytes = encode_image_to_bytes(
-            &processed_preview,
-            &output_format,
-            export_settings.jpeg_quality,
-            export_settings.tiff_bit_depth,
-        )?;
+        let preview_bytes =
+            encode_image_to_bytes_native(&processed_preview, &output_format, &export_settings)?;
         let single_image_estimated_size = preview_bytes.len();
 
         let full_w = (shrunk_w as f32 / raw_scale_factor).round() as u32;
         let full_h = (shrunk_h as f32 / raw_scale_factor).round() as u32;
 
-        let (final_full_w, final_full_h) = if let Some(resize_opts) = &export_settings.resize {
-            calculate_resize_target(full_w, full_h, resize_opts)
-        } else {
-            (full_w, full_h)
-        };
+        let (final_full_w, final_full_h) =
+            compute_export_output_size(full_w, full_h, &export_settings);
 
         let (processed_preview_w, processed_preview_h) = processed_preview.dimensions();
         let pixel_ratio = if processed_preview_w > 0 && processed_preview_h > 0 {
@@ -2094,6 +2926,9 @@ mod source_mask_export_tests {
 
     fn settings(keep_metadata: bool, strip_gps: bool) -> ExportSettings {
         ExportSettings {
+            dpi: None,
+            pad: None,
+            border: None,
             jpeg_quality: 92,
             tiff_bit_depth: TiffBitDepth::Sixteen,
             resize: None,
@@ -2106,6 +2941,55 @@ mod source_mask_export_tests {
             preserve_folders: false,
             destination_type: None,
             subfolder: None,
+        }
+    }
+
+    #[test]
+    fn desktop_print_density_survives_disabling_capture_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.jpg");
+        DynamicImage::new_rgb8(16, 8).save(&source).unwrap();
+        let image = DynamicImage::ImageRgb16(ImageBuffer::from_fn(16, 8, |x, y| {
+            image::Rgb([(x * 937) as u16, (y * 1877) as u16, 32123])
+        }));
+        let mut options = settings(false, true);
+        options.dpi = Some(300);
+        for format in ["jpeg", "png", "tiff"] {
+            let output = dir.path().join(format!("print.{format}"));
+            save_image_with_metadata(&image, &output, source.to_str().unwrap(), &options).unwrap();
+            let bytes = fs::read(&output).unwrap();
+            assert!(delivery::verify_profile(&bytes, format).unwrap());
+            assert_eq!(
+                image::load_from_memory(&bytes).unwrap().dimensions(),
+                (16, 8)
+            );
+            match format {
+                "jpeg" => {
+                    let jfif = bytes.windows(5).position(|part| part == b"JFIF\0").unwrap();
+                    assert_eq!(bytes[jfif + 7], 1);
+                    assert_eq!(&bytes[jfif + 8..jfif + 12], &[1, 44, 1, 44]);
+                }
+                "png" => {
+                    let phys = bytes.windows(4).position(|part| part == b"pHYs").unwrap();
+                    assert_eq!(
+                        u32::from_be_bytes(bytes[phys + 4..phys + 8].try_into().unwrap()),
+                        11811
+                    );
+                    assert_eq!(bytes[phys + 12], 1);
+                }
+                "tiff" => {
+                    let mut decoder = tiff::decoder::Decoder::new(Cursor::new(&bytes)).unwrap();
+                    assert_eq!(
+                        decoder.get_tag(tiff::tags::Tag::XResolution).unwrap(),
+                        tiff::decoder::ifd::Value::Rational(300, 1)
+                    );
+                    assert_eq!(
+                        decoder.get_tag(tiff::tags::Tag::YResolution).unwrap(),
+                        tiff::decoder::ifd::Value::Rational(300, 1)
+                    );
+                }
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -2377,4 +3261,47 @@ mod source_mask_export_tests {
         cancellation.store(true, Ordering::SeqCst);
         assert_eq!(render(&second).unwrap_err(), "Export cancelled");
     }
+}
+
+#[cfg(test)]
+fn save_image_with_metadata(
+    image: &DynamicImage,
+    path: &Path,
+    source: &str,
+    settings: &ExportSettings,
+) -> Result<(), String> {
+    save_image_with_metadata_and_xmp(
+        image,
+        path,
+        source,
+        &exif_processing::ExportXmp::from_metadata(&Default::default()),
+        settings,
+    )
+}
+
+pub(crate) fn encode_native_with_options(
+    image: &DynamicImage,
+    format: &str,
+    quality: u8,
+    depth: TiffBitDepth,
+    dpi: Option<u16>,
+) -> Result<Vec<u8>, String> {
+    let options = ExportSettings {
+        jpeg_quality: quality,
+        tiff_bit_depth: depth,
+        dpi,
+        resize: None,
+        border: None,
+        pad: None,
+        keep_metadata: false,
+        preserve_timestamps: false,
+        strip_gps: true,
+        filename_template: None,
+        watermark: None,
+        export_masks: false,
+        preserve_folders: false,
+        destination_type: None,
+        subfolder: None,
+    };
+    encode_image_to_bytes_native(image, format, &options)
 }

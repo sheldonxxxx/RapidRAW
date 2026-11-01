@@ -1,3 +1,4 @@
+import { extendUpstreamBoundaries } from './fixtures/upstream-boundaries.mjs';
 import assert from 'node:assert/strict';
 import { test, after } from 'node:test';
 import { build } from 'esbuild';
@@ -103,7 +104,8 @@ const stubs = {
   '@tauri-apps/api/core': 'export const invoke=(...args)=>globalThis.__generationTest.invoke(...args);',
   'react-toastify':
     'export const toast={error:(message)=>globalThis.__generationTest.errors.push(message),info:()=>{}};',
-  '@clerk/react': 'export const useAuth=()=>({getToken:()=>globalThis.__generationTest.token()});',
+  '../store/useCloudStore':
+    'export const useCloudStore=selector=>selector({getToken:()=>globalThis.__generationTest.token()});',
   '../store/useEditorStore':
     'export const useEditorStore=(selector)=>selector(globalThis.__generationTest.state); useEditorStore.getState=()=>globalThis.__generationTest.state;',
   './useEditorActions':
@@ -111,6 +113,13 @@ const stubs = {
   '../components/ui/AppProperties':
     'export const Invokes={InvokeGenerativeReplaseWithMaskDef:"invoke_generative_replace_with_mask_def"};',
 };
+stubs['../store/useCloudStore'] =
+  'export const useCloudStore = selector => selector({getToken:()=>globalThis.__generationTest.token(),fetchUsage:()=>{}});useCloudStore.getState=()=>({fetchUsage:()=>{}});';
+stubs['../store/useProcessStore'] =
+  'export const useProcessStore=selector=>selector({registerAiTask:()=>{},unregisterAiTask:()=>{}});';
+stubs['../components/panel/right/Masks'] =
+  'export const Mask={AiSubject:"ai-subject",AiForeground:"ai-foreground",AiSky:"ai-sky",AiDepth:"ai-depth",Brush:"brush"};';
+extendUpstreamBoundaries(stubs);
 const hook = await bundled('src/hooks/useAiMasking.ts', 'hook', [
   {
     name: 'native-call-boundary-fixture',

@@ -1,92 +1,89 @@
-import { type PointerEvent as ReactPointerEvent, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
+import {
+  DndContext,
+  DragOverlay,
+  MeasuringStrategy,
+  Modifier,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { ClerkProvider } from '@clerk/react';
-import { ToastContainer, toast, Slide } from 'react-toastify';
-import {
-  type DragStartEvent,
-  type DragEndEvent,
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  Modifier,
-  MeasuringStrategy,
-  pointerWithin,
-} from '@dnd-kit/core';
 import clsx from 'clsx';
-
-import TitleBar from './window/TitleBar';
-import FolderTree from './components/panel/right/FolderTree';
-import SettingsPanel from './components/panel/SettingsPanel';
-import ExportPanel from './components/panel/right/ExportPanel';
-import GlobalTooltip from './components/ui/GlobalTooltip';
+import { PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Slide, ToastContainer, toast } from 'react-toastify';
+import { useShallow } from 'zustand/react/shallow';
+import { isImmichAlbumId } from './components/immich/immichApi';
+import { useImmichEvents } from './components/immich/useImmichEvents';
+import ImageLoaderManager from './components/managers/ImageLoaderManager';
+import ImageProcessingManager from './components/managers/ImageProcessingManager';
 import AppModals from './components/modals/AppModals';
-
-import SidePanelArea from './components/panel/SidePanelArea';
+import type { CanvasTransformHandle } from './components/panel/Editor';
 import { PANEL_ICONS } from './components/panel/PanelSwitcher';
-import Controls from './components/panel/right/ControlsPanel';
-import MetadataPanel from './components/panel/right/MetadataPanel';
-import CropPanel from './components/panel/right/CropPanel';
-import LocalEditsPanel from './components/panel/right/LocalEditsPanel';
 import AIPanel from './components/panel/right/AIPanel';
+import Controls from './components/panel/right/ControlsPanel';
+import CropPanel from './components/panel/right/CropPanel';
+import ExportPanel from './components/panel/right/ExportPanel';
+import FolderTree from './components/panel/right/FolderTree';
+import LocalEditsPanel from './components/panel/right/LocalEditsPanel';
+import MetadataPanel from './components/panel/right/MetadataPanel';
 import PresetsPanel from './components/panel/right/PresetsPanel';
 import TetheringPanel from './components/panel/right/TetheringPanel';
-
-import EditorView from './components/views/EditorView';
-import LibraryView from './components/views/LibraryView';
-
-import { ContextMenuProvider } from './context/ContextMenuContext';
-import { useSettingsStore } from './store/useSettingsStore';
-import { DEFAULT_BOTTOM_PANEL_HEIGHT, DEFAULT_PANEL_WIDTH, useUIStore } from './store/useUIStore';
-import { useLibraryStore } from './store/useLibraryStore';
-import { useEditorStore } from './store/useEditorStore';
-import { useProcessStore } from './store/useProcessStore';
-import { useShallow } from 'zustand/react/shallow';
-
-import { useThumbnails } from './hooks/useThumbnails';
-import { ImageDimensions } from './hooks/useImageRenderSize';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { useTauriListeners } from './hooks/useTauriListeners';
-import { useFileOperations } from './hooks/useFileOperations';
-import { useAppContextMenus } from './hooks/useAppContextMenus';
-import { useSortedLibrary } from './hooks/useSortedLibrary';
-import { useNeighborPrefetch } from './hooks/useNeighborPrefetch';
-import { useAppNavigation } from './hooks/useAppNavigation';
-import { useExternalEditSession } from './hooks/useExternalEditSession';
-import ExternalEditBar from './components/ui/ExternalEditBar';
-import { Status } from './components/ui/ExportImportProperties';
-
-import { useEditorActions } from './hooks/useEditorActions';
-import { useLibraryActions } from './hooks/useLibraryActions';
-import { useProductivityActions } from './hooks/useProductivityActions';
-
-import { useAppInitialization } from './hooks/useAppInitialization';
-import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
-import './i18n';
-
+import SettingsPanel from './components/panel/SettingsPanel';
+import SidePanelArea from './components/panel/SidePanelArea';
+import type { AlbumItem, DirectoryTree } from './components/ui/AppProperties';
 import {
-  type DirectoryTree,
-  type Album,
-  type AlbumItem,
+  ImageFile,
   Invokes,
   LibraryViewMode,
   Panel,
   PanelRegion,
   Theme,
-  ThumbnailSize,
   ThumbnailAspectRatio,
+  ThumbnailSize,
 } from './components/ui/AppProperties';
-
-import type { CanvasTransformHandle } from './components/panel/Editor';
-import type { ImageCacheEntry } from './utils/ImageLRUCache';
+import { Status } from './components/ui/ExportImportProperties';
+import ExternalEditBar from './components/ui/ExternalEditBar';
+import GlobalTooltip from './components/ui/GlobalTooltip';
+import EditorView from './components/views/EditorView';
+import LibraryView from './components/views/LibraryView';
+import { ContextMenuProvider } from './context/ContextMenuContext';
 import type { PreloadedData, PreviousAdjustments } from './hooks/hookTypes';
-import ImageProcessingManager from './components/managers/ImageProcessingManager';
-import ImageLoaderManager from './components/managers/ImageLoaderManager';
+import { useAndroidBackHandler } from './hooks/useAndroidBackHandler';
+import { useAppContextMenus } from './hooks/useAppContextMenus';
+import { useAppInitialization } from './hooks/useAppInitialization';
+import { useAppNavigation } from './hooks/useAppNavigation';
+import { useEditorActions } from './hooks/useEditorActions';
+import { useExternalEditSession } from './hooks/useExternalEditSession';
+import { transferFiles, useFileOperations } from './hooks/useFileOperations';
+import { ImageDimensions } from './hooks/useImageRenderSize';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useLibraryActions } from './hooks/useLibraryActions';
+import { useNeighborPrefetch } from './hooks/useNeighborPrefetch';
+import { useProductivityActions } from './hooks/useProductivityActions';
+import { useSortedLibrary } from './hooks/useSortedLibrary';
+import { useTauriListeners } from './hooks/useTauriListeners';
+import { useThumbnails } from './hooks/useThumbnails';
+import { useCloudStore } from './store/useCloudStore';
+import { useEditorStore } from './store/useEditorStore';
+import { useLibraryStore } from './store/useLibraryStore';
+import { JobKind, useProcessStore } from './store/useProcessStore';
+import { useSettingsStore } from './store/useSettingsStore';
+import {
+  DEFAULT_BOTTOM_PANEL_HEIGHT,
+  DEFAULT_PANEL_WIDTH,
+  getReopenedPanelWidth,
+  useUIStore,
+} from './store/useUIStore';
+import type { ImageCacheEntry } from './utils/ImageLRUCache';
+import TitleBar from './window/TitleBar';
 
-const CLERK_PUBLISHABLE_KEY = 'pk_test_YnJpZWYtc2Vhc25haWwtMTIuY2xlcmsuYWNjb3VudHMuZGV2JA'; // local dev key
+import './i18n';
+
+const DND_MEASURING = { droppable: { strategy: MeasuringStrategy.Always } };
 
 const insertChildrenIntoTree = (
   node: DirectoryTree,
@@ -116,14 +113,9 @@ const insertChildrenIntoTree = (
 
 const imageDragModifier: Modifier = ({ active, activatorEvent, activeNodeRect, transform }) => {
   if (active?.data?.current?.type === 'library-image' && activatorEvent && activeNodeRect) {
-    const pointer =
-      activatorEvent instanceof MouseEvent
-        ? activatorEvent
-        : typeof TouchEvent !== 'undefined' && activatorEvent instanceof TouchEvent
-          ? activatorEvent.touches[0]
-          : undefined;
-    const startX = pointer?.clientX ?? 0;
-    const startY = pointer?.clientY ?? 0;
+    const event = activatorEvent as MouseEvent & Partial<TouchEvent>;
+    const startX = event.clientX ?? event.touches?.[0]?.clientX ?? 0;
+    const startY = event.clientY ?? event.touches?.[0]?.clientY ?? 0;
 
     if (startX === 0 && startY === 0) return transform;
 
@@ -254,6 +246,7 @@ function App() {
     };
   });
 
+  const isBackendReadyRef = useRef(true);
   const previewJobIdRef = useRef<number>(0);
   const latestRenderedJobIdRef = useRef<number>(0);
   const currentResRef = useRef<number>(1280);
@@ -269,13 +262,18 @@ function App() {
     clearThumbnailQueue,
     markGenerated,
     invalidateSourceThumbnails,
-    shouldAcceptGenerated,
     needsSourceThumbnailRefresh,
+    shouldAcceptGenerated,
     retryStaleGenerated,
   } = useThumbnails();
 
   const transformWrapperRef = useRef<CanvasTransformHandle | null>(null);
-  const preloadedDataRef = useRef<Partial<PreloadedData>>({});
+  const preloadedDataRef = useRef<{
+    trees?: PreloadedData['trees'];
+    images?: Promise<ImageFile[]>;
+    rootPaths?: string[];
+    currentPath?: string;
+  }>({});
 
   useAppInitialization({
     preloadedDataRef,
@@ -345,16 +343,20 @@ function App() {
   const { handleCopyAdjustments, handlePasteAdjustments, handleResetAdjustments, handleZoomChange } =
     useEditorActions();
 
-  const navigationRefs = {
-    transformWrapperRef,
-    preloadedDataRef,
-    cachedEditStateRef,
-    selectedImagePathRef,
-    latestRenderedJobIdRef,
-    previewJobIdRef,
-    currentResRef,
-    prevAdjustmentsRef,
-  };
+  const navigationRefs = useMemo(
+    () => ({
+      transformWrapperRef,
+      preloadedDataRef,
+      cachedEditStateRef,
+      selectedImagePathRef,
+      isBackendReadyRef,
+      latestRenderedJobIdRef,
+      previewJobIdRef,
+      currentResRef,
+      prevAdjustmentsRef,
+    }),
+    [],
+  );
 
   const {
     handleGoHome,
@@ -367,9 +369,9 @@ function App() {
     handleNavForward,
     handleContinueSession,
   } = useAppNavigation({
-    clearThumbnailQueue,
     invalidateSourceThumbnails,
     needsSourceThumbnailRefresh,
+    clearThumbnailQueue,
     refs: navigationRefs,
   });
 
@@ -384,12 +386,19 @@ function App() {
     handleClearSelection,
     handleLibraryImageSingleClick,
     handleImageClick,
+    handleSetFlag,
     handleSetColorLabel,
     refreshAllFolderTrees,
     handleTogglePinFolder,
     handleCreateAlbumItem,
     handleRenameAlbumItem,
   } = useLibraryActions(handleImageSelect);
+
+  useEffect(() => {
+    const { setImageSelectHandler } = useUIStore.getState();
+    setImageSelectHandler(handleImageSelect);
+    return () => setImageSelectHandler(null);
+  }, [handleImageSelect]);
 
   const { displayList: sortedImageList, badges: groupBadgeInfo } = useSortedLibrary();
   useNeighborPrefetch(sortedImageList);
@@ -399,9 +408,9 @@ function App() {
       if (currentFolderPath.startsWith('Album: ')) {
         const { activeAlbumId, albumTree } = useLibraryStore.getState();
         if (activeAlbumId) {
-          const findObj = (nodes: AlbumItem[]): Album | null => {
+          const findObj = (nodes: AlbumItem[]): AlbumItem | null => {
             for (const n of nodes) {
-              if (n.type === 'album' && n.id === activeAlbumId) return n;
+              if (n.id === activeAlbumId) return n;
               if (n.type === 'group') {
                 const f = findObj(n.children);
                 if (f) return f;
@@ -410,7 +419,9 @@ function App() {
             return null;
           };
           const album = findObj(albumTree);
-          if (album) await handleSelectAlbum(album.id, album.name, album.images, true);
+          if (album?.type === 'album') await handleSelectAlbum(album.id, album.name, album.images, true);
+          else if (isImmichAlbumId(activeAlbumId))
+            await handleSelectAlbum(activeAlbumId, currentFolderPath.slice('Album: '.length), [], true);
         }
       } else {
         await handleSelectSubfolder(currentFolderPath, false, undefined, false, true);
@@ -421,6 +432,7 @@ function App() {
   const {
     executeDelete,
     handleDeleteSelected,
+    handleDeleteRejected,
     handleCreateFolder,
     handleRenameFolder,
     handleSaveRename,
@@ -441,12 +453,12 @@ function App() {
     handleSavePanorama,
     handleStartHdr,
     handleSaveHdr,
-    handleApplyDenoise,
-    handleBatchDenoise,
-    handleSaveDenoisedImage,
     handleSaveCollage,
     handleStartFocusStack,
     handleSaveFocusStack,
+    handleApplyDenoise,
+    handleBatchDenoise,
+    handleSaveDenoisedImage,
   } = useProductivityActions(handleLibraryRefresh);
 
   const {
@@ -464,16 +476,19 @@ function App() {
     refreshAllFolderTrees,
     refreshImageList: handleLibraryRefresh,
     executeDelete,
+    handleDeleteRejected,
     handleTogglePinFolder,
   });
 
+  useImmichEvents(handleLibraryRefresh);
+
   useTauriListeners({
+    shouldAcceptGenerated,
+    retryStaleGenerated,
     refreshAllFolderTrees,
     handleSelectSubfolder,
     refreshImageList: handleLibraryRefresh,
     markGenerated,
-    shouldAcceptGenerated,
-    retryStaleGenerated,
   });
 
   useAndroidBackHandler();
@@ -482,6 +497,7 @@ function App() {
     sortedImageList,
     handleBackToLibrary,
     handleDeleteSelected,
+    handleDeleteRejected,
     handleGoHome,
     handleImageSelect,
     handlePasteFiles,
@@ -527,7 +543,7 @@ function App() {
 
   useEffect(() => {
     if (
-      (activePanel !== Panel.Masks || (!activeMaskContainerId && !activeAiPatchContainerId)) &&
+      (activePanel !== Panel.Masks || !activeMaskContainerId) &&
       (activePanel !== Panel.Ai || !activeAiPatchContainerId)
     ) {
       setEditor({ isMaskControlHovered: false });
@@ -537,20 +553,14 @@ function App() {
   useEffect(() => {
     setEditor({
       isWbPickerActive: false,
+      isRelightPickerActive: false,
+      activeCenterMarker: null,
       isStraightenActive: false,
       isGuidedPerspectiveActive: false,
+      activeMaskId: null,
+      activeAiSubMaskId: null,
     });
   }, [activePanel, activeView, setEditor]);
-
-  useEffect(() => {
-    setEditor({ activeMaskId: null, activeAiSubMaskId: null });
-  }, [activeView, setEditor]);
-
-  useEffect(() => {
-    if (activePanel !== Panel.Masks && activePanel !== Panel.Ai) {
-      setEditor({ activeMaskId: null, activeAiSubMaskId: null });
-    }
-  }, [activePanel, setEditor]);
 
   useEffect(() => {
     const unlisten = listen<{ connected: boolean }>('ai-connector-status-update', (event) => {
@@ -709,7 +719,7 @@ function App() {
       if (!isExpanding) return;
       try {
         const showCounts = appSettings?.enableFolderImageCounts ?? false;
-        const newChildren = await invoke<DirectoryTree[]>(Invokes.GetFolderChildren, {
+        const newChildren: DirectoryTree[] = await invoke(Invokes.GetFolderChildren, {
           path,
           showImageCounts: showCounts,
         });
@@ -824,6 +834,20 @@ function App() {
     }
   };
 
+  const openHiddenSide = (region: PanelRegion) => {
+    if (region.startsWith('left') && !uiVisibility.leftPanel) {
+      setUI((state) => ({
+        uiVisibility: { ...state.uiVisibility, leftPanel: true },
+        leftPanelWidth: getReopenedPanelWidth(state.leftPanelWidth),
+      }));
+    } else if (region.startsWith('right') && !uiVisibility.rightPanel) {
+      setUI((state) => ({
+        uiVisibility: { ...state.uiVisibility, rightPanel: true },
+        rightPanelWidth: getReopenedPanelWidth(state.rightPanelWidth),
+      }));
+    }
+  };
+
   const handleDragEnd = (e: DragEndEvent) => {
     setLayoutDragItem(null);
     setActiveImageDragItem(null);
@@ -833,11 +857,15 @@ function App() {
       movePanel(active.data.current.panel as Panel, over.data.current.region as PanelRegion);
     }
 
+    if (appSettings?.hideCollapsedPanels && active.data.current?.type === 'layout-tab' && over?.data.current?.region) {
+      openHiddenSide(over.data.current.region as PanelRegion);
+    }
+
     if (active.data.current?.type === 'library-image' && over?.data.current?.type === 'folder') {
       const targetFolder = over.data.current.path;
       const sourcePaths = activeImageDragItem?.paths || [active.data.current.path];
 
-      invoke(Invokes.MoveFiles, { sourcePaths, destinationFolder: targetFolder })
+      transferFiles(JobKind.Move, sourcePaths, targetFolder)
         .then(() => {
           refreshAllFolderTrees();
           handleLibraryRefresh();
@@ -865,8 +893,11 @@ function App() {
   };
 
   const ActiveOverlayIcon = activeLayoutDragItem ? PANEL_ICONS[activeLayoutDragItem] : null;
-  const effectiveLeftWidth = uiVisibility.leftPanel ? leftPanelWidth : 48;
-  const effectiveRightWidth = uiVisibility.rightPanel ? rightPanelWidth : useWidePanels ? 58 : 48;
+  const shouldHideCollapsedPanels = appSettings?.hideCollapsedPanels && !activeLayoutDragItem;
+  const collapsedLeftWidth = shouldHideCollapsedPanels ? 0 : 48;
+  const collapsedRightWidth = shouldHideCollapsedPanels ? 0 : useWidePanels ? 58 : 48;
+  const effectiveLeftWidth = uiVisibility.leftPanel ? leftPanelWidth : collapsedLeftWidth;
+  const effectiveRightWidth = uiVisibility.rightPanel ? rightPanelWidth : collapsedRightWidth;
 
   return (
     <>
@@ -878,9 +909,9 @@ function App() {
         currentResRef={currentResRef}
       />
       <ImageLoaderManager
-        cachedEditStateRef={cachedEditStateRef}
         invalidateSourceThumbnails={invalidateSourceThumbnails}
         needsSourceThumbnailRefresh={needsSourceThumbnailRefresh}
+        cachedEditStateRef={cachedEditStateRef}
       />
       <div
         className={clsx(
@@ -912,11 +943,7 @@ function App() {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             collisionDetection={pointerWithin}
-            measuring={{
-              droppable: {
-                strategy: MeasuringStrategy.Always,
-              },
-            }}
+            measuring={DND_MEASURING}
           >
             <div className="flex flex-row grow h-full min-h-0">
               {!shouldHideFolderTree && hasMainContent && (
@@ -1000,6 +1027,7 @@ function App() {
                     handleContinueSession={handleContinueSession}
                     handleGoHome={handleGoHome}
                     handleOpenFolder={handleOpenFolder}
+                    handleNavigateToFolder={(path) => handleSelectSubfolder(path, false, undefined, true)}
                     handleImportClick={handleImportClick}
                     handleLibraryRefresh={handleLibraryRefresh}
                     handleCopyAdjustments={handleCopyAdjustments}
@@ -1047,6 +1075,11 @@ function App() {
           </DndContext>
         </div>
         <AppModals
+          refreshImageList={handleLibraryRefresh}
+          handleApplyDenoise={handleApplyDenoise}
+          handleBatchDenoise={handleBatchDenoise}
+          handleSaveDenoisedImage={handleSaveDenoisedImage}
+          handleSetColorLabel={handleSetColorLabel}
           handleImageSelect={handleImageSelect}
           handleSavePanorama={handleSavePanorama}
           handleStartPanorama={handleStartPanorama}
@@ -1054,15 +1087,11 @@ function App() {
           handleSaveFocusStack={handleSaveFocusStack}
           handleSaveHdr={handleSaveHdr}
           handleStartHdr={handleStartHdr}
-          refreshImageList={handleLibraryRefresh}
-          handleApplyDenoise={handleApplyDenoise}
-          handleBatchDenoise={handleBatchDenoise}
-          handleSaveDenoisedImage={handleSaveDenoisedImage}
           handleCreateFolder={handleCreateFolder}
           handleRenameFolder={handleRenameFolder}
           handleSaveRename={handleSaveRename}
           handleStartImport={handleStartImport}
-          handleSetColorLabel={handleSetColorLabel}
+          handleSetFlag={handleSetFlag}
           handleRate={handleRate}
           executeDelete={executeDelete}
           handleSaveCollage={handleSaveCollage}
@@ -1093,13 +1122,17 @@ function App() {
   );
 }
 
-const AppWrapper = () => (
-  <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} routerPush={() => {}} routerReplace={() => {}}>
+const AppWrapper = () => {
+  useEffect(() => {
+    useCloudStore.getState().initAuth();
+  }, []);
+
+  return (
     <ContextMenuProvider>
       <App />
       <GlobalTooltip />
     </ContextMenuProvider>
-  </ClerkProvider>
-);
+  );
+};
 
 export default AppWrapper;

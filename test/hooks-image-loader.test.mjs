@@ -1,3 +1,4 @@
+import { extendUpstreamBoundaries } from './fixtures/upstream-boundaries.mjs';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { build } from 'esbuild';
@@ -21,6 +22,7 @@ const stubs = {
   '../components/ui/AppProperties': 'export const Invokes={LoadImage:"load_image",LoadMetadata:"load_metadata"};',
   '../components/panel/right/Masks': 'export const SubMaskMode={Additive:"additive"};',
 };
+extendUpstreamBoundaries(stubs);
 const output = join(directory, 'loader.mjs');
 await build({
   entryPoints: ['src/hooks/useImageLoader.ts'],

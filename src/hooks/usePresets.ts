@@ -1,15 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import debounce from 'lodash.debounce';
+import { useCallback, useEffect, useState } from 'react';
+import { Folder, Invokes, Preset } from '../components/ui/AppProperties';
 import {
+  ADJUSTMENT_GROUPS,
   Adjustments,
   COPYABLE_ADJUSTMENT_KEYS,
-  ADJUSTMENT_GROUPS,
   INITIAL_ADJUSTMENTS,
   copyAdjustmentKeys,
   isAdjustmentKey,
 } from '../utils/adjustments';
-import { Folder, Invokes, Preset } from '../components/ui/AppProperties';
 
 export enum PresetListType {
   Folder = 'folder',

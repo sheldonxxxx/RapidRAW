@@ -1,22 +1,22 @@
-import { useState, useRef, useCallback } from 'react';
-import { motion, LayoutGroup, AnimatePresence } from 'framer-motion';
-import { useTranslation } from 'react-i18next';
+import { useDndMonitor, useDraggable, useDroppable } from '@dnd-kit/core';
 import clsx from 'clsx';
-import { useDraggable, useDroppable, useDndMonitor } from '@dnd-kit/core';
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
-  SlidersHorizontal,
-  Info,
+  Camera,
   Crop,
+  FileInput,
+  Folder as FolderIcon,
+  Info,
   Layers,
   Paintbrush,
+  SlidersHorizontal,
   SwatchBook,
-  FileInput,
-  Camera,
-  Folder as FolderIcon,
   type LucideIcon,
 } from 'lucide-react';
-import { Panel, PanelRegion } from '../ui/AppProperties';
+import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SwitcherPlacement, useUIStore } from '../../store/useUIStore';
+import { Panel, PanelRegion } from '../ui/AppProperties';
 
 export const PANEL_ICONS: Record<Panel, LucideIcon> = {
   [Panel.Metadata]: Info,

@@ -1,7 +1,7 @@
-import { useCallback, useState, useEffect } from 'react';
-import { platform } from '@tauri-apps/plugin-os';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { platform } from '@tauri-apps/plugin-os';
 import { Minus, Square, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const RestoreDownIcon = ({ size = 14, className = '' }) => (
   <svg
@@ -26,7 +26,7 @@ export default function TitleBar() {
   const [osPlatform, setOsPlatform] = useState('');
   const [isMaximized, setIsMaximized] = useState(false);
 
-  const appWindow = getCurrentWindow();
+  const appWindow = useMemo(() => getCurrentWindow(), []);
 
   useEffect(() => {
     const getPlatform = async () => {

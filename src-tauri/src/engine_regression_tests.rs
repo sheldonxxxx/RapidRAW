@@ -271,6 +271,7 @@ fn empty_sources_and_unrasterized_visible_masks_fail_explicitly() {
 fn render_contract_rejects_invalid_regions_masks_and_allocation_limits() {
     let effective = final_adjustments(&json!({"exposure": 0.2}), false, None);
     let request = |roi| RenderRequest {
+        mask_cache_key: None,
         adjustments: effective,
         mask_bitmaps: &[],
         lut: None,
@@ -322,10 +323,17 @@ fn gpu_context() -> GpuContext {
     let limits = adapter.limits();
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_limits: limits.clone(),
+        required_features: wgpu::Features::FLOAT32_FILTERABLE,
         ..Default::default()
     }))
     .unwrap();
     GpuContext {
+        instance,
+        adapter_info: adapter.get_info(),
+        adapter,
+        viewer_display: Arc::new(std::sync::Mutex::new(None)),
+        pipelines: Arc::new(std::sync::OnceLock::new()),
+        high_precision: false,
         device: Arc::new(device),
         queue: Arc::new(queue),
         limits,
@@ -388,6 +396,7 @@ fn gpu_gui_mcp_render_contract_matches_cpu_reference() {
     assert_eq!(prepared.bitmaps[0].get_pixel(128, 4)[0], 127);
     assert_eq!(prepared.bitmaps[0].get_pixel(800, 4)[0], 0);
     let request = |roi| RenderRequest {
+        mask_cache_key: None,
         adjustments: effective,
         mask_bitmaps: &prepared.bitmaps,
         lut: None,
@@ -480,7 +489,7 @@ fn gpu_gui_mcp_render_contract_matches_cpu_reference() {
     )
     .unwrap();
     let (interactive, out_width, out_height, out_x, out_y) = processor
-        .run(
+        .run_test_input(
             &texture.create_view(&Default::default()),
             None,
             None,

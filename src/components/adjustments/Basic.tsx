@@ -1,11 +1,10 @@
-import type { AppSettings } from '../ui/AppProperties';
-import type { AdjustmentSetter } from '../../utils/adjustments';
-import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import Slider from '../ui/Slider';
-import { Adjustments, BasicAdjustment } from '../../utils/adjustments';
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AdjustmentSetter, Adjustments, BasicAdjustment, areSectionPropsEqual } from '../../utils/adjustments';
+import { AppSettings } from '../ui/AppProperties';
+import Slider from '../ui/Slider';
 
 interface BasicAdjustmentsProps {
   adjustments: Adjustments;
@@ -156,7 +155,7 @@ const ToneMapperSwitch = ({
   );
 };
 
-export default function BasicAdjustments({
+function BasicAdjustments({
   adjustments,
   setAdjustments,
   isForMask = false,
@@ -257,3 +256,5 @@ export default function BasicAdjustments({
     </div>
   );
 }
+
+export default memo(BasicAdjustments, areSectionPropsEqual('basic'));

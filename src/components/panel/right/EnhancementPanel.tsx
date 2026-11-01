@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useTranslation } from 'react-i18next';
 import { Download, FolderOpen, Loader2, Sparkles, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { v4 as uuidv4 } from 'uuid';
+import { debouncedSetHistory, useEditorActions } from '../../../hooks/useEditorActions';
 import { useEditorStore } from '../../../store/useEditorStore';
 import { useUIStore } from '../../../store/useUIStore';
-import { debouncedSetHistory, useEditorActions } from '../../../hooks/useEditorActions';
 import { INITIAL_MASK_ADJUSTMENTS, type Adjustments } from '../../../utils/adjustments';
 import { Invokes, Panel } from '../../ui/AppProperties';
 import Button from '../../ui/Button';

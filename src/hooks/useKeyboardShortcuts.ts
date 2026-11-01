@@ -1,20 +1,28 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'react-toastify';
-import { ImageFile, Panel, ExifOverlay } from '../components/ui/AppProperties';
-import { KEYBIND_DEFINITIONS, normalizeCombo } from '../utils/keyboardUtils';
+import { ToolType } from '../components/panel/right/Masks';
+import { ExifOverlay, ImageFile, ImageFlag, LibraryViewMode, Panel } from '../components/ui/AppProperties';
 import { useEditorStore } from '../store/useEditorStore';
 import { useLibraryStore } from '../store/useLibraryStore';
-import { useSettingsStore } from '../store/useSettingsStore';
-import { useUIStore } from '../store/useUIStore';
 import { useProcessStore } from '../store/useProcessStore';
-import { ToolType } from '../components/panel/right/Masks';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { getReopenedPanelWidth, useUIStore } from '../store/useUIStore';
+import { KEYBIND_DEFINITIONS, getDefaultCombo, normalizeCombo } from '../utils/keyboardUtils';
 import { useEditorActions } from './useEditorActions';
 import { useLibraryActions } from './useLibraryActions';
+
+const getParentFolder = (path: string) => {
+  const physicalPath = path.split('?vc=')[0];
+  const separator = physicalPath.includes('/') ? '/' : '\\';
+  const lastSep = physicalPath.lastIndexOf(separator);
+  return lastSep === -1 ? physicalPath : physicalPath.slice(0, lastSep);
+};
 
 interface KeyboardShortcutsProps {
   sortedImageList: Array<ImageFile>;
   handleBackToLibrary(): void;
   handleDeleteSelected(): void;
+  handleDeleteRejected(): void;
   handleGoHome(): void;
   handleImageSelect(path: string, openInEditor?: boolean): void;
   handlePasteFiles(str: string): void;
@@ -25,13 +33,21 @@ export const useKeyboardShortcuts = ({
   sortedImageList,
   handleBackToLibrary,
   handleDeleteSelected,
+  handleDeleteRejected,
   handleGoHome,
   handleImageSelect,
   handlePasteFiles,
   handleZoomChange,
 }: KeyboardShortcutsProps) => {
-  const { handleRotate, handleCopyAdjustments, handlePasteAdjustments, toggleShowOriginal } = useEditorActions();
-  const { handleRate, handleSetColorLabel } = useLibraryActions();
+  const {
+    handleRotate,
+    handleAutoStraighten,
+    handleCopyAdjustments,
+    handlePasteAdjustments,
+    handleEnableAdjustments,
+    toggleCompare,
+  } = useEditorActions();
+  const { handleRate, handleSetFlag, handleToggleFlag, handleSetColorLabel } = useLibraryActions();
 
   const sortedListRef = useRef(sortedImageList);
   useEffect(() => {
@@ -59,7 +75,6 @@ export const useKeyboardShortcuts = ({
       settings: useSettingsStore.getState(),
       process: useProcessStore.getState(),
     });
-
     type ShortcutState = ReturnType<typeof getStoreState>;
     interface ShortcutAction {
       shouldFire?: (state: ShortcutState) => boolean;
@@ -67,11 +82,12 @@ export const useKeyboardShortcuts = ({
     }
 
     const comboMap = new Map<string, string>();
-    const keybinds = useSettingsStore.getState().appSettings?.keybinds;
+    const { appSettings, osPlatform } = useSettingsStore.getState();
+    const keybinds = appSettings?.keybinds;
 
     for (const def of KEYBIND_DEFINITIONS) {
       const userCombo = keybinds?.[def.action];
-      const effective = userCombo && userCombo.length > 0 ? userCombo : def.defaultCombo;
+      const effective = userCombo && userCombo.length > 0 ? userCombo : getDefaultCombo(def, osPlatform);
       if (effective) {
         comboMap.set(effective.join('+'), def.action);
       }
@@ -152,6 +168,13 @@ export const useKeyboardShortcuts = ({
         execute: (e) => {
           e.preventDefault();
           handleDeleteSelected();
+        },
+      },
+      delete_rejected: {
+        shouldFire: () => true,
+        execute: (e: KeyboardEvent) => {
+          e.preventDefault();
+          handleDeleteRejected();
         },
       },
       preview_prev: {
@@ -306,11 +329,18 @@ export const useKeyboardShortcuts = ({
           s.ui.toggleFullScreen();
         },
       },
+      toggle_viewer_window: {
+        shouldFire: (s: ShortcutState) => s.settings.osPlatform !== 'android',
+        execute: (e: KeyboardEvent, s: ShortcutState) => {
+          e.preventDefault();
+          s.ui.toggleViewerWindow();
+        },
+      },
       show_original: {
         shouldFire: (s: ShortcutState) => s.ui.activeView === 'editor' && !!s.editor.selectedImage,
         execute: (e) => {
           e.preventDefault();
-          toggleShowOriginal();
+          toggleCompare();
         },
       },
       toggle_clipping: {
@@ -403,7 +433,7 @@ export const useKeyboardShortcuts = ({
           const isOpening = !s.ui.uiVisibility.leftPanel;
           s.ui.setUI((state) => ({
             uiVisibility: { ...state.uiVisibility, leftPanel: isOpening },
-            leftPanelWidth: isOpening && state.leftPanelWidth < 250 ? 350 : state.leftPanelWidth,
+            leftPanelWidth: isOpening ? getReopenedPanelWidth(state.leftPanelWidth) : state.leftPanelWidth,
           }));
         },
       },
@@ -414,7 +444,7 @@ export const useKeyboardShortcuts = ({
           const isOpening = !s.ui.uiVisibility.rightPanel;
           s.ui.setUI((state) => ({
             uiVisibility: { ...state.uiVisibility, rightPanel: isOpening },
-            rightPanelWidth: isOpening && state.rightPanelWidth < 250 ? 350 : state.rightPanelWidth,
+            rightPanelWidth: isOpening ? getReopenedPanelWidth(state.rightPanelWidth) : state.rightPanelWidth,
           }));
         },
       },
@@ -467,6 +497,25 @@ export const useKeyboardShortcuts = ({
           }
         },
       },
+      auto_straighten: {
+        shouldFire: (s: ShortcutState) => s.ui.activeView === 'editor' && !!s.editor.selectedImage,
+        execute: (e: KeyboardEvent, s: ShortcutState) => {
+          e.preventDefault();
+          if (s.ui.activePanel !== Panel.Crop) {
+            s.ui.setPanel(Panel.Crop);
+          }
+          handleAutoStraighten();
+        },
+      },
+      toggle_black_white: {
+        shouldFire: (s: ShortcutState) => s.ui.activeView === 'editor' && !!s.editor.selectedImage,
+        execute: (e: KeyboardEvent, s: ShortcutState) => {
+          e.preventDefault();
+          handleEnableAdjustments([s.editor.selectedImage!.path], {
+            monochromeEnabled: !s.editor.adjustments.monochromeEnabled,
+          });
+        },
+      },
       rate_0: {
         shouldFire: () => true,
         execute: (e) => {
@@ -507,6 +556,27 @@ export const useKeyboardShortcuts = ({
         execute: (e) => {
           e.preventDefault();
           handleRate(5);
+        },
+      },
+      toggle_pick: {
+        shouldFire: () => true,
+        execute: (e: KeyboardEvent) => {
+          e.preventDefault();
+          handleToggleFlag(ImageFlag.Pick);
+        },
+      },
+      toggle_reject: {
+        shouldFire: () => true,
+        execute: (e: KeyboardEvent) => {
+          e.preventDefault();
+          handleToggleFlag(ImageFlag.Reject);
+        },
+      },
+      unflag: {
+        shouldFire: () => true,
+        execute: (e: KeyboardEvent) => {
+          e.preventDefault();
+          handleSetFlag(null);
         },
       },
       color_label_none: {
@@ -672,19 +742,37 @@ export const useKeyboardShortcuts = ({
           s.ui.activeView === 'library' && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code),
         execute: (e: KeyboardEvent, s: ShortcutState) => {
           e.preventDefault();
-          const isNext = e.code === 'ArrowRight' || e.code === 'ArrowDown';
           const activePath = s.library.libraryActivePath;
           if (!activePath || sortedListRef.current.length === 0) return;
-          const currentIndex = sortedListRef.current.findIndex((img) => img.path === activePath);
+          const selectPath = (path: string) => {
+            s.library.setLibrary({ libraryActivePath: path, multiSelectedPaths: [path] });
+            handleImageSelect(path, false);
+          };
+          const isVertical = e.code === 'ArrowUp' || e.code === 'ArrowDown';
+          const isNext = e.code === 'ArrowRight' || e.code === 'ArrowDown';
+          const gridRows: Array<Array<{ path: string; center: number }>> = s.library.libraryGridRows;
+          const rowIndex = isVertical ? gridRows.findIndex((row) => row.some((item) => item.path === activePath)) : -1;
+          if (rowIndex !== -1) {
+            const targetRow = gridRows[rowIndex + (isNext ? 1 : -1)];
+            if (!targetRow) return;
+            const center = gridRows[rowIndex].find((item) => item.path === activePath)!.center;
+            const closest = targetRow.reduce((best, item) =>
+              Math.abs(item.center - center) < Math.abs(best.center - center) ? item : best,
+            );
+            selectPath(closest.path);
+            return;
+          }
+          const recursive = s.settings.appSettings?.libraryViewMode === LibraryViewMode.Recursive;
+          const navigationList = recursive
+            ? sortedListRef.current.filter((img) => getParentFolder(img.path) === getParentFolder(activePath))
+            : sortedListRef.current;
+          const currentIndex = navigationList.findIndex((img) => img.path === activePath);
           if (currentIndex === -1) return;
           let nextIndex = isNext ? currentIndex + 1 : currentIndex - 1;
-          if (nextIndex >= sortedListRef.current.length) nextIndex = 0;
-          if (nextIndex < 0) nextIndex = sortedListRef.current.length - 1;
-          const nextImage = sortedListRef.current[nextIndex];
-          if (nextImage) {
-            s.library.setLibrary({ libraryActivePath: nextImage.path, multiSelectedPaths: [nextImage.path] });
-            handleImageSelect(nextImage.path, false);
-          }
+          if (nextIndex >= navigationList.length) nextIndex = 0;
+          if (nextIndex < 0) nextIndex = navigationList.length - 1;
+          const nextImage = navigationList[nextIndex];
+          if (nextImage) selectPath(nextImage.path);
         },
       },
     ];
@@ -701,9 +789,7 @@ export const useKeyboardShortcuts = ({
         state.ui.confirmModalState.isOpen ||
         state.ui.panoramaModalState.isOpen ||
         state.ui.cullingModalState.isOpen ||
-        state.ui.collageModalState.isOpen ||
-        state.ui.denoiseModalState.isOpen ||
-        state.ui.negativeModalState.isOpen;
+        state.ui.collageModalState.isOpen;
 
       if (isModalOpen) return;
 
@@ -745,16 +831,21 @@ export const useKeyboardShortcuts = ({
   }, [
     handleBackToLibrary,
     handleDeleteSelected,
+    handleDeleteRejected,
     handleGoHome,
     handleImageSelect,
     handlePasteFiles,
     handleZoomChange,
     handleRotate,
+    handleAutoStraighten,
     handleCopyAdjustments,
     handleCopyImagePaths,
     handlePasteAdjustments,
+    handleEnableAdjustments,
     handleRate,
+    handleSetFlag,
+    handleToggleFlag,
     handleSetColorLabel,
-    toggleShowOriginal,
+    toggleCompare,
   ]);
 };

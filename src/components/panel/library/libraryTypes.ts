@@ -1,7 +1,7 @@
 import type { RowComponentProps } from 'react-window';
+import type { GroupBadgeInfo, GroupId } from '../../../utils/imageGrouping';
 import type { ImageFile, ThumbnailAspectRatio } from '../../ui/AppProperties';
 import type { ColumnWidths, MainLibraryProps } from '../MainLibrary';
-import type { GroupBadgeInfo, GroupId } from '../../../utils/imageGrouping';
 
 export interface ImageRow {
   type: 'images';
@@ -14,6 +14,8 @@ export type LibraryRow =
   ImageRow | { type: 'header'; path: string; count: number; isExpanded: boolean } | { type: 'footer' };
 
 export interface ThumbnailProps {
+  selectionModeActive?: boolean;
+  flag?: import('../../ui/AppProperties').ImageFlag | null;
   isActive: boolean;
   isSelected: boolean;
   isForcedHover?: boolean;
@@ -26,7 +28,7 @@ export interface ThumbnailProps {
   tags: ImageFile['tags'];
   aspectRatio: ThumbnailAspectRatio;
   isEdited?: boolean;
-  exif: ImageFile['exif'];
+  exif?: ImageFile['exif'];
   isCloudPlaceholder: boolean;
   groupBadgeLabel?: string | null;
   onAspectRatioLoaded?(path: string, ratio: number): void;
@@ -40,6 +42,7 @@ export interface ListItemProps extends ThumbnailProps {
 }
 
 export interface LibraryRowData {
+  selectionModeActive?: boolean;
   rows: LibraryRow[];
   activePath: string | null;
   multiSelectedSet: Set<string>;

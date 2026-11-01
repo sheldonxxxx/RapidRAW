@@ -155,6 +155,7 @@ fn adjustment_properties(local: bool) -> Map<String, Value> {
             &[],
         ),
     );
+    props.insert("activeTools".into(), object(Value::Object(fields("basic curves whiteBalance colorPresence hue colorGrading colorMixer colorCalibration sharpening presence noiseReduction chromaticAberration negativeConversion creative lensBlur relight fog lut vignette grain", boolean())), &[]));
     if local {
         props.insert("id".into(), identifier());
         return props;
@@ -170,7 +171,11 @@ fn adjustment_properties(local: bool) -> Map<String, Value> {
     props.insert("transformScale".into(), number(50.0, 150.0));
     props.insert("orientationSteps".into(), integer(0, 3));
     props.insert("toneMapper".into(), enumeration(&["basic", "agx"]));
-    props.insert("aspectRatio".into(), nullable(number(0.001, 1000.0)));
+    // Zero is the desktop's original-image aspect-ratio sentinel.
+    props.insert(
+        "aspectRatio".into(),
+        nullable(json!({"anyOf":[number(0.001,1000.0),{"enum":[0]}]})),
+    );
     let mut crop = object(
         json!({"unit":enumeration(&["px"]),"x":number(0.0,100000.0),"y":number(0.0,100000.0),"width":number(1.0,100000.0),"height":number(1.0,100000.0)}),
         &["x", "y", "width", "height"],
@@ -213,6 +218,81 @@ fn adjustment_properties(local: bool) -> Map<String, Value> {
     props.insert("guidedPerspective".into(), object(json!({
         "enabled":boolean(),"autoCrop":boolean(),"lines":array(object(json!({"id":identifier(),"type":enumeration(&["vertical","horizontal"]),"p1":point(1.0),"p2":point(1.0)}), &["id","type","p1","p2"]),0,4)
     }), &[]));
+    props.extend(fields("baselineExposure monochromeEnabled aiDenoiseEnabled negativeConversionEnabled relightEnabled relightShadows fogEnabled",boolean()));
+    props.extend(fields(
+        "centréX centréY vignetteCenterX vignetteCenterY",
+        number(0.0, 1.0),
+    ));
+    props.extend(fields("aiDenoiseAmount aiDenoiseDetail monochromeFilterStrength relightAmbient relightSoftness relightShine relightShadowSoftness fogAmount fogStart fogDensity fogHeight fogVariation fogGlow",number(0.0,100.0)));
+    props.extend(fields("fogTemperature fogTint", number(-100.0, 100.0)));
+    props.insert("aiDenoiseMethod".into(), enumeration(&["ai", "bm3d"]));
+    props.extend(fields(
+        "negativeRedWeight negativeGreenWeight negativeBlueWeight",
+        number(0.1, 3.0),
+    ));
+    props.insert("negativeContrast".into(), number(0.5, 2.5));
+    props.insert("negativeExposure".into(), number(-2.0, 2.0));
+    props.insert(
+        "whiteBalance".into(),
+        nullable(object(
+            json!({"temperature":number(2000.0,50000.0),"tint":number(-150.0,150.0)}),
+            &["temperature", "tint"],
+        )),
+    );
+    props.insert(
+        "monochromeFilm".into(),
+        enumeration(&[
+            "neutral",
+            "panchromatic",
+            "balanced",
+            "orthoPanchromatic",
+            "extendedRed",
+            "orthochromatic",
+            "infrared",
+        ]),
+    );
+    props.insert("monochromeFilterHue".into(), number(0.0, 360.0));
+    props.insert(
+        "monochromeMix".into(),
+        object(
+            Value::Object(
+                COLORS
+                    .into_iter()
+                    .map(|key| (key.into(), number(-100.0, 100.0)))
+                    .collect(),
+            ),
+            &[],
+        ),
+    );
+    props.insert("monochromeToning".into(),object(json!({"balance":number(-100.0,100.0),"highlightHue":number(0.0,360.0),"highlightSaturation":number(0.0,100.0),"shadowHue":number(0.0,360.0),"shadowSaturation":number(0.0,100.0)}),&[]));
+    props.extend(fields(
+        "relightNormalMap fogDepthMap",
+        nullable(image_asset()),
+    ));
+    let mut light = fields("x y", number(0.0, 1.0));
+    light.extend(fields("depth", number(-100.0, 100.0)));
+    light.extend(fields("intensity radius feather", number(0.0, 200.0)));
+    light.extend(fields("temperature tint", number(-100.0, 100.0)));
+    light.insert("angle".into(), number(-360.0, 360.0));
+    light.insert("elevation".into(), number(-90.0, 90.0));
+    light.insert("cone".into(), number(0.0, 180.0));
+    light.insert("id".into(), identifier());
+    light.insert(
+        "type".into(),
+        enumeration(&["point", "spot", "directional"]),
+    );
+    light.insert(
+        "color".into(),
+        json!({"type":"string","pattern":"^#[a-fA-F0-9]{6}$"}),
+    );
+    props.insert(
+        "relightLights".into(),
+        array(
+            object(Value::Object(light), &["id", "type", "x", "y"]),
+            0,
+            32,
+        ),
+    );
     props.insert("masks".into(), array(mask_schema(false), 0, 32));
     props.insert("aiPatches".into(), array(mask_schema(true), 0, 128));
     props
@@ -385,6 +465,34 @@ fn submask_parameter_schema(kind: &str) -> Value {
             ));
             required.extend(["minDepth", "maxDepth", "minFade", "maxFade"]);
         }
+        "ai-text" => {
+            props.insert(
+                "prompt".into(),
+                json!({"type":"string","minLength":1,"maxLength":2048}),
+            );
+            required.push("prompt");
+        }
+        "ai-face" => {
+            props.insert(
+                "parts".into(),
+                array(
+                    enumeration(&[
+                        "faceSkin",
+                        "bodySkin",
+                        "eyebrows",
+                        "eyeWhites",
+                        "iris",
+                        "lips",
+                        "teeth",
+                        "nose",
+                        "hair",
+                    ]),
+                    1,
+                    9,
+                ),
+            );
+            required.push("parts");
+        }
         "ai-foreground" | "ai-sky" | "all" => {}
         _ => unreachable!("only the supported kinds construct schemas"),
     }
@@ -416,6 +524,9 @@ fn submask_parameter_schema(kind: &str) -> Value {
             ),
         );
     }
+    if kind.starts_with("ai-") {
+        props.insert("aiSource".into(), string());
+    }
     if kind.starts_with("ai-") || kind == "quick-eraser" {
         props.insert("maskDataBase64".into(), image_asset());
         required.push("maskDataBase64");
@@ -441,6 +552,8 @@ fn submask_schema() -> Value {
         "ai-subject",
         "ai-foreground",
         "ai-sky",
+        "ai-text",
+        "ai-face",
         "ai-depth",
         "ai-normals",
         "ai-albedo",
@@ -586,6 +699,14 @@ pub fn default_adjustments() -> Value {
             .map(|c| (c.into(), parametric_defaults()))
             .collect(),
     );
+    let modern: Value =
+        serde_json::from_str(include_str!("../../../src/utils/defaultAdjustments.json"))
+            .expect("Native adjustment defaults");
+    for (key, default) in modern.as_object().unwrap() {
+        if value.get(key).is_some() {
+            value[key] = default.clone();
+        }
+    }
     value
 }
 
@@ -1248,6 +1369,13 @@ mod tests {
     fn defaults_match_native_ui_contract() {
         let defaults = default_adjustments();
         validate_adjustments(&defaults, (6960, 4640)).unwrap();
+        let desktop: Value =
+            serde_json::from_str(include_str!("../../../src/utils/defaultAdjustments.json"))
+                .unwrap();
+        validate_adjustments(&desktop, (6960, 4640)).unwrap();
+        assert_eq!(defaults["aspectRatio"], 0);
+        assert!(validate_adjustments(&json!({"aspectRatio":-1}), (100, 80)).is_err());
+        assert!(validate_adjustments(&json!({"aspectRatio":0.0005}), (100, 80)).is_err());
         assert_eq!(defaults["brightness"], 0);
         assert_eq!(defaults["lensBlurAmount"], 40);
         assert_eq!(defaults["toneMapper"], "basic");

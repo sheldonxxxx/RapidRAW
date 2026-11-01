@@ -1,14 +1,14 @@
-import type { AppSettings } from '../components/ui/AppProperties';
-import type { Variants } from 'framer-motion';
-import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Plus } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import type { Variants } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Plus, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { AppSettings } from '../components/ui/AppProperties';
 import { Invokes } from '../components/ui/AppProperties';
 import Text from '../components/ui/Text';
-import { TextVariants } from '../types/typography';
 import { useLibraryStore } from '../store/useLibraryStore';
+import { TextVariants } from '../types/typography';
 import { expandGroupedPaths } from '../utils/imageGrouping';
 
 export interface TaggingSubMenuProps {

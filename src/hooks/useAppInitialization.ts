@@ -1,30 +1,29 @@
-import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { FallbackLngObjList, i18n as I18n } from 'i18next';
+import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
-import { useSettingsStore } from '../store/useSettingsStore';
-import { useUIStore, reconcileWorkspace } from '../store/useUIStore';
-import { useLibraryStore } from '../store/useLibraryStore';
-import { useEditorStore } from '../store/useEditorStore';
-import { useProcessStore } from '../store/useProcessStore';
-import { THEMES, DEFAULT_THEME_ID, ThemeProps } from '../utils/themes';
-import type { i18n as I18n, FallbackLngObjList } from 'i18next';
-import type { PreloadedData } from './hookTypes';
-import type { ExternalEditSession } from '../store/useProcessStore';
-import { COPYABLE_ADJUSTMENT_KEYS, PasteMode } from '../utils/adjustments';
 import {
-  FilterCriteria,
   AppSettings,
-  SupportedTypes,
   DirectoryTree,
+  EditedStatus,
+  FilterCriteria,
   Invokes,
   LibraryViewMode,
   RawStatus,
-  EditedStatus,
+  SupportedTypes,
   Theme,
-  ThumbnailSize,
   ThumbnailAspectRatio,
+  ThumbnailSize,
 } from '../components/ui/AppProperties';
-import { useTranslation } from 'react-i18next';
+import { useEditorStore } from '../store/useEditorStore';
+import { useLibraryStore } from '../store/useLibraryStore';
+import { ExternalEditSession, useProcessStore } from '../store/useProcessStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { reconcileWorkspace, useUIStore } from '../store/useUIStore';
+import { COPYABLE_ADJUSTMENT_KEYS, PasteMode, withAdjustmentLayout } from '../utils/adjustments';
+import { DEFAULT_THEME_ID, ThemeProps, THEMES } from '../utils/themes';
+import { PreloadedData } from './hookTypes';
 
 interface UseAppInitializationProps {
   preloadedDataRef: React.RefObject<PreloadedData | null>;
@@ -94,9 +93,10 @@ export const useAppInitialization = ({
     })),
   );
 
-  const { uiVisibility, setUI } = useUIStore(
+  const { uiVisibility, collapsibleSectionsState, setUI } = useUIStore(
     useShallow((state) => ({
       uiVisibility: state.uiVisibility,
+      collapsibleSectionsState: state.collapsibleSectionsState,
       setUI: state.setUI,
     })),
   );
@@ -213,6 +213,12 @@ export const useAppInitialization = ({
 
         if (settings?.uiVisibility) {
           setUI((state) => ({ uiVisibility: { ...state.uiVisibility, ...settings.uiVisibility } }));
+        }
+
+        if (settings?.adjustmentLayout?.openSections) {
+          setUI((state) => ({
+            collapsibleSectionsState: { ...state.collapsibleSectionsState, ...settings.adjustmentLayout?.openSections },
+          }));
         }
 
         setUI({
@@ -339,6 +345,13 @@ export const useAppInitialization = ({
       handleSettingsChange({ ...appSettings, uiVisibility });
     }
   }, [uiVisibility, appSettings, handleSettingsChange]);
+
+  useEffect(() => {
+    if (isInitialMount.current || !appSettings) return;
+    if (JSON.stringify(appSettings.adjustmentLayout?.openSections) !== JSON.stringify(collapsibleSectionsState)) {
+      handleSettingsChange(withAdjustmentLayout(appSettings, { openSections: collapsibleSectionsState }));
+    }
+  }, [collapsibleSectionsState, appSettings, handleSettingsChange]);
 
   useEffect(() => {
     if (isInitialMount.current || !appSettings) return;

@@ -1,20 +1,22 @@
-import { useState, useMemo, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Check, ChevronDown, ChevronRight, Plus, Star, Tag, X, User } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
-import { Invokes } from '../../ui/AppProperties';
-import { COLOR_LABELS, Color } from '../../../utils/adjustments';
-import Text from '../../ui/Text';
-import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
-import { IconAperture, IconShutter, IconIso, IconFocalLength, IconLens } from '../editor/ExifIcons';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Check, ChevronDown, ChevronRight, Plus, Star, Tag, User, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useLibraryActions } from '../../../hooks/useLibraryActions';
 import { useEditorStore } from '../../../store/useEditorStore';
 import { useLibraryStore } from '../../../store/useLibraryStore';
-import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useProcessStore } from '../../../store/useProcessStore';
-import { useLibraryActions } from '../../../hooks/useLibraryActions';
+import { useSettingsStore } from '../../../store/useSettingsStore';
+import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
+import { COLOR_LABELS, Color } from '../../../utils/adjustments';
+import { getImageFlag } from '../../../utils/imageFlags';
 import { expandGroupedPaths } from '../../../utils/imageGrouping';
+import { Invokes } from '../../ui/AppProperties';
+import FlagToggles from '../../ui/FlagToggles';
+import Text from '../../ui/Text';
+import { IconAperture, IconFocalLength, IconIso, IconLens, IconShutter } from '../editor/ExifIcons';
 
 interface CameraSetting {
   format?(value: string | number): string | number;
@@ -241,16 +243,17 @@ export default function MetadataPanel() {
   const multiSelectedPaths = useLibraryStore((s) => s.multiSelectedPaths);
   const imageRatings = useLibraryStore((s) => s.imageRatings);
   const appSettings = useSettingsStore((s) => s.appSettings);
-  const thumbnails = useProcessStore((s) => s.thumbnails);
+  const liveThumbnailUrl = useProcessStore((s) => (selectedImage ? s.thumbnails[selectedImage.path] : undefined));
 
-  const { handleRate, handleSetColorLabel, handleTagsChanged, handleUpdateExif } = useLibraryActions();
+  const { handleRate, handleToggleFlag, handleSetColorLabel, handleTagsChanged, handleUpdateExif } =
+    useLibraryActions();
 
   const rating = selectedImage ? imageRatings[selectedImage.path] || 0 : 0;
+  const flag = useLibraryStore((state) => getImageFlag(state.imageList, selectedImage?.path));
   const tags = useLibraryStore((state) => {
     if (!selectedImage) return EMPTY_TAGS;
     return state.imageList.find((img) => img.path === selectedImage.path)?.tags ?? EMPTY_TAGS;
   });
-  const liveThumbnailUrl = selectedImage ? thumbnails[selectedImage.path] : undefined;
 
   const targetPaths = multiSelectedPaths?.length > 0 ? multiSelectedPaths : selectedImage ? [selectedImage.path] : [];
   const getPathsToUpdate = () => {
@@ -622,6 +625,13 @@ export default function MetadataPanel() {
                                 />
                               </button>
                             ))}
+                            <div className="w-px h-4 bg-surface mx-1" />
+                            <FlagToggles
+                              flag={flag}
+                              onToggle={(option) => handleToggleFlag(option, targetPaths)}
+                              inactiveClassName="text-text-secondary hover:text-text-primary"
+                              size={20}
+                            />
                           </div>
                         </div>
                         <div>
@@ -798,7 +808,7 @@ export default function MetadataPanel() {
                 </Text>
                 <div className="bg-surface border border-surface rounded-xl p-3 flex flex-col gap-0.5 overflow-hidden">
                   {otherExifEntries.map(([tag, value]) => (
-                    <MetadataItem key={tag} label={formatExifTag(tag)} value={value} />
+                    <MetadataItem key={tag} label={formatExifTag(tag)} value={String(value)} />
                   ))}
                 </div>
               </div>

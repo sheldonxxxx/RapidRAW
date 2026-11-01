@@ -2,6 +2,7 @@ export interface KeybindDefinition {
   action: string;
   description: import('i18next').ParseKeys;
   defaultCombo: string[];
+  macDefaultCombo?: string[];
   section: 'library' | 'view' | 'rating' | 'panels' | 'editing';
 }
 
@@ -53,6 +54,13 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     action: 'delete_selected',
     description: 'settings.keybinds.actions.delete_selected',
     defaultCombo: ['Delete'],
+    section: 'library',
+  },
+  {
+    action: 'delete_rejected',
+    description: 'settings.keybinds.actions.delete_rejected',
+    defaultCombo: ['ctrl', 'Backspace'],
+    macDefaultCombo: ['alt', 'Delete'],
     section: 'library',
   },
   {
@@ -116,6 +124,12 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
     section: 'view',
   },
   {
+    action: 'toggle_viewer_window',
+    description: 'settings.keybinds.actions.toggle_viewer_window',
+    defaultCombo: ['shift', 'KeyF'],
+    section: 'view',
+  },
+  {
     action: 'show_original',
     description: 'settings.keybinds.actions.show_original',
     defaultCombo: ['KeyB'],
@@ -139,6 +153,24 @@ export const KEYBIND_DEFINITIONS: KeybindDefinition[] = [
   { action: 'rate_3', description: 'settings.keybinds.actions.rate_3', defaultCombo: ['Digit3'], section: 'rating' },
   { action: 'rate_4', description: 'settings.keybinds.actions.rate_4', defaultCombo: ['Digit4'], section: 'rating' },
   { action: 'rate_5', description: 'settings.keybinds.actions.rate_5', defaultCombo: ['Digit5'], section: 'rating' },
+  {
+    action: 'toggle_pick',
+    description: 'settings.keybinds.actions.toggle_pick',
+    defaultCombo: ['shift', 'KeyP'],
+    section: 'rating',
+  },
+  {
+    action: 'toggle_reject',
+    description: 'settings.keybinds.actions.toggle_reject',
+    defaultCombo: ['KeyX'],
+    section: 'rating',
+  },
+  {
+    action: 'unflag',
+    description: 'settings.keybinds.actions.unflag',
+    defaultCombo: ['KeyU'],
+    section: 'rating',
+  },
   {
     action: 'color_label_none',
     description: 'settings.keybinds.actions.color_label_none',
@@ -356,7 +388,28 @@ const symMap: Record<string, string> = {
   PrintScreen: 'PrtSc',
 };
 
+export function getDefaultCombo(def: KeybindDefinition, osPlatform?: string): string[] {
+  return (osPlatform === 'macos' && def.macDefaultCombo) || def.defaultCombo;
+}
+
+// Canonical identifiers keep stored shortcuts compatible while the symbol
+// comes from the active keyboard layout rather than a physical QWERTY key.
+const punctuationCodes: Record<string, string> = {
+  '[': 'BracketLeft',
+  ']': 'BracketRight',
+  '-': 'Minus',
+  '=': 'Equal',
+  ',': 'Comma',
+  '.': 'Period',
+  '/': 'Slash',
+  ';': 'Semicolon',
+  "'": 'Quote',
+  '`': 'Backquote',
+  '\\': 'Backslash',
+};
+
 export function normalizeCombo(event: KeyboardEvent, osPlatform?: string): string[] {
+  if (event.isComposing || event.key === 'Dead' || event.key === 'Process') return [];
   const isMacDelete = osPlatform === 'macos' && event.code === 'Backspace' && (event.ctrlKey || event.metaKey);
   const parts: string[] = [];
   if ((event.ctrlKey || event.metaKey) && !isMacDelete) parts.push('ctrl');
@@ -371,6 +424,12 @@ export function normalizeCombo(event: KeyboardEvent, osPlatform?: string): strin
     code = 'Equal';
   } else if (code === 'NumpadSubtract') {
     code = 'Minus';
+  } else if (
+    !code.startsWith('Numpad') &&
+    !(/^Digit[0-9]$/.test(code) && !event.ctrlKey && !event.metaKey && !event.altKey) &&
+    punctuationCodes[event.key]
+  ) {
+    code = punctuationCodes[event.key];
   }
   if (isValidShortcutKey(code)) {
     parts.push(code);

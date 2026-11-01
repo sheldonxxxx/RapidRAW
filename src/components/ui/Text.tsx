@@ -1,12 +1,12 @@
-import React, { forwardRef } from 'react';
 import clsx from 'clsx';
+import React, { forwardRef } from 'react';
 import {
-  TextWeight,
-  TextColor,
-  VariantConfig,
-  TEXT_WEIGHT_KEYS,
   TEXT_COLOR_KEYS,
+  TEXT_WEIGHT_KEYS,
+  TextColor,
   TextVariants,
+  TextWeight,
+  VariantConfig,
 } from '../../types/typography';
 
 interface TextProps extends React.HTMLAttributes<HTMLElement> {

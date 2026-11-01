@@ -113,6 +113,7 @@ pub fn render_input(
         &context,
         &image,
         crate::gpu_processing::RenderRequest {
+            mask_cache_key: None,
             adjustments: controls,
             mask_bitmaps: &bitmaps,
             lut,
@@ -267,6 +268,7 @@ mod tests {
             }
         });
         let mut live = LoadedImage {
+            as_shot: crate::as_shot::AsShot::reference(),
             path: "first.png".into(),
             image: std::sync::Arc::new(DynamicImage::ImageRgb8(original)),
             is_raw: false,

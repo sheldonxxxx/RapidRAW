@@ -264,10 +264,13 @@ impl Request {
             .as_ref()
             .and_then(|s| s.models.clone())
             .ok_or("MODEL_NOT_INSTALLED: Subject model is not initialized")?;
-        let embeddings =
-            sam::canvas_embeddings(&canvas, &models.sam_encoder).map_err(|e| e.to_string())?;
+        let embeddings = sam::canvas_embeddings(
+            &canvas,
+            models.sam_encoder().map_err(|e| e.to_string())?.as_ref(),
+        )
+        .map_err(|e| e.to_string())?;
         let (bitmap, logits) = sam::run_prompted_decoder(
-            &models.sam_decoder,
+            models.sam_decoder().map_err(|e| e.to_string())?.as_ref(),
             &embeddings,
             &self.points,
             self.bbox,

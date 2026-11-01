@@ -1,9 +1,10 @@
-import { type ReactNode, type MouseEventHandler, type MouseEvent, useRef, useEffect, useState } from 'react';
-import { ChevronDown, Eye, EyeOff } from 'lucide-react';
 import clsx from 'clsx';
-import { useTranslation } from 'react-i18next';
-import Text from './Text';
+import { ChevronDown } from 'lucide-react';
+import { MouseEventHandler, ReactNode, useEffect, useRef, useState } from 'react';
+import { useCollapsibleHeight } from '../../hooks/useCollapsibleHeight';
 import { TextVariants, TextWeights } from '../../types/typography';
+import Text from './Text';
+import VisibilityToggle, { HIDDEN_CONTENT_CLASS } from './VisibilityToggle';
 
 interface CollapsibleSectionProps {
   canToggleVisibility?: boolean;
@@ -26,9 +27,7 @@ export default function CollapsibleSection({
   onToggleVisibility = () => {},
   title,
 }: CollapsibleSectionProps) {
-  const { t } = useTranslation();
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const { contentRef, wrapperRef } = useCollapsibleHeight(isOpen);
   const [isHovering, setIsHovering] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -73,11 +72,6 @@ export default function CollapsibleSection({
     setIsHovering(false);
   };
 
-  const handleVisibilityClick = (e: MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
-    onToggleVisibility();
-  };
-
   return (
     <div className="bg-surface rounded-lg overflow-hidden shrink-0" onContextMenu={onContextMenu}>
       <div
@@ -92,20 +86,14 @@ export default function CollapsibleSection({
           </Text>
           {canToggleVisibility && (
             <div className="w-6 h-6 flex items-center justify-center">
-              <button
+              <VisibilityToggle
                 className={clsx(
-                  'p-1 rounded-full text-text-secondary hover:bg-bg-primary z-10 transition-opacity duration-300',
+                  'z-10',
                   isHovering || !isContentVisible ? 'opacity-100' : 'opacity-0 pointer-events-none',
                 )}
-                onClick={handleVisibilityClick}
-                data-tooltip={
-                  isContentVisible
-                    ? t('ui.collapsibleSection.disableSection')
-                    : t('ui.collapsibleSection.enableSection')
-                }
-              >
-                {isContentVisible ? <Eye size={16} /> : <EyeOff size={16} />}
-              </button>
+                isVisible={isContentVisible}
+                onToggle={onToggleVisibility}
+              />
             </div>
           )}
         </div>
@@ -116,10 +104,7 @@ export default function CollapsibleSection({
       </div>
       <div ref={wrapperRef} className="overflow-hidden transition-all duration-300 ease-in-out">
         <div
-          className={clsx(
-            'px-4 pb-4 transition-opacity duration-300',
-            !isContentVisible && 'opacity-30 pointer-events-none',
-          )}
+          className={clsx('px-4 pb-4 transition-opacity duration-300', !isContentVisible && HIDDEN_CONTENT_CLASS)}
           ref={contentRef}
         >
           {children}

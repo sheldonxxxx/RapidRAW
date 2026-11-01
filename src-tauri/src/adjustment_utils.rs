@@ -241,13 +241,9 @@ pub fn apply_spatial_transformations<'a, I: IntoCowImage<'a>>(
     image: I,
     adjustments: &serde_json::Value,
 ) -> (Cow<'a, DynamicImage>, (f32, f32)) {
-    let orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
     let rotation_degrees = adjustments["rotation"].as_f64().unwrap_or(0.0) as f32;
-    let flip_horizontal = adjustments["flipHorizontal"].as_bool().unwrap_or(false);
-    let flip_vertical = adjustments["flipVertical"].as_bool().unwrap_or(false);
 
-    let coarse_rotated_image = apply_coarse_rotation(image.into_cow(), orientation_steps);
-    let flipped_image = apply_flip(coarse_rotated_image, flip_horizontal, flip_vertical);
+    let flipped_image = apply_orientation_and_flip(image, adjustments);
     let rotated_image = apply_rotation(flipped_image, rotation_degrees);
 
     let crop_data: Option<Crop> = serde_json::from_value(adjustments["crop"].clone()).ok();
@@ -337,7 +333,9 @@ pub fn apply_all_transformations<'a, I: IntoCowImage<'a>>(
     let image = image.into_cow();
 
     let warped_image = apply_geometry_warp(image, adjustments);
-    let blurred_image = crate::lens_blur::apply_lens_blur(warped_image, adjustments);
+    let relit_image = crate::relight::apply_relight(warped_image, adjustments);
+    let fogged_image = crate::fog::apply_fog(relit_image, adjustments);
+    let blurred_image = crate::lens_blur::apply_lens_blur(fogged_image, adjustments);
 
     let (cropped_image, unscaled_crop_offset) =
         apply_spatial_transformations(blurred_image, adjustments);
@@ -511,4 +509,38 @@ mod preview_asset_tests {
         hydrate_sub_masks(&mut masks, &mut cache).unwrap();
         assert!(masks[0]["parameters"]["maskDataBase64"].is_null());
     }
+}
+
+pub fn apply_orientation_and_flip<'a, I: IntoCowImage<'a>>(
+    image: I,
+    adjustments: &serde_json::Value,
+) -> Cow<'a, DynamicImage> {
+    let orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
+    let flip_horizontal = adjustments["flipHorizontal"].as_bool().unwrap_or(false);
+    let flip_vertical = adjustments["flipVertical"].as_bool().unwrap_or(false);
+
+    let coarse_rotated_image = apply_coarse_rotation(image.into_cow(), orientation_steps);
+    apply_flip(coarse_rotated_image, flip_horizontal, flip_vertical)
+}
+
+pub fn transformed_dimensions(
+    width: u32,
+    height: u32,
+    adjustments: &serde_json::Value,
+) -> (u32, u32) {
+    let orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
+    let (w, h) = if matches!(orientation_steps, 1 | 3) {
+        (height, width)
+    } else {
+        (width, height)
+    };
+
+    let crop: Option<Crop> = serde_json::from_value(adjustments["crop"].clone()).ok();
+    crop.and_then(|c| {
+        let (x, y) = (c.x.round() as u32, c.y.round() as u32);
+        let (crop_w, crop_h) = (c.width.round() as u32, c.height.round() as u32);
+        (crop_w > 0 && crop_h > 0 && x < w && y < h)
+            .then(|| ((w - x).min(crop_w), (h - y).min(crop_h)))
+    })
+    .unwrap_or((w, h))
 }

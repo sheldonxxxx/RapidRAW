@@ -1,15 +1,18 @@
 use crate::Cursor;
 use crate::app_settings::{AppSettings, load_settings};
 use crate::app_state::{AppState, LoadedImage};
+use crate::baseline_exposure::BaselineOptions;
 use crate::cache_utils::SourceRevision;
 use crate::exif_processing;
 use crate::file_management::{parse_virtual_path, read_file_mapped};
 use crate::formats::is_raw_file;
 use crate::image_processing::ImageMetadata;
 use crate::image_processing::{
-    apply_orientation, apply_srgb_to_linear, remove_raw_artifacts_and_enhance,
+    apply_orientation, apply_srgb_to_linear, effective_baseline_exposure,
+    remove_raw_artifacts_and_enhance,
 };
 use crate::mask_generation::{MaskDefinition, SubMask, generate_mask_bitmap};
+use crate::white_balance::WhiteBalance;
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use exif::{Reader as ExifReader, Tag};
@@ -18,6 +21,7 @@ use rawler::Orientation;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
 use std::panic;
@@ -39,6 +43,7 @@ pub struct LoadImageResult {
     pub metadata: ImageMetadata,
     pub exif: HashMap<String, String>,
     pub is_raw: bool,
+    pub as_shot_white_balance: WhiteBalance,
 }
 
 #[derive(Deserialize)]
@@ -78,11 +83,33 @@ pub fn load_and_composite(
 ) -> Result<DynamicImage> {
     let base_image =
         load_base_image_from_bytes(base_image, path, use_fast_raw_dev, settings, cancel_token)?;
-    composite_patches_on_image(&base_image, adjustments)
+    let prepared = match prepare_base_image_cow(&base_image, path, adjustments)? {
+        Cow::Owned(img) => Some(img),
+        Cow::Borrowed(_) => None,
+    };
+    Ok(prepared.unwrap_or(base_image))
+}
+
+pub fn prepare_base_image_cow<'a>(
+    base_image: &'a DynamicImage,
+    path: &str,
+    adjustments: &Value,
+) -> Result<Cow<'a, DynamicImage>> {
+    let has_patches = adjustments
+        .get("aiPatches")
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| !a.is_empty());
+
+    let denoised = crate::ai_denoise::apply_ai_denoise(base_image, path, adjustments);
+    match crate::negative_conversion::apply_negative_conversion(denoised, adjustments) {
+        Cow::Owned(prepared) if !has_patches => Ok(Cow::Owned(prepared)),
+        prepared => composite_patches_cow(prepared, adjustments),
+    }
 }
 
 /// Fast RAW development can return a half- or quarter-size image. Saved repair
 /// pixels and their offsets remain in full-size source coordinates.
+#[cfg(test)]
 pub fn load_and_composite_thumbnail(
     bytes: &[u8],
     path: &str,
@@ -111,13 +138,10 @@ pub fn load_base_image_from_bytes(
     cancel_token: Option<(Arc<AtomicUsize>, usize)>,
 ) -> Result<DynamicImage> {
     let linear_mode = settings.linear_raw_mode.clone();
-    let color_nr_setting = settings.raw_preprocessing_color_nr.unwrap_or(0.5);
-    let color_nr_amount = if color_nr_setting <= 0.0 {
-        0.0
-    } else {
-        let x = color_nr_setting.clamp(0.01, 1.0);
-        (12.0 / x - 10.0).max(0.1)
-    };
+    let color_nr_amount = settings
+        .raw_preprocessing_color_nr
+        .unwrap_or(0.5)
+        .clamp(0.0, 1.0);
     let sharpening_amount = settings.raw_preprocessing_sharpening.unwrap_or(0.35);
     let apply_to_non_raws = settings.apply_preprocessing_to_non_raws.unwrap_or(false);
 
@@ -126,6 +150,26 @@ pub fn load_base_image_from_bytes(
         path_for_ext_check,
         bytes,
     );
+
+    if is_raw_file(path_for_ext_check)
+        && !use_fast_raw_dev
+        && settings.use_apple_raw9.unwrap_or(false)
+    {
+        if let Some((tracker, generation)) = &cancel_token
+            && tracker.load(Ordering::SeqCst) != *generation
+        {
+            return Err(anyhow!("Load cancelled"));
+        }
+
+        match crate::apple_raw::develop_raw9(bytes, path_for_ext_check) {
+            Ok(image) => return Ok(image),
+            Err(e) => log::warn!(
+                "Apple RAW 9 unavailable for '{}', falling back to rawler: {}",
+                path_for_ext_check,
+                e
+            ),
+        }
+    }
 
     if is_raw_file(path_for_ext_check) {
         match panic::catch_unwind(move || {
@@ -326,24 +370,14 @@ fn largest_tiff_jpeg_preview(buf: &[u8]) -> Option<DynamicImage> {
     None
 }
 
-fn embedded_preview_fallback(bytes: &[u8], path: &str) -> Option<DynamicImage> {
-    let img = match largest_tiff_jpeg_preview(bytes) {
-        Some(img) => img,
-        None => rawler::analyze::extract_preview_pixels(
-            path,
-            &rawler::decoders::RawDecodeParams::default(),
-        )
-        .ok()?,
-    };
+pub fn tiff_embedded_preview(bytes: &[u8]) -> Option<DynamicImage> {
+    let img = largest_tiff_jpeg_preview(bytes)?;
 
-    let orientation = ExifReader::new()
-        .read_from_container(&mut Cursor::new(bytes))
-        .ok()
-        .and_then(|exif| {
-            exif.get_field(Tag::Orientation, exif::In::PRIMARY)?
-                .value
-                .get_uint(0)
-        });
+    let orientation = exif_processing::read_exif(bytes).and_then(|exif| {
+        exif.get_field(Tag::Orientation, exif::In::PRIMARY)?
+            .value
+            .get_uint(0)
+    });
 
     Some(match orientation {
         Some(o) if o > 1 => apply_orientation(img, Orientation::from_u16(o as u16)),
@@ -351,10 +385,12 @@ fn embedded_preview_fallback(bytes: &[u8], path: &str) -> Option<DynamicImage> {
     })
 }
 
-fn safe_embedded_preview_fallback(bytes: &[u8], path: &str) -> Option<DynamicImage> {
-    match panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        embedded_preview_fallback(bytes, path)
-    })) {
+fn embedded_preview_fallback(bytes: &[u8]) -> Option<DynamicImage> {
+    tiff_embedded_preview(bytes).or_else(|| crate::raw_processing::extract_embedded_preview(bytes))
+}
+
+pub fn safe_embedded_preview_fallback(bytes: &[u8], path: &str) -> Option<DynamicImage> {
+    match panic::catch_unwind(panic::AssertUnwindSafe(|| embedded_preview_fallback(bytes))) {
         Ok(preview) => preview,
         Err(_) => {
             log::warn!("Embedded RAW preview extraction panicked for '{}'", path);
@@ -419,11 +455,22 @@ pub fn load_image_with_orientation(
     Ok(DynamicImage::ImageRgb32F(oriented_image.to_rgb32f()))
 }
 
-pub fn composite_patches_on_image(
-    base_image: &DynamicImage,
-    current_adjustments: &Value,
-) -> Result<DynamicImage> {
-    composite_patches_on_image_at_scale(base_image, current_adjustments, 1.0)
+fn composite_patches_cow<'a>(
+    base_image: Cow<'a, DynamicImage>,
+    adjustments: &Value,
+) -> Result<Cow<'a, DynamicImage>> {
+    if adjustments
+        .get("aiPatches")
+        .and_then(Value::as_array)
+        .is_none_or(|v| v.is_empty())
+    {
+        return Ok(base_image);
+    }
+    Ok(Cow::Owned(composite_patches_on_image_at_scale(
+        &base_image,
+        adjustments,
+        1.0,
+    )?))
 }
 
 fn composite_patches_on_image_at_scale(
@@ -882,7 +929,11 @@ fn composite_patches_on_image_at_scale(
 }
 
 #[tauri::command]
-pub fn is_image_cached(path: String, state: tauri::State<'_, AppState>) -> bool {
+pub fn is_image_cached(
+    path: String,
+    state: tauri::State<'_, AppState>,
+    _app_handle: tauri::AppHandle,
+) -> bool {
     let (source_path, _) = parse_virtual_path(&path);
     let Ok(revision) = SourceRevision::read(&source_path) else {
         return false;
@@ -987,19 +1038,12 @@ pub(crate) async fn load_image_native(
             .gpu_image_cache
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .clear();
+            .take();
         *state
             .full_warped_cache
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = None;
-        *state
-            .full_transformed_cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner()) = None;
-        *state
-            .patched_warped_cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner()) = None;
+        crate::cache_utils::clear_preview_stage_caches(&state);
 
         state
             .mask_cache
@@ -1017,10 +1061,6 @@ pub(crate) async fn load_image_native(
             .unwrap_or_else(|e| e.into_inner())
             .clear();
 
-        *state
-            .denoise_result
-            .lock()
-            .unwrap_or_else(|e| e.into_inner()) = None;
         *state.hdr_result.lock().unwrap_or_else(|e| e.into_inner()) = None;
         *state
             .panorama_result
@@ -1035,9 +1075,12 @@ pub(crate) async fn load_image_native(
     let source_path_str = source_path.to_string_lossy().to_string();
     let source_revision = SourceRevision::read(&source_path)?;
 
+    crate::immich::ensure_local(&app_handle, &source_path).await?;
+
     let metadata: ImageMetadata = crate::exif_processing::load_sidecar(&sidecar_path);
 
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
+    let baseline_options = BaselineOptions::from_settings(&settings);
 
     let path_clone = source_path_str.clone();
 
@@ -1114,6 +1157,16 @@ pub(crate) async fn load_image_native(
     }
 
     let (orig_width, orig_height) = pristine_arc.dimensions();
+    let as_shot = crate::as_shot::as_shot(&source_path_str);
+    if is_raw {
+        log::info!(
+            "Baseline exposure for '{}': {:+.2} EV (DNG baseline {:+.2} EV, highlight preservation {:+.2} EV)",
+            source_path_str,
+            effective_baseline_exposure(&metadata.adjustments, as_shot, baseline_options),
+            as_shot.exposure.dng_baseline,
+            as_shot.exposure.highlight_preservation
+        );
+    }
 
     {
         let _session = state
@@ -1125,11 +1178,15 @@ pub(crate) async fn load_image_native(
             return Err("Image source changed during load; please try again".to_string());
         }
         *state.original_image.lock().unwrap() = Some(LoadedImage {
-            path,
+            as_shot,
+            path: path.clone(),
             image: pristine_arc,
             is_raw,
         });
     }
+
+    crate::viewer_window::sync_viewer_image(&app_handle, &path, (orig_width, orig_height), 1.0);
+    crate::ai_jobs::prioritize(&app_handle, &path);
 
     Ok(LoadImageResult {
         generation: my_generation,
@@ -1139,7 +1196,15 @@ pub(crate) async fn load_image_native(
         metadata,
         exif: exif_data,
         is_raw,
+        as_shot_white_balance: as_shot.white_balance,
     })
+}
+
+pub fn composite_patches_on_image(
+    base_image: &DynamicImage,
+    current_adjustments: &Value,
+) -> Result<DynamicImage> {
+    composite_patches_on_image_at_scale(base_image, current_adjustments, 1.0)
 }
 
 #[cfg(test)]

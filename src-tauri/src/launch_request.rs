@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
 use tauri::Emitter;
 
@@ -180,6 +180,27 @@ pub fn parse_launch_args(args: &[String]) -> LaunchRequest {
     }
 }
 
+pub fn resolve_gui_launch_paths(request: LaunchRequest, cwd: &Path) -> LaunchRequest {
+    let resolve = |path: String| {
+        if path.is_empty() || Path::new(&path).is_absolute() || !cwd.is_absolute() {
+            return path;
+        }
+        let joined = cwd.join(&path);
+        std::path::absolute(&joined)
+            .unwrap_or(joined)
+            .to_string_lossy()
+            .into_owned()
+    };
+    match request {
+        LaunchRequest::OpenFile(path) => LaunchRequest::OpenFile(resolve(path)),
+        LaunchRequest::EditSession(mut session) => {
+            session.source = resolve(session.source);
+            LaunchRequest::EditSession(session)
+        }
+        other => other,
+    }
+}
+
 fn handle_file_open(app_handle: &tauri::AppHandle, path: PathBuf) {
     if let Some(path_str) = path.to_str()
         && let Err(e) = app_handle.emit("open-with-file", path_str)
@@ -199,7 +220,7 @@ pub fn emit_launch_request(app_handle: &tauri::AppHandle, request: LaunchRequest
             handle_file_open(app_handle, PathBuf::from(path));
         }
         LaunchRequest::HeadlessExport(_) => {
-            println!(
+            cli_println!(
                 "Error: Headless export cannot be attached to an already running GUI instance."
             );
         }

@@ -1,5 +1,5 @@
 //! Controlled localhost transport faults. These test the real downloader, not MCP or inference.
-use super::{download_model, download_verified_model, verify_sha256};
+use super::{download_unverified_model, download_verified_model, verify_sha256};
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path, time::Duration};
 use tokio::{
@@ -57,7 +57,7 @@ async fn unavailable_network_does_not_publish_and_explicit_retry_succeeds() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}/offline", listener.local_addr().unwrap());
     drop(listener);
-    assert!(download_model(&url, &destination).await.is_err());
+    assert!(download_unverified_model(&url, &destination).await.is_err());
     assert!(!destination.exists());
     assert_explicit_retry(&destination).await;
 }

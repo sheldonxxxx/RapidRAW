@@ -1,7 +1,9 @@
-import type { ComponentType, ReactNode } from 'react';
-import { ExportPreset } from './ExportImportProperties';
+import { ComponentType, ReactNode } from 'react';
 import { Adjustments, CopyPasteSettings } from '../../utils/adjustments';
+import { WhiteBalance, WhiteBalanceMode } from '../../utils/whiteBalance';
+import { ImmichSettings } from '../immich/immichApi';
 import { ToolType } from '../panel/right/Masks';
+import { ExportPreset } from './ExportImportProperties';
 
 export const GLOBAL_KEYS = [
   ' ',
@@ -33,40 +35,50 @@ export const OPTION_SEPARATOR = 'separator';
 export enum Invokes {
   AddTagForPaths = 'add_tag_for_paths',
   ApplyAdjustments = 'apply_adjustments',
-  GetPreviewAssetCacheStatus = 'get_preview_asset_cache_status',
   ApplyAdjustmentsToPaths = 'apply_adjustments_to_paths',
   ApplyAutoAdjustmentsToPaths = 'apply_auto_adjustments_to_paths',
-  ApplyDenoising = 'apply_denoising',
+  ApplyAutoStraightenToPaths = 'apply_auto_straighten_to_paths',
   CalculateAutoAdjustments = 'calculate_auto_adjustments',
+  SampleWhiteBalance = 'sample_white_balance',
+  CalculateAutoStraighten = 'calculate_auto_straighten',
+  CancelAiTask = 'cancel_ai_task',
   CancelExport = 'cancel_export',
   CheckAIConnectorStatus = 'check_ai_connector_status',
   ClearAllSidecars = 'clear_all_sidecars',
   ClearAiTags = 'clear_ai_tags',
   ClearAllTags = 'clear_all_tags',
+  ClearAiDenoiseCache = 'clear_ai_denoise_cache',
   ClearThumbnailCache = 'clear_thumbnail_cache',
   CopyFiles = 'copy_files',
   CreateFolder = 'create_folder',
   CreateVirtualCopy = 'create_virtual_copy',
   CullImages = 'cull_images',
   DeleteFolder = 'delete_folder',
+  DiscardAiJobs = 'discard_ai_jobs',
   DuplicateFile = 'duplicate_file',
   EstimateExportSizes = 'estimate_export_sizes',
   ExportImages = 'export_images',
   FrontendLog = 'frontend_log',
   GenerateAiForegroundMask = 'generate_ai_foreground_mask',
   GenerateAiSkyMask = 'generate_ai_sky_mask',
+  GenerateAiTextMask = 'generate_ai_text_mask',
+  GenerateAiFaceMask = 'generate_ai_face_mask',
   GenerateAiSubjectMask = 'generate_ai_subject_mask',
   GeneratePreviewForPath = 'generate_preview_for_path',
   GenerateMaskOverlay = 'generate_mask_overlay',
   GeneratePresetPreview = 'generate_preset_preview',
-  GenerateComparisonPreview = 'generate_comparison_preview',
   GenerateUncroppedPreview = 'generate_uncropped_preview',
-  GetSourceRevision = 'get_source_revision',
+  GetStorageUsage = 'get_storage_usage',
+  ClearAiMapsCache = 'clear_ai_maps_cache',
+  ClearAiModels = 'clear_ai_models',
+  ClearImmichCache = 'clear_immich_cache',
+  ClearMetadataCache = 'clear_metadata_cache',
+  GetAiJobsStatus = 'get_ai_jobs_status',
   GetFolderTree = 'get_folder_tree',
-  GetAiConnectorCapabilities = 'get_ai_connector_capabilities',
   GetFolderChildren = 'get_folder_children',
   GetLogFilePath = 'get_log_file_path',
   GetOrCreateInternalLibraryRoot = 'get_or_create_internal_library_root',
+  GetPendingAiPaths = 'get_pending_ai_paths',
   GetPinnedFolderTrees = 'get_pinned_folder_trees',
   GetSupportedFileTypes = 'get_supported_file_types',
   HandleExportPresetsToFile = 'handle_export_presets_to_file',
@@ -83,29 +95,39 @@ export enum Invokes {
   LoadPresets = 'load_presets',
   LoadSettings = 'load_settings',
   MoveFiles = 'move_files',
-  PrefetchImages = 'prefetch_images',
   ReadExifForPaths = 'read_exif_for_paths',
   RemoveTagForPaths = 'remove_tag_for_paths',
   RenameFiles = 'rename_files',
   RenameFolder = 'rename_folder',
+  PauseAiJobs = 'pause_ai_jobs',
+  QueueAiJobs = 'queue_ai_jobs',
   ResetAdjustmentsForPaths = 'reset_adjustments_for_paths',
+  ResumeAiJobs = 'resume_ai_jobs',
+  RetryFailedAiJobs = 'retry_failed_ai_jobs',
   SaveMetadataAndUpdateThumbnail = 'save_metadata_and_update_thumbnail',
   SaveCollage = 'save_collage',
-  SaveDenoisedImage = 'save_denoised_image',
   SavePanorama = 'save_panorama',
   SaveHdr = 'save_hdr',
   SavePresets = 'save_presets',
   SaveSettings = 'save_settings',
   SetColorLabelForPaths = 'set_color_label_for_paths',
   SetRatingForPaths = 'set_rating_for_paths',
+  SetFlagForPaths = 'set_flag_for_paths',
   ShowInFinder = 'show_in_finder',
   StartBackgroundIndexing = 'start_background_indexing',
   StitchPanorama = 'stitch_panorama',
   StitchFocusStack = 'stitch_focus_stack',
+  SubscribeAnalytics = 'subscribe_analytics',
   SaveFocusStack = 'save_focus_stack',
   MergeHdr = 'merge_hdr',
   TestAIConnectorConnection = 'test_ai_connector_connection',
   UpdateWgpuTransform = 'update_wgpu_transform',
+  ReleaseOriginalPreview = 'release_original_preview',
+  OpenViewerWindow = 'open_viewer_window',
+  CloseViewerWindow = 'close_viewer_window',
+  SetViewerView = 'set_viewer_view',
+  GetViewerInfo = 'get_viewer_info',
+  GetViewerFrame = 'get_viewer_frame',
   UpdateExifFields = 'update_exif_fields',
   FetchCommunityPresets = 'fetch_community_presets',
   GenerateAllCommunityPreviews = 'generate_all_community_previews',
@@ -121,6 +143,14 @@ export enum Invokes {
   TetherSetSetting = 'tether_set_setting',
   TetherCapture = 'tether_capture',
   TetherGetPreview = 'tether_get_preview',
+
+  GetPreviewAssetCacheStatus = 'get_preview_asset_cache_status',
+  ApplyDenoising = 'apply_denoising',
+  GenerateComparisonPreview = 'generate_comparison_preview',
+  GetSourceRevision = 'get_source_revision',
+  GetAiConnectorCapabilities = 'get_ai_connector_capabilities',
+  PrefetchImages = 'prefetch_images',
+  SaveDenoisedImage = 'save_denoised_image',
 }
 
 export enum ExifOverlay {
@@ -188,51 +218,35 @@ export interface WorkspaceState {
   panelSwitcherPlacement: Record<PanelRegion, 'left' | 'right' | 'top' | 'bottom'>;
 }
 
+export interface CustomAspectRatio {
+  width: number;
+  height: number;
+}
+
 export type GroupPreference = 'jpeg' | 'raw';
 export type GroupingMode = 'off' | GroupPreference;
-
-export interface FolderState {
-  activeAlbumId?: string | null;
-  currentFolderPath?: string | null;
-  expandedFolders?: string[];
-  expandedAlbumGroups?: string[];
-}
-
-export interface MyLens {
-  maker: string;
-  model: string;
-}
-
-export interface DirectoryTree {
-  children: DirectoryTree[];
-  isDir: boolean;
-  name: string;
-  path: string;
-  imageCount?: number;
-  hasSubdirs?: boolean;
-  modified?: number;
-  created?: number;
-}
+export type CompareView = 'off' | 'vertical' | 'horizontal' | 'sideBySide';
+export type CompareMode = 'toggle' | Exclude<CompareView, 'off'>;
 
 export interface AppSettings {
-  marigoldDepthEnabled?: boolean;
-  marigoldSurfaceEnabled?: boolean;
+  useAppleRaw9?: boolean;
+  aiCacheLimitGb?: number;
+  aiMapsCacheLimitGb?: number;
+  thumbnailCacheLimitGb?: number;
   aiConnectorAddress?: string;
+  aiGpuAcceleration?: boolean;
   aiProvider?: string;
   decorations?: boolean;
   editorPreviewResolution?: number;
   smallThumbnailResolution?: number;
-  thumbnailWorkerThreads?: number;
-  imageCacheSize?: number;
-  rawPreprocessingColorNr?: number;
-  rawPreprocessingSharpening?: number;
-  applyPreprocessingToNonRaws?: boolean;
   mediumThumbnailResolution?: number;
   enableZoomHifi?: boolean;
   useFullDpiRendering?: boolean;
   highResZoomMultiplier?: number;
   enableLivePreviews?: boolean;
   livePreviewQuality?: string;
+  exportWorkerThreads?: number;
+  exportMemoryLimit?: number;
   enableAiTagging?: boolean;
   aiTagCount?: number;
   customAiTags?: string[];
@@ -247,11 +261,13 @@ export interface AppSettings {
   thumbnailSize?: ThumbnailSize;
   thumbnailAspectRatio?: ThumbnailAspectRatio;
   uiVisibility?: UiVisibility;
-  adjustmentVisibility?: { [key: string]: boolean };
+  rawHighlightCompression?: number;
   processingBackend?: string;
   linuxGpuOptimization?: boolean;
   exportPresets?: ExportPreset[];
   myLenses?: MyLens[];
+  customAspectRatios?: CustomAspectRatio[];
+  adjustmentLayout?: AdjustmentLayout;
   enableFolderImageCounts?: boolean;
   displayEditIcon?: boolean;
   linearRawMode?: string;
@@ -263,14 +279,21 @@ export interface AppSettings {
   useWgpuRenderer?: boolean;
   editorNeutralGreyBg?: boolean;
   canvasInputMode?: 'mouse' | 'trackpad';
+  compareMode?: CompareMode;
+  whiteBalanceMode?: WhiteBalanceMode;
   zoomSpeedMultiplier?: number;
   zoomPhotoToPixelClick?: boolean;
   keybinds?: { [action: string]: string[] };
+  enableBaselineExposure?: boolean;
+  baselineExposure?: number;
+  compensateHighlightPreservation?: boolean;
   tonemapperOverrideEnabled?: boolean;
   defaultRawTonemapper?: string;
   defaultNonRawTonemapper?: string;
   copyPasteSettings?: CopyPasteSettings;
   enableFocusMode?: boolean;
+  enableToolFocusMode?: boolean;
+  hideCollapsedPanels?: boolean;
   openTreeSections?: string[];
   folderIcons?: Record<string, string>;
   exifOverlay?: ExifOverlay;
@@ -285,6 +308,16 @@ export interface AppSettings {
   groupPreferredType?: GroupPreference; // legacy
   alwaysDecodeRawThumbnails?: boolean;
   workspace?: WorkspaceState;
+  immich?: ImmichSettings;
+
+  marigoldDepthEnabled?: boolean;
+  marigoldSurfaceEnabled?: boolean;
+  thumbnailWorkerThreads?: number;
+  imageCacheSize?: number;
+  rawPreprocessingColorNr?: number;
+  rawPreprocessingSharpening?: number;
+  applyPreprocessingToNonRaws?: boolean;
+  adjustmentVisibility?: { [key: string]: boolean };
 }
 
 export interface BrushSettings {
@@ -306,11 +339,52 @@ export const EditedStatus = {
 
 export type EditedStatus = (typeof EditedStatus)[keyof typeof EditedStatus];
 
+export const ImageFlag = {
+  Pick: 'pick',
+  Reject: 'reject',
+} as const;
+
+export type ImageFlag = (typeof ImageFlag)[keyof typeof ImageFlag];
+
+export const FlagStatus = {
+  All: 'all',
+  Picked: 'picked',
+  ExcludeRejected: 'excludeRejected',
+  Rejected: 'rejected',
+} as const;
+
+export type FlagStatus = (typeof FlagStatus)[keyof typeof FlagStatus];
+
+export type RatingOperator = 'gte' | 'eq' | 'lte';
+
+export const RATING_OPERATORS = {
+  lte: {
+    symbol: '≤',
+    next: 'eq',
+    labelKey: 'library.header.viewOptions.ratingOperator.lte',
+    suffixKey: 'library.filters.rating.andDownSuffix',
+  },
+  eq: {
+    symbol: '=',
+    next: 'gte',
+    labelKey: 'library.header.viewOptions.ratingOperator.eq',
+    suffixKey: 'library.filters.rating.onlySuffix',
+  },
+  gte: {
+    symbol: '≥',
+    next: 'lte',
+    labelKey: 'library.header.viewOptions.ratingOperator.gte',
+    suffixKey: 'library.filters.rating.andUpSuffix',
+  },
+} as const;
+
 export interface FilterCriteria {
   colors: Array<string>;
   rating: number;
+  ratingOperator?: RatingOperator;
   rawStatus: RawStatus;
   editedStatus?: EditedStatus;
+  flagStatus?: FlagStatus;
 }
 
 export interface Folder {
@@ -321,16 +395,20 @@ export interface Folder {
 }
 
 export interface ImageFile {
+  width?: number;
+  height?: number;
   is_edited: boolean;
   modified: number;
   path: string;
   rating: number;
+  flag: ImageFlag | null;
   tags: Array<string> | null;
   exif: { [key: string]: string } | null;
   is_virtual_copy: boolean;
   is_cloud_placeholder: boolean;
   is_raw: boolean;
   group_id: string | null;
+  needs_ai: boolean;
 }
 
 export interface Option {
@@ -342,8 +420,9 @@ export interface Option {
   onClick?(): void;
   onRightClick?(): void;
   submenu?: Option[];
-  renderContent?: (hideContextMenu: () => void) => ReactNode;
   type?: string;
+
+  renderContent?: (hideContextMenu: () => void) => ReactNode;
 }
 
 export enum Orientation {
@@ -362,34 +441,29 @@ export interface Preset {
 }
 
 export interface Progress {
-  stage?: string;
   completed?: number;
   current?: number;
   total: number;
-}
 
-export interface ImageMetadata {
-  version: number;
-  rating: number;
-  adjustments: Partial<Adjustments> | null;
-  tags?: string[] | null;
-  exif?: Record<string, string> | null;
+  stage?: string;
 }
 
 export interface SelectedImage {
+  asShotWhiteBalance?: WhiteBalance;
   exif: Record<string, string> | null;
   group_id?: string | null;
   height: number;
   isRaw: boolean;
   isReady: boolean;
   metadata?: ImageMetadata | null;
-  preserveCachedAdjustments?: boolean;
-  cachedSourceRevision?: string;
-  sourceRevision?: string;
   original_base64?: string;
   path: string;
   thumbnailUrl: string;
   width: number;
+
+  preserveCachedAdjustments?: boolean;
+  cachedSourceRevision?: string;
+  sourceRevision?: string;
 }
 
 export interface SortCriteria {
@@ -428,16 +502,34 @@ export interface UiVisibility {
   quickFilter?: boolean;
 }
 
+export interface CollapsibleSectionsState {
+  basic: boolean;
+  color: boolean;
+  curves: boolean;
+  details: boolean;
+  effects: boolean;
+}
+
+export interface AdjustmentLayout {
+  collapsedTools?: string[];
+  hiddenSections?: string[];
+  hiddenTools?: string[];
+  openSections?: Partial<CollapsibleSectionsState>;
+  sectionOrder?: string[];
+  toolOrder?: Record<string, string[]>;
+}
+
 export interface WaveformData {
-  blue: string;
-  green: string;
   height: number;
-  luma: string;
-  red: string;
-  rgb: string;
-  parade: string;
-  vectorscope: string;
+  luma: ImageBitmap | null;
+  rgb: ImageBitmap | null;
+  parade: ImageBitmap | null;
+  vectorscope: ImageBitmap | null;
   width: number;
+
+  blue?: string;
+  green?: string;
+  red?: string;
 }
 
 export interface CullingSettings {
@@ -468,11 +560,6 @@ export interface CullingSuggestions {
   failedPaths: string[];
 }
 
-export interface KeybindHandler {
-  shouldFire?: () => boolean;
-  execute: (event: KeyboardEvent) => void;
-}
-
 export type AlbumItem = Album | AlbumGroup;
 
 export interface Album {
@@ -489,4 +576,35 @@ export interface AlbumGroup {
   name: string;
   icon?: string;
   children: AlbumItem[];
+}
+
+export interface FolderState {
+  activeAlbumId?: string | null;
+  currentFolderPath?: string | null;
+  expandedFolders?: string[];
+  expandedAlbumGroups?: string[];
+}
+
+export interface MyLens {
+  maker: string;
+  model: string;
+}
+
+export interface DirectoryTree {
+  children: DirectoryTree[];
+  isDir: boolean;
+  name: string;
+  path: string;
+  imageCount?: number;
+  hasSubdirs?: boolean;
+  modified?: number;
+  created?: number;
+}
+
+export interface ImageMetadata {
+  version: number;
+  rating: number;
+  adjustments: Partial<Adjustments> | null;
+  tags?: string[] | null;
+  exif?: Record<string, string> | null;
 }

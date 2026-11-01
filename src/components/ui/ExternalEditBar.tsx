@@ -1,8 +1,8 @@
 import { Check, Loader } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-import Button from './Button';
 import { ExternalEditSession } from '../../store/useProcessStore';
+import Button from './Button';
 
 interface ExternalEditBarProps {
   session: ExternalEditSession;

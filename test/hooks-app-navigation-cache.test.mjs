@@ -1,3 +1,4 @@
+import { extendUpstreamBoundaries } from './fixtures/upstream-boundaries.mjs';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { build } from 'esbuild';
@@ -25,6 +26,7 @@ const stubs = {
   './useEditorActions':
     'export const debouncedSave = Object.assign(() => {}, {flush: () => {}, cancel: () => {}}); export const debouncedSetHistory = {cancel: () => {}};',
 };
+extendUpstreamBoundaries(stubs);
 const output = join(directory, 'navigation.mjs');
 await build({
   stdin: {

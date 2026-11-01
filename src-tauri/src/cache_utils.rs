@@ -136,38 +136,9 @@ pub fn calculate_geometry_hash(adjustments: &serde_json::Value) -> u64 {
 
 pub fn calculate_patched_warped_hash(adjustments: &serde_json::Value) -> u64 {
     let mut hasher = DefaultHasher::new();
-
     calculate_geometry_hash(adjustments).hash(&mut hasher);
-
-    let effects_visible = adjustments
-        .get("sectionVisibility")
-        .and_then(|v| v.get("effects"))
-        .and_then(|s| s.as_bool())
-        .unwrap_or(true);
-
-    let blur_enabled = effects_visible && adjustments["lensBlurEnabled"].as_bool().unwrap_or(false);
-    blur_enabled.hash(&mut hasher);
-
-    if blur_enabled {
-        let blur_keys = [
-            "lensBlurAmount",
-            "lensBlurDiffusion",
-            "lensBlurShape",
-            "lensBlurMinDepth",
-            "lensBlurMaxDepth",
-            "lensBlurMinFade",
-            "lensBlurMaxFade",
-            "lensBlurDepthMap",
-        ];
-
-        for key in blur_keys {
-            if let Some(val) = adjustments.get(key) {
-                key.hash(&mut hasher);
-                val.to_string().hash(&mut hasher);
-            }
-        }
-    }
-
+    calculate_patch_hash(adjustments).hash(&mut hasher);
+    calculate_effects_hash(adjustments).hash(&mut hasher);
     hasher.finish()
 }
 
@@ -609,7 +580,7 @@ pub fn clear_image_caches(state: tauri::State<AppState>) {
         decoded_cache.clear();
     }
     if let Ok(mut gpu_cache) = state.gpu_image_cache.lock() {
-        gpu_cache.clear();
+        gpu_cache.take();
     }
     if let Ok(mut preview_cache) = state.cached_preview.lock() {
         preview_cache.clear();
@@ -807,6 +778,7 @@ mod tests {
         let image = Arc::new(DynamicImage::ImageRgb32F(image::Rgb32FImage::new(2, 2)));
         let state = AppState::default();
         *state.original_image.lock().unwrap() = Some(crate::app_state::LoadedImage {
+            as_shot: crate::as_shot::AsShot::reference(),
             path: path.to_string_lossy().into_owned(),
             image: Arc::clone(&image),
             is_raw: false,
@@ -936,4 +908,198 @@ mod tests {
         changed["exposure"] = json!(1.0);
         assert_eq!(original, calculate_geometry_hash(&changed));
     }
+}
+
+pub fn calculate_effects_hash(adjustments: &serde_json::Value) -> u64 {
+    let mut hasher = DefaultHasher::new();
+
+    let blur_enabled =
+        crate::image_processing::is_effect_enabled(adjustments, "lensBlur", "lensBlurEnabled");
+    blur_enabled.hash(&mut hasher);
+
+    if blur_enabled {
+        hash_effect_keys(
+            adjustments,
+            &[
+                "lensBlurAmount",
+                "lensBlurDiffusion",
+                "lensBlurShape",
+                "lensBlurMinDepth",
+                "lensBlurMaxDepth",
+                "lensBlurMinFade",
+                "lensBlurMaxFade",
+                "lensBlurDepthMap",
+            ],
+            &mut hasher,
+        );
+    }
+
+    let relight_enabled =
+        crate::image_processing::is_effect_enabled(adjustments, "relight", "relightEnabled");
+    relight_enabled.hash(&mut hasher);
+
+    if relight_enabled {
+        hash_effect_keys(
+            adjustments,
+            &[
+                "relightLights",
+                "relightAmbient",
+                "relightSoftness",
+                "relightShine",
+                "relightShadows",
+                "relightShadowSoftness",
+                "relightNormalMap",
+            ],
+            &mut hasher,
+        );
+    }
+
+    let fog_enabled = crate::image_processing::is_effect_enabled(adjustments, "fog", "fogEnabled");
+    fog_enabled.hash(&mut hasher);
+
+    if fog_enabled {
+        hash_effect_keys(
+            adjustments,
+            &[
+                "fogAmount",
+                "fogStart",
+                "fogDensity",
+                "fogHeight",
+                "fogVariation",
+                "fogGlow",
+                "fogTemperature",
+                "fogTint",
+                "fogDepthMap",
+            ],
+            &mut hasher,
+        );
+        hash_orientation(adjustments, &mut hasher);
+    }
+
+    hasher.finish()
+}
+
+pub fn calculate_patch_hash(adjustments: &serde_json::Value) -> u64 {
+    let mut hasher = DefaultHasher::new();
+
+    adjustments["aiPatches"].to_string().hash(&mut hasher);
+    hash_ai_denoise(adjustments, &mut hasher);
+    hash_negative_conversion(adjustments, &mut hasher);
+
+    let uses_generated_masks = adjustments
+        .get("aiPatches")
+        .and_then(|v| v.as_array())
+        .is_some_and(|patches| {
+            patches.iter().any(|patch| {
+                patch
+                    .get("patchData")
+                    .and_then(|data| data.get("mask"))
+                    .and_then(|mask| mask.as_str())
+                    .is_none_or(|mask| mask.is_empty())
+            })
+        });
+    uses_generated_masks.hash(&mut hasher);
+
+    if uses_generated_masks {
+        hash_orientation(adjustments, &mut hasher);
+
+        for key in GEOMETRY_KEYS {
+            if let Some(val) = adjustments.get(key) {
+                key.hash(&mut hasher);
+                val.to_string().hash(&mut hasher);
+            }
+        }
+    }
+
+    hasher.finish()
+}
+
+fn hash_effect_keys(adjustments: &serde_json::Value, keys: &[&str], hasher: &mut DefaultHasher) {
+    for key in keys {
+        if let Some(val) = adjustments.get(*key) {
+            key.hash(hasher);
+            match val.as_str() {
+                Some(s) => s.hash(hasher),
+                None => val.to_string().hash(hasher),
+            }
+        }
+    }
+}
+
+fn hash_ai_denoise(adjustments: &serde_json::Value, hasher: &mut DefaultHasher) {
+    let enabled = crate::ai_denoise::is_enabled(adjustments);
+    enabled.hash(hasher);
+    if enabled {
+        hash_effect_keys(
+            adjustments,
+            &["aiDenoiseMethod", "aiDenoiseAmount", "aiDenoiseDetail"],
+            hasher,
+        );
+        crate::ai_denoise::cache_epoch().hash(hasher);
+    }
+}
+
+fn hash_negative_conversion(adjustments: &serde_json::Value, hasher: &mut DefaultHasher) {
+    let enabled = crate::negative_conversion::is_enabled(adjustments);
+    enabled.hash(hasher);
+    if enabled {
+        hash_effect_keys(adjustments, crate::negative_conversion::PARAM_KEYS, hasher);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DecodeFingerprint {
+    pub(crate) revision: SourceRevision,
+    settings: String,
+}
+impl DecodeFingerprint {
+    pub fn for_file(path: &Path, settings: &crate::app_settings::AppSettings) -> Option<Self> {
+        Some(Self {
+            revision: SourceRevision::read(path).ok()?,
+            settings: serde_json::to_string(settings).ok()?,
+        })
+    }
+}
+impl std::hash::Hash for DecodeFingerprint {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.revision.token().hash(state);
+        self.settings.hash(state);
+    }
+}
+pub fn clear_preview_stage_caches(state: &AppState) {
+    *state.patched_cache.lock().unwrap() = None;
+    *state.warped_cache.lock().unwrap() = None;
+    *state.working_cache.lock().unwrap() = None;
+    *state.effects_cache.lock().unwrap() = None;
+    *state.full_warped_cache.lock().unwrap() = None;
+    *state.full_transformed_cache.lock().unwrap() = None;
+}
+pub fn clear_preview_slot(state: &AppState, target: crate::app_state::PreviewTarget) {
+    match target {
+        crate::app_state::PreviewTarget::Editor => state.cached_preview.lock().unwrap().clear(),
+        crate::app_state::PreviewTarget::Viewer => {
+            state.viewer_cached_preview.lock().unwrap().take();
+        }
+    }
+    state.gpu_image_cache_for(target).lock().unwrap().take();
+}
+
+fn hash_orientation(adjustments: &serde_json::Value, hasher: &mut DefaultHasher) {
+    adjustments["orientationSteps"]
+        .as_u64()
+        .unwrap_or(0)
+        .hash(hasher);
+    adjustments["rotation"]
+        .as_f64()
+        .unwrap_or(0.0)
+        .to_bits()
+        .hash(hasher);
+    adjustments["flipHorizontal"]
+        .as_bool()
+        .unwrap_or(false)
+        .hash(hasher);
+    adjustments["flipVertical"]
+        .as_bool()
+        .unwrap_or(false)
+        .hash(hasher);
 }

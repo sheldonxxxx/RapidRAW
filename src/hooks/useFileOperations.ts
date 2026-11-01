@@ -1,16 +1,23 @@
-import { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
-import { useLibraryStore } from '../store/useLibraryStore';
-import { useEditorStore } from '../store/useEditorStore';
-import { useUIStore } from '../store/useUIStore';
-import { useProcessStore } from '../store/useProcessStore';
-import { useSettingsStore } from '../store/useSettingsStore';
-import { Invokes, ImageFile } from '../components/ui/AppProperties';
+import { ImageFile, ImageFlag, Invokes } from '../components/ui/AppProperties';
 import { Status } from '../components/ui/ExportImportProperties';
+import { useEditorStore } from '../store/useEditorStore';
+import { useLibraryStore } from '../store/useLibraryStore';
+import { JobKind, useProcessStore } from '../store/useProcessStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useUIStore } from '../store/useUIStore';
+import { ImportSettings } from './hookTypes';
 
-import type { ImportSettings } from './hookTypes';
+export const transferFiles = (kind: JobKind.Copy | JobKind.Move, sourcePaths: string[], destinationFolder: string) =>
+  useProcessStore
+    .getState()
+    .runJob(kind, { progress: { total: sourcePaths.length }, detail: destinationFolder }, () =>
+      invoke(kind === JobKind.Copy ? Invokes.CopyFiles : Invokes.MoveFiles, { sourcePaths, destinationFolder }),
+    );
 
 export function useFileOperations(
   refreshImageList: () => Promise<void>,
@@ -19,6 +26,8 @@ export function useFileOperations(
   handleBackToLibrary: () => void,
   sortedImageList: ImageFile[],
 ) {
+  const { t } = useTranslation();
+
   const getParentDir = (filePath: string): string => {
     const separator = filePath.includes('/') ? '/' : '\\';
     const lastSeparatorIndex = filePath.lastIndexOf(separator);
@@ -147,6 +156,37 @@ export function useFileOperations(
       },
     });
   }, [executeDelete]);
+
+  const handleDeleteRejected = useCallback(() => {
+    const { imageList } = useLibraryStore.getState();
+    const rejectedPaths = imageList.filter((image) => image.flag === ImageFlag.Reject).map((image) => image.path);
+
+    if (rejectedPaths.length === 0) {
+      toast.info(t('library.reject.noneToDelete'));
+      return;
+    }
+
+    const rejectedSet = new Set(rejectedPaths);
+    const affectedCopyCount = imageList.filter(
+      (image) =>
+        image.path.includes('?vc=') && !rejectedSet.has(image.path) && rejectedSet.has(image.path.split('?vc=')[0]),
+    ).length;
+    const deleteMessage = t('library.reject.deleteMessage', { count: rejectedPaths.length });
+
+    useUIStore.getState().setUI({
+      confirmModalState: {
+        confirmText: t('library.reject.deleteConfirm'),
+        confirmVariant: 'destructive',
+        isOpen: true,
+        message:
+          affectedCopyCount > 0
+            ? `${deleteMessage}\n\n${t('library.reject.virtualCopiesWarning', { count: affectedCopyCount })}`
+            : deleteMessage,
+        onConfirm: () => executeDelete(rejectedPaths, { includeAssociated: false }),
+        title: t('library.reject.deleteTitle'),
+      },
+    });
+  }, [executeDelete, t]);
 
   const handleCreateFolder = useCallback(
     async (folderName: string) => {
@@ -389,9 +429,9 @@ export function useFileOperations(
 
       try {
         if (mode === 'copy') {
-          await invoke(Invokes.CopyFiles, { sourcePaths: copiedFilePaths, destinationFolder: currentFolderPath });
+          await transferFiles(JobKind.Copy, copiedFilePaths, currentFolderPath);
         } else {
-          await invoke(Invokes.MoveFiles, { sourcePaths: copiedFilePaths, destinationFolder: currentFolderPath });
+          await transferFiles(JobKind.Move, copiedFilePaths, currentFolderPath);
           setProcess({ copiedFilePaths: [] });
           setLibrary({ multiSelectedPaths: [] });
           await refreshAllFolderTrees();
@@ -407,6 +447,7 @@ export function useFileOperations(
   return {
     executeDelete,
     handleDeleteSelected,
+    handleDeleteRejected,
     handleCreateFolder,
     handleRenameFolder,
     handleSaveRename,

@@ -275,7 +275,10 @@ impl Bridge {
             }
             "auto_adjust" => {
                 let suggestions = crate::image_processing::calculate_auto_adjustments(
+                    session.current().adjustments.clone(),
+                    None,
                     self.handle.state::<AppState>(),
+                    self.handle.clone(),
                 )?;
                 if !flag(&params, "apply", false)? {
                     return Ok(
@@ -614,7 +617,7 @@ fn clear_closed_session_preview(state: &AppState, working_path: &str) -> bool {
     crate::mask_generation::clear_component_mask_cache();
     *state.original_image.lock().unwrap() = None;
     state.cached_preview.lock().unwrap().clear();
-    state.gpu_image_cache.lock().unwrap().clear();
+    state.gpu_image_cache.lock().unwrap().take();
     *state.full_warped_cache.lock().unwrap() = None;
     *state.patched_warped_cache.lock().unwrap() = None;
     *state.full_transformed_cache.lock().unwrap() = None;
@@ -799,6 +802,7 @@ mod tests {
         };
         state.register_preview_intent(old_preview).unwrap();
         *state.original_image.lock().unwrap() = Some(LoadedImage {
+            as_shot: crate::as_shot::AsShot::reference(),
             path: "closed-photo".into(),
             image: Arc::new(DynamicImage::new_rgb8(2, 2)),
             is_raw: false,
@@ -814,6 +818,7 @@ mod tests {
         assert!(state.ensure_preview_identity(old_preview).is_err());
 
         *state.original_image.lock().unwrap() = Some(LoadedImage {
+            as_shot: crate::as_shot::AsShot::reference(),
             path: "other-photo".into(),
             image: Arc::new(DynamicImage::new_rgb8(2, 2)),
             is_raw: false,

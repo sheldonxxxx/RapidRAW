@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
-import Text from '../ui/Text';
+import { motion } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TextVariants } from '../../types/typography';
-import Switch from '../ui/Switch';
-import { Preset } from '../ui/AppProperties';
 import { ADJUSTMENT_GROUPS } from '../../utils/adjustments';
+import { Preset } from '../ui/AppProperties';
+import Switch from '../ui/Switch';
+import Text from '../ui/Text';
 
 interface ConfigurePresetModalProps {
   isOpen: boolean;

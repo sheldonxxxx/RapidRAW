@@ -1,5 +1,5 @@
-import type { Adjustments, AiPatch, Coord, MaskContainer } from './adjustments';
 import type { MaskLine, MaskParameters, SubMask } from '../components/panel/right/Masks';
+import type { Adjustments, AiPatch, Coord, MaskContainer } from './adjustments';
 
 type SpatialState = Pick<Adjustments, 'rotation' | 'orientationSteps' | 'flipHorizontal' | 'flipVertical'>;
 

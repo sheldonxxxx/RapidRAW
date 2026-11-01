@@ -1,66 +1,99 @@
-import type { Progress } from '../../ui/AppProperties';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { invoke } from '@tauri-apps/api/core';
 import clsx from 'clsx';
+import { AnimatePresence, motion } from 'framer-motion';
+import { TFunction } from 'i18next';
 import {
-  Search,
-  Loader2,
-  X,
-  SlidersHorizontal,
+  AlertTriangle,
+  Ban,
   Check,
-  Star as StarIcon,
-  ChevronUp,
   ChevronDown,
+  ChevronUp,
+  CircleCheck,
+  CircleDashed,
+  Copy,
+  Download,
+  FileOutput,
+  FolderInput,
+  FolderSymlink,
   HelpCircle,
+  Inbox,
+  ListX,
+  Loader2,
+  LucideIcon,
+  Pause,
+  Play,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  Star as StarIcon,
+  Tags,
+  X,
 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'react-toastify';
 import { useShallow } from 'zustand/react/shallow';
+import { ADVANCED_QUERY_REGEX } from '../../../hooks/useSortedLibrary';
 import { useLibraryStore } from '../../../store/useLibraryStore';
-import {
-  FilterCriteria,
-  RawStatus,
-  EditedStatus,
-  LibraryViewMode,
-  SortCriteria,
-  SortDirection,
-  ExifOverlay,
-  GroupingMode,
-  ThumbnailSize,
-  ThumbnailAspectRatio,
-} from '../../ui/AppProperties';
-import { COLOR_LABELS } from '../../../utils/adjustments';
-import Text from '../../ui/Text';
-import { TextColors, TextVariants, TextWeights, TEXT_COLOR_KEYS } from '../../../types/typography';
-import Button from '../../ui/Button';
-import Switch from '../../ui/Switch';
-import Dropdown from '../../ui/Dropdown';
+import { isJobActive, Job, JobKind, JobStatus, useProcessStore } from '../../../store/useProcessStore';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 import { useUIStore } from '../../../store/useUIStore';
-import { ADVANCED_QUERY_REGEX } from '../../../hooks/useSortedLibrary';
+import { TEXT_COLOR_KEYS, TextColor, TextColors, TextVariants, TextWeights } from '../../../types/typography';
+import { Color, COLOR_LABELS } from '../../../utils/adjustments';
+import {
+  EditedStatus,
+  ExifOverlay,
+  FilterCriteria,
+  FlagStatus,
+  GroupingMode,
+  Invokes,
+  LibraryViewMode,
+  Progress,
+  RATING_OPERATORS,
+  RawStatus,
+  SortCriteria,
+  SortDirection,
+  ThumbnailAspectRatio,
+  ThumbnailSize,
+} from '../../ui/AppProperties';
+import Button from '../../ui/Button';
+import Dropdown from '../../ui/Dropdown';
+import Switch from '../../ui/Switch';
+import Text from '../../ui/Text';
 
 function DropdownMenu({
   buttonContent,
   buttonTitle,
   children,
   contentClassName = 'w-56',
+  onOpenChange,
 }: {
   buttonContent: React.ReactNode;
-  buttonTitle: string;
+  buttonTitle?: string;
   children: React.ReactNode;
   contentClassName?: string;
+  onOpenChange?(open: boolean): void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  const setOpen = useCallback((open: boolean) => {
+    setIsOpen(open);
+    onOpenChangeRef.current?.(open);
+  }, []);
 
   useEffect(() => {
+    if (!isOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && event.target instanceof Node && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen, setOpen]);
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -68,7 +101,7 @@ function DropdownMenu({
         aria-expanded={isOpen}
         aria-haspopup="true"
         className="h-12 w-12 bg-surface text-text-primary shadow-none p-0 flex items-center justify-center"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setOpen(!isOpen)}
         data-tooltip={buttonTitle}
       >
         {buttonContent}
@@ -158,11 +191,16 @@ const RatingSegmentedSwitch = ({
   rating,
   onChange,
   ratingFilterOptions,
+  operator,
+  onOperatorChange,
 }: {
   rating: number;
-  onChange(rating: number): void;
+  onChange(value: number): void;
   ratingFilterOptions: { value: number; label: string }[];
+  operator: string;
+  onOperatorChange(operator: string): void;
 }) => {
+  const { t } = useTranslation();
   const [bubbleStyle, setBubbleStyle] = useState({});
   const isInitialAnimation = useRef(true);
 
@@ -186,76 +224,87 @@ const RatingSegmentedSwitch = ({
     }
   }, [activeIndex]);
 
+  const op = RATING_OPERATORS[operator as keyof typeof RATING_OPERATORS] ?? RATING_OPERATORS.gte;
+
   return (
-    <div className="w-full bg-bg-primary p-1 rounded-md">
-      <div className="relative flex w-full">
-        <motion.div
-          className="absolute top-0 bottom-0 left-0 z-0 bg-card-active shadow-xs"
-          style={{ borderRadius: 6 }}
-          animate={bubbleStyle}
-          initial={false}
-          transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
-        />
+    <div className="flex w-full items-stretch gap-1">
+      <div className="flex-1 min-w-0 bg-bg-primary p-1 rounded-md">
+        <div className="relative flex w-full">
+          <motion.div
+            className="absolute top-0 bottom-0 left-0 z-0 bg-card-active shadow-xs"
+            style={{ borderRadius: 6 }}
+            animate={bubbleStyle}
+            initial={false}
+            transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+          />
 
-        <button
-          onClick={() => onChange(0)}
-          className={clsx(
-            'relative flex-1 flex items-center justify-center px-1 py-1.5 text-xs rounded-md transition-colors truncate',
-            activeIndex === 0 ? 'text-text-primary font-semibold' : 'text-text-secondary hover:text-text-primary',
-          )}
-        >
-          <span className="relative z-10">{ratingFilterOptions.find((o) => o.value === 0)?.label || 'All'}</span>
-        </button>
+          <button
+            onClick={() => onChange(0)}
+            className={clsx(
+              'relative flex-1 flex items-center justify-center px-1 py-1.5 text-xs rounded-md transition-colors truncate',
+              activeIndex === 0 ? 'text-text-primary font-semibold' : 'text-text-secondary hover:text-text-primary',
+            )}
+          >
+            <span className="relative z-10">{ratingFilterOptions.find((o) => o.value === 0)?.label || 'All'}</span>
+          </button>
 
-        <button
-          onClick={() => onChange(-1)}
-          className={clsx(
-            'relative flex-1 flex items-center justify-center px-1 py-1.5 text-xs rounded-md transition-colors truncate',
-            activeIndex === 1 ? 'text-text-primary font-semibold' : 'text-text-secondary hover:text-text-primary',
-          )}
-        >
-          <span className="relative z-10">{ratingFilterOptions.find((o) => o.value === -1)?.label || 'Unrated'}</span>
-        </button>
+          <button
+            onClick={() => onChange(-1)}
+            className={clsx(
+              'relative flex-1 flex items-center justify-center px-1 py-1.5 text-xs rounded-md transition-colors truncate',
+              activeIndex === 1 ? 'text-text-primary font-semibold' : 'text-text-secondary hover:text-text-primary',
+            )}
+          >
+            <span className="relative z-10">{ratingFilterOptions.find((o) => o.value === -1)?.label || 'Unrated'}</span>
+          </button>
 
-        <div
-          className={clsx(
-            'relative flex-1 flex items-center justify-center gap-0.5 px-1 py-1.5 transition-colors',
-            activeIndex === 2 ? 'text-text-primary' : 'text-text-secondary',
-          )}
-        >
-          <div className="flex items-center z-10">
-            {[...Array(5)].map((_, index) => {
-              const starValue = index + 1;
-              const isFilled = rating > 0 && starValue <= rating;
-              const optionLabel = ratingFilterOptions.find((o) => o.value === starValue)?.label;
+          <div
+            className={clsx(
+              'relative flex-1 flex items-center justify-center gap-0.5 px-1 py-1.5 transition-colors',
+              activeIndex === 2 ? 'text-text-primary' : 'text-text-secondary',
+            )}
+          >
+            <div className="flex items-center z-10">
+              {[...Array(5)].map((_, index) => {
+                const starValue = index + 1;
+                const isFilled = rating > 0 && starValue <= rating;
+                const optionLabel = `${starValue} ${t(op.suffixKey)}`;
 
-              return (
-                <button
-                  key={starValue}
-                  data-tooltip={optionLabel}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onChange(rating === starValue ? 0 : starValue);
-                  }}
-                  className="focus:outline-hidden transition-transform hover:scale-110 flex items-center justify-center p-0.5"
-                >
-                  <StarIcon
-                    size={14}
-                    className={`transition-colors duration-150 ${
-                      isFilled ? 'text-accent fill-accent' : 'text-text-secondary hover:text-accent'
-                    }`}
-                  />
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={starValue}
+                    data-tooltip={optionLabel}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onChange(rating === starValue ? 0 : starValue);
+                    }}
+                    className="focus:outline-hidden transition-transform hover:scale-110 flex items-center justify-center p-0.5"
+                  >
+                    <StarIcon
+                      size={14}
+                      className={`transition-colors duration-150 ${
+                        isFilled ? 'text-accent fill-accent' : 'text-text-secondary hover:text-accent'
+                      }`}
+                    />
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
+      <button
+        onClick={() => onOperatorChange(op.next)}
+        data-tooltip={t(op.labelKey)}
+        className="w-8 shrink-0 flex items-center justify-center rounded-md bg-bg-primary text-sm font-semibold text-text-primary hover:bg-card-active transition-colors"
+      >
+        {op.symbol}
+      </button>
     </div>
   );
 };
 
-export function SearchInput({ indexingProgress, isIndexing }: { indexingProgress: Progress; isIndexing: boolean }) {
+export function SearchInput({ indexingProgress, isIndexing }: { indexingProgress?: Progress; isIndexing: boolean }) {
   const { t } = useTranslation();
   const { searchCriteria, setSearchCriteria } = useLibraryStore(
     useShallow((state) => ({ searchCriteria: state.searchCriteria, setSearchCriteria: state.setSearchCriteria })),
@@ -285,13 +334,7 @@ export function SearchInput({ indexingProgress, isIndexing }: { indexingProgress
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        containerRef.current &&
-        event.target instanceof Node &&
-        !containerRef.current.contains(event.target) &&
-        tags.length === 0 &&
-        !text
-      ) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node) && tags.length === 0 && !text) {
         setIsSearchActive(false);
       }
     }
@@ -357,7 +400,7 @@ export function SearchInput({ indexingProgress, isIndexing }: { indexingProgress
 
   const isActive = isSearchActive || tags.length > 0 || !!text;
   const placeholderText =
-    isIndexing && indexingProgress.total > 0
+    isIndexing && indexingProgress && indexingProgress.total > 0
       ? t('library.header.search.indexingProgress', {
           current: indexingProgress.current,
           total: indexingProgress.total,
@@ -509,6 +552,7 @@ interface ViewOptionsDropdownProps {
   ratingFilterOptions: Array<{ value: number; label: string }>;
   rawStatusOptions: Array<{ key: RawStatus; label: string }>;
   editedStatusOptions: Array<{ key: EditedStatus; label: string }>;
+  flagStatusOptions: Array<{ key: FlagStatus; label: string }>;
   sortOptions: Array<{ key: string; label: string; disabled?: boolean }>;
 }
 
@@ -525,6 +569,7 @@ export function ViewOptionsDropdown({
   ratingFilterOptions,
   rawStatusOptions,
   editedStatusOptions,
+  flagStatusOptions,
   sortOptions,
 }: ViewOptionsDropdownProps) {
   const { t } = useTranslation();
@@ -551,10 +596,11 @@ export function ViewOptionsDropdown({
     filterCriteria.rating !== 0 ||
     (filterCriteria.rawStatus && filterCriteria.rawStatus !== RawStatus.All) ||
     (filterCriteria.editedStatus && filterCriteria.editedStatus !== EditedStatus.All) ||
+    (filterCriteria.flagStatus && filterCriteria.flagStatus !== FlagStatus.All) ||
     (filterCriteria.colors && filterCriteria.colors.length > 0);
 
   const [lastClickedColor, setLastClickedColor] = useState<string | null>(null);
-  const allColors = useMemo(() => [...COLOR_LABELS, { name: 'none' as const, color: '#9ca3af' }], []);
+  const allColors = useMemo(() => [...COLOR_LABELS, { name: 'none', color: '#9ca3af' }], []);
 
   const metadataOptions = useMemo(
     () => [
@@ -576,7 +622,7 @@ export function ViewOptionsDropdown({
       if (lastIndex !== -1 && currentIndex !== -1) {
         const start = Math.min(lastIndex, currentIndex);
         const end = Math.max(lastIndex, currentIndex);
-        const range = allColors.slice(start, end + 1).map((c) => c.name);
+        const range = allColors.slice(start, end + 1).map((c: Color) => c.name);
         const baseSelection = isCtrlPressed ? currentColors : [lastClickedColor];
         const newColors = Array.from(new Set([...baseSelection, ...range]));
         setFilterCriteria((prev: FilterCriteria) => ({ ...prev, colors: newColors }));
@@ -704,6 +750,10 @@ export function ViewOptionsDropdown({
             <div className="px-3 mt-1">
               <RatingSegmentedSwitch
                 rating={filterCriteria.rating}
+                operator={filterCriteria.ratingOperator ?? 'gte'}
+                onOperatorChange={(op: 'gte' | 'eq' | 'lte') =>
+                  setFilterCriteria((prev: FilterCriteria) => ({ ...prev, ratingOperator: op }))
+                }
                 onChange={(val: number) => setFilterCriteria((prev: FilterCriteria) => ({ ...prev, rating: val }))}
                 ratingFilterOptions={ratingFilterOptions}
               />
@@ -732,6 +782,19 @@ export function ViewOptionsDropdown({
                 options={editedStatusOptions.map((o) => ({ id: o.key, label: o.label }))}
                 value={filterCriteria.editedStatus || EditedStatus.All}
                 onChange={(val) => setFilterCriteria((prev: FilterCriteria) => ({ ...prev, editedStatus: val }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Text as="div" variant={TextVariants.small} weight={TextWeights.semibold} className="px-3 py-1 uppercase">
+              {t('library.header.viewOptions.filterByFlag')}
+            </Text>
+            <div className="px-3 mt-1">
+              <SegmentedSwitch
+                options={flagStatusOptions.map((o) => ({ id: o.key, label: o.label }))}
+                value={filterCriteria.flagStatus || FlagStatus.All}
+                onChange={(val) => setFilterCriteria((prev: FilterCriteria) => ({ ...prev, flagStatus: val }))}
               />
             </div>
           </div>
@@ -796,7 +859,7 @@ export function ViewOptionsDropdown({
               {t('library.header.viewOptions.filterByColorLabel')}
             </Text>
             <div className="flex flex-wrap gap-2.5 px-3 py-1.5">
-              {allColors.map((color) => {
+              {allColors.map((color: Color) => {
                 const isSelected = (filterCriteria.colors || []).includes(color.name);
                 const title =
                   color.name === 'none'
@@ -826,6 +889,557 @@ export function ViewOptionsDropdown({
             </div>
           </div>
         </div>
+      </div>
+    </DropdownMenu>
+  );
+}
+
+const fileName = (path: string) => path.split('?vc=')[0].split(/[\\/]/).pop() ?? path;
+
+const MAX_LISTED_AI_JOBS = 50;
+const AI_JOB_ICON_BUTTON_CLASS =
+  'shrink-0 p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-primary transition-colors';
+
+const AI_JOB_COLLAPSE_ANIMATION = {
+  initial: { opacity: 0, height: 0 },
+  animate: { opacity: 1, height: 'auto' },
+  exit: { opacity: 0, height: 0 },
+  transition: { duration: 0.2, ease: 'easeOut' },
+} as const;
+
+function AiJobRow({ path, active, children }: { path: string; active?: boolean; children?: React.ReactNode }) {
+  return (
+    <motion.div className="overflow-hidden shrink-0" {...AI_JOB_COLLAPSE_ANIMATION}>
+      <div className="px-1 py-0.5">
+        <div
+          className={clsx('px-3 py-2 rounded-md flex items-center gap-3 transition-colors', active && 'bg-bg-primary')}
+          data-tooltip={path}
+        >
+          <Text
+            as="span"
+            color={active ? TextColors.primary : TextColors.secondary}
+            className="flex-1 min-w-0 truncate"
+          >
+            {fileName(path)}
+          </Text>
+          <div className="shrink-0 w-20 flex justify-end">{children}</div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+const ICON_SWAP_ANIMATION = {
+  initial: { opacity: 0, scale: 0.5 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.5 },
+  transition: { duration: 0.15 },
+} as const;
+
+const JOB_KINDS_WITH_FOLDER = [JobKind.Copy, JobKind.Import, JobKind.Move];
+
+const JOB_ICONS: Record<JobKind, LucideIcon> = {
+  [JobKind.AiTagging]: Tags,
+  [JobKind.Copy]: Copy,
+  [JobKind.Export]: FileOutput,
+  [JobKind.Import]: FolderInput,
+  [JobKind.ModelDownload]: Download,
+  [JobKind.Move]: FolderSymlink,
+};
+
+const progressFraction = ({ current = 0, total }: Progress) => (total > 0 ? Math.min(current / total, 1) : 0);
+
+const hasStepProgress = ({ current, total }: Progress) => current !== undefined && total > 0;
+
+const formatJobAmount = (job: Job, t: TFunction, language: string) =>
+  job.kind === JobKind.ModelDownload
+    ? new Intl.NumberFormat(language, { style: 'unit', unit: 'megabyte', maximumFractionDigits: 0 }).format(
+        job.progress.total / 1_000_000,
+      )
+    : t('library.jobs.images', { count: job.progress.total });
+
+const formatJobProgress = (job: Job, t: TFunction, language: string) =>
+  job.kind === JobKind.ModelDownload
+    ? new Intl.NumberFormat(language, { style: 'percent' }).format(progressFraction(job.progress))
+    : t('library.aiJobs.progress', { current: job.progress.current ?? 0, total: job.progress.total });
+
+const formatRelativeTime = (timestamp: number, language: string) => {
+  const format = new Intl.RelativeTimeFormat(language, { numeric: 'auto' });
+  const seconds = Math.round((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return format.format(0, 'second');
+  if (seconds < 3600) return format.format(-Math.floor(seconds / 60), 'minute');
+  if (seconds < 86400) return format.format(-Math.floor(seconds / 3600), 'hour');
+  return format.format(-Math.floor(seconds / 86400), 'day');
+};
+
+function ProgressBar({ fraction }: { fraction: number }) {
+  return (
+    <div className="flex-1 h-1 rounded-full bg-bg-primary overflow-hidden">
+      <div
+        className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
+        style={{ width: `${fraction * 100}%` }}
+      />
+    </div>
+  );
+}
+
+function ProgressRing({ fraction }: { fraction: number }) {
+  const circumference = 2 * Math.PI * 8;
+  return (
+    <svg className="w-5 h-5 -rotate-90" viewBox="0 0 20 20">
+      <circle cx="10" cy="10" r="8" fill="none" strokeWidth="2.5" stroke="currentColor" className="opacity-20" />
+      <circle
+        cx="10"
+        cy="10"
+        r="8"
+        fill="none"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        stroke="currentColor"
+        className="text-accent transition-[stroke-dashoffset] duration-300 ease-out"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - fraction)}
+      />
+    </svg>
+  );
+}
+
+function SectionTitle({ children, color }: { children: React.ReactNode; color?: TextColor }) {
+  return (
+    <Text
+      as="div"
+      variant={TextVariants.small}
+      weight={TextWeights.semibold}
+      color={color}
+      className="flex-1 truncate uppercase"
+    >
+      {children}
+    </Text>
+  );
+}
+
+function JobProgressCount({ job }: { job: Job }) {
+  const { t, i18n } = useTranslation();
+  return (
+    <Text as="span" variant={TextVariants.small} color={TextColors.secondary} className="tabular-nums">
+      {formatJobProgress(job, t, i18n.language)}
+    </Text>
+  );
+}
+
+function JobAction({ job }: { job: Job }) {
+  const { t } = useTranslation();
+
+  switch (job.status) {
+    case JobStatus.Running:
+      if (job.kind === JobKind.Export) {
+        return (
+          <>
+            <button
+              className={AI_JOB_ICON_BUTTON_CLASS}
+              onClick={() => invoke(Invokes.CancelExport)}
+              data-tooltip={t('library.jobs.cancel')}
+            >
+              <X size={16} />
+            </button>
+            {hasStepProgress(job.progress) && <JobProgressCount job={job} />}
+          </>
+        );
+      }
+      return hasStepProgress(job.progress) ? (
+        <JobProgressCount job={job} />
+      ) : (
+        <Loader2 size={14} className="animate-spin text-text-secondary" />
+      );
+    case JobStatus.Cancelling:
+      return <Loader2 size={14} className="animate-spin text-text-secondary" />;
+    case JobStatus.Success:
+      return <CircleCheck size={14} className="text-green-400" />;
+    case JobStatus.Error:
+      return <AlertTriangle size={14} className="text-red-400" />;
+    case JobStatus.Cancelled:
+      return <Ban size={14} className="text-text-secondary" />;
+  }
+}
+
+function JobRow({ job, onNavigateToFolder }: { job: Job; onNavigateToFolder(path: string): void }) {
+  const { t, i18n } = useTranslation();
+  const Icon = JOB_ICONS[job.kind];
+  const isActive = isJobActive(job.status);
+  const showProgress = isActive && hasStepProgress(job.progress);
+  const { detail, error } = job;
+  const subtitle = [
+    job.status === JobStatus.Cancelling ? t('library.jobs.cancelling') : null,
+    !showProgress && job.progress.total > 0 ? formatJobAmount(job, t, i18n.language) : null,
+    detail ? fileName(detail) : null,
+    job.finishedAt !== null ? formatRelativeTime(job.finishedAt, i18n.language) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const action =
+    job.status === JobStatus.Error && error
+      ? {
+          tooltip: `${error} · ${t('library.jobs.copyError')}`,
+          run: () => navigator.clipboard.writeText(error).then(() => toast.success(t('library.jobs.errorCopied'))),
+        }
+      : isActive || !detail
+        ? null
+        : job.kind === JobKind.Export
+          ? {
+              tooltip: t('contextMenus.thumbnail.showExplorer'),
+              run: () =>
+                invoke(Invokes.ShowInFinder, { path: detail }).catch((err) =>
+                  toast.error(t('contextMenus.toasts.couldNotShowExplorer', { err })),
+                ),
+            }
+          : job.status === JobStatus.Success && JOB_KINDS_WITH_FOLDER.includes(job.kind)
+            ? { tooltip: t('library.jobs.openInLibrary'), run: () => onNavigateToFolder(detail) }
+            : null;
+  const RowElement = action ? 'button' : 'div';
+
+  return (
+    <motion.div className="overflow-hidden shrink-0" {...AI_JOB_COLLAPSE_ANIMATION}>
+      <div className="px-1 py-0.5">
+        <RowElement
+          className={clsx(
+            'w-full px-3 py-2 rounded-md flex items-center gap-3 text-left',
+            action && 'cursor-pointer hover:bg-bg-primary transition-colors',
+          )}
+          onClick={action?.run}
+          data-tooltip={action?.tooltip ?? detail ?? undefined}
+        >
+          <Icon size={16} className="shrink-0 text-text-secondary" />
+          <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+            <Text as="div" color={isActive ? TextColors.primary : TextColors.secondary} className="truncate leading-5">
+              {t(`library.jobs.kinds.${job.kind}`)}
+            </Text>
+            {subtitle && (
+              <Text as="div" variant={TextVariants.small} color={TextColors.secondary} className="truncate leading-4">
+                {subtitle}
+              </Text>
+            )}
+            {showProgress && (
+              <div className="flex items-center h-1 mt-1">
+                <ProgressBar fraction={progressFraction(job.progress)} />
+              </div>
+            )}
+          </div>
+          <div className="shrink-0 min-w-7 flex flex-col items-center justify-center">
+            <JobAction job={job} />
+          </div>
+        </RowElement>
+      </div>
+    </motion.div>
+  );
+}
+
+function AiJobsSection({ unprocessedPaths }: { unprocessedPaths: string[] }) {
+  const { t } = useTranslation();
+  const { current, queued, completed, paused, failed } = useProcessStore((state) => state.aiJobs);
+  const aiPendingPaths = useProcessStore((state) => state.aiPendingPaths);
+
+  const queuedPaths = useMemo(() => {
+    const paths = Object.keys(aiPendingPaths);
+    return current ? [current.path, ...paths.filter((path) => path !== current.path)] : paths;
+  }, [aiPendingPaths, current]);
+
+  const task = current ? t(`library.aiJobs.kinds.${current.kind}`) : null;
+  const statusLabel = paused
+    ? current
+      ? t('library.aiJobs.pausing')
+      : t('library.aiJobs.paused', { remaining: queued })
+    : task && current?.maskName
+      ? t('library.aiJobs.taskWithMask', { task, mask: current.maskName })
+      : (task ?? t('library.aiJobs.waiting'));
+  const total = completed + queued;
+  const hiddenJobs = Math.max(0, queuedPaths.length - MAX_LISTED_AI_JOBS);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="px-4 flex items-center gap-1 h-8">
+        <SectionTitle>{t('library.aiJobs.title')}</SectionTitle>
+        {queued > 0 && (
+          <>
+            <button
+              className={AI_JOB_ICON_BUTTON_CLASS}
+              onClick={() => invoke(paused ? Invokes.ResumeAiJobs : Invokes.PauseAiJobs)}
+              data-tooltip={paused ? t('library.aiJobs.resume') : t('library.aiJobs.pause')}
+            >
+              {paused ? <Play size={16} /> : <Pause size={16} />}
+            </button>
+            <button
+              className={AI_JOB_ICON_BUTTON_CLASS}
+              onClick={() => invoke(Invokes.DiscardAiJobs)}
+              data-tooltip={t('library.aiJobs.discard')}
+            >
+              <X size={16} />
+            </button>
+          </>
+        )}
+      </div>
+
+      <AnimatePresence initial={false}>
+        {queued > 0 && (
+          <motion.div key="queue" className="overflow-hidden flex flex-col gap-3" {...AI_JOB_COLLAPSE_ANIMATION}>
+            <div className="px-4 space-y-2">
+              <Text as="div" color={TextColors.primary} className="truncate">
+                {statusLabel}
+              </Text>
+              <div className="flex items-center gap-3">
+                <ProgressBar fraction={progressFraction({ current: completed, total })} />
+                <Text
+                  as="span"
+                  variant={TextVariants.small}
+                  color={TextColors.secondary}
+                  className="shrink-0 w-16 text-right tabular-nums"
+                >
+                  {t('library.aiJobs.progress', { current: completed, total })}
+                </Text>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Text as="div" variant={TextVariants.small} weight={TextWeights.semibold} className="px-4 py-1 uppercase">
+                {t('library.aiJobs.queue')}
+              </Text>
+              <div className="max-h-64 overflow-y-auto custom-scrollbar flex flex-col px-1">
+                <AnimatePresence initial={false}>
+                  {queuedPaths.slice(0, MAX_LISTED_AI_JOBS).map((path) => {
+                    const isCurrent = current?.path === path;
+                    return (
+                      <AiJobRow key={path} path={path} active={isCurrent}>
+                        {isCurrent && !paused ? (
+                          <Loader2 size={14} className="animate-spin text-text-secondary" />
+                        ) : (
+                          <Text
+                            as="span"
+                            variant={TextVariants.small}
+                            color={TextColors.secondary}
+                            className="truncate"
+                          >
+                            {paused ? t('library.aiJobs.pausedItem') : t('library.aiJobs.queuedItem')}
+                          </Text>
+                        )}
+                      </AiJobRow>
+                    );
+                  })}
+                </AnimatePresence>
+                {hiddenJobs > 0 && (
+                  <Text as="div" variant={TextVariants.small} color={TextColors.secondary} className="px-4 py-1">
+                    {t('library.aiJobs.more', { moreCount: hiddenJobs })}
+                  </Text>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {failed.length > 0 && (
+        <div className="flex flex-col gap-1 pt-3 border-t border-border-color/40">
+          <div className="px-4 flex items-center gap-3 h-8">
+            <SectionTitle color={TextColors.error}>
+              {t('library.aiJobs.failed', { failedCount: failed.length })}
+            </SectionTitle>
+            <button
+              className={AI_JOB_ICON_BUTTON_CLASS}
+              onClick={() => invoke(Invokes.RetryFailedAiJobs)}
+              data-tooltip={t('library.aiJobs.retry')}
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
+          <div className="max-h-40 overflow-y-auto custom-scrollbar flex flex-col px-1">
+            <AnimatePresence initial={false}>
+              {failed.slice(0, MAX_LISTED_AI_JOBS).map((job) => (
+                <AiJobRow key={job.path} path={job.path}>
+                  <span data-tooltip={job.error} className="text-red-400">
+                    <AlertTriangle size={14} />
+                  </span>
+                </AiJobRow>
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
+      )}
+
+      {unprocessedPaths.length > 0 && (
+        <div className="px-4 pt-3 flex items-center gap-3 border-t border-border-color/40">
+          <CircleDashed size={16} className="shrink-0 text-text-secondary" />
+          <Text as="div" color={TextColors.secondary} className="flex-1 min-w-0">
+            {t('library.aiJobs.unprocessed', { count: unprocessedPaths.length })}
+          </Text>
+          <button
+            className={AI_JOB_ICON_BUTTON_CLASS}
+            onClick={() => invoke(Invokes.QueueAiJobs, { paths: unprocessedPaths })}
+            data-tooltip={t('library.aiJobs.process')}
+          >
+            <Play size={16} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function JobsMenu({ onNavigateToFolder }: { onNavigateToFolder(path: string): void }) {
+  const { t, i18n } = useTranslation();
+  const jobs = useProcessStore((state) => state.jobs);
+  const jobsSeenAt = useProcessStore((state) => state.jobsSeenAt);
+  const markJobsSeen = useProcessStore((state) => state.markJobsSeen);
+  const clearFinishedJobs = useProcessStore((state) => state.clearFinishedJobs);
+  const { queued, completed, paused, failed } = useProcessStore((state) => state.aiJobs);
+  const aiPendingPaths = useProcessStore((state) => state.aiPendingPaths);
+  const imageList = useLibraryStore((state) => state.imageList);
+
+  const unprocessedPaths = useMemo(
+    () => imageList.filter((image) => image.needs_ai && !aiPendingPaths[image.path]).map((image) => image.path),
+    [imageList, aiPendingPaths],
+  );
+  const { activeJobs, finishedJobs } = useMemo(() => {
+    const sorted = Object.values(jobs).sort((a, b) => b.startedAt - a.startedAt);
+    return {
+      activeJobs: sorted.filter((job) => isJobActive(job.status)),
+      finishedJobs: sorted
+        .filter((job) => !isJobActive(job.status))
+        .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0)),
+    };
+  }, [jobs]);
+
+  const hasAiSection = queued > 0 || failed.length > 0 || unprocessedPaths.length > 0;
+  const isAiRunning = queued > 0 && !paused;
+  const hasFailures =
+    failed.length > 0 ||
+    finishedJobs.some((job) => job.status === JobStatus.Error && (job.finishedAt ?? 0) > jobsSeenAt);
+
+  const progressFractions = [
+    ...activeJobs.filter((job) => hasStepProgress(job.progress)).map((job) => progressFraction(job.progress)),
+    ...(isAiRunning ? [progressFraction({ current: completed, total: completed + queued })] : []),
+  ];
+  const overallProgress =
+    progressFractions.length > 0
+      ? progressFractions.reduce((sum, fraction) => sum + fraction, 0) / progressFractions.length
+      : null;
+  const isBusy = activeJobs.length > 0 || isAiRunning;
+  const buttonIcon = isBusy
+    ? overallProgress !== null
+      ? 'progress'
+      : 'busy'
+    : paused && queued > 0
+      ? 'paused'
+      : 'idle';
+
+  const buttonTooltip = isBusy
+    ? [
+        ...activeJobs.map((job) =>
+          hasStepProgress(job.progress)
+            ? `${t(`library.jobs.kinds.${job.kind}`)} ${formatJobProgress(job, t, i18n.language)}`
+            : t(`library.jobs.kinds.${job.kind}`),
+        ),
+        isAiRunning
+          ? `${t('library.aiJobs.title')} ${t('library.aiJobs.progress', { current: completed, total: completed + queued })}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : t('library.jobs.title');
+
+  return (
+    <DropdownMenu
+      buttonTitle={buttonTooltip}
+      contentClassName="w-80"
+      onOpenChange={markJobsSeen}
+      buttonContent={
+        <>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div key={buttonIcon} className="absolute flex items-center justify-center" {...ICON_SWAP_ANIMATION}>
+              {buttonIcon === 'progress' ? (
+                <ProgressRing fraction={overallProgress ?? 0} />
+              ) : buttonIcon === 'busy' ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : buttonIcon === 'paused' ? (
+                <Pause className="w-5 h-5" />
+              ) : (
+                <Inbox className="w-4.5 h-4.5" />
+              )}
+            </motion.div>
+          </AnimatePresence>
+          <AnimatePresence initial={false}>
+            {(hasFailures || (!isBusy && unprocessedPaths.length > 0)) && (
+              <motion.div
+                key="notice"
+                className={clsx(
+                  'absolute top-1 right-1 rounded-full w-2.5 h-2.5 transition-colors',
+                  hasFailures ? 'bg-red-500' : 'bg-accent',
+                )}
+                {...ICON_SWAP_ANIMATION}
+              />
+            )}
+          </AnimatePresence>
+        </>
+      }
+    >
+      <div className="py-3 flex flex-col gap-3 max-h-[70vh] overflow-y-auto custom-scrollbar">
+        {activeJobs.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <div className="px-4 flex items-center h-8">
+              <SectionTitle>{t('library.jobs.active')}</SectionTitle>
+            </div>
+            <div className="flex flex-col px-1">
+              <AnimatePresence initial={false}>
+                {activeJobs.map((job) => (
+                  <JobRow key={job.id} job={job} onNavigateToFolder={onNavigateToFolder} />
+                ))}
+              </AnimatePresence>
+            </div>
+          </div>
+        )}
+
+        {hasAiSection && (
+          <div className={clsx(activeJobs.length > 0 && 'pt-3 border-t border-border-color/40')}>
+            <AiJobsSection unprocessedPaths={unprocessedPaths} />
+          </div>
+        )}
+
+        {finishedJobs.length > 0 && (
+          <div
+            className={clsx(
+              'flex flex-col gap-1',
+              (activeJobs.length > 0 || hasAiSection) && 'pt-3 border-t border-border-color/40',
+            )}
+          >
+            <div className="px-4 flex items-center gap-1 h-8">
+              <SectionTitle>{t('library.jobs.recent')}</SectionTitle>
+              <button
+                className={AI_JOB_ICON_BUTTON_CLASS}
+                onClick={clearFinishedJobs}
+                data-tooltip={t('library.jobs.clear')}
+              >
+                <ListX size={16} />
+              </button>
+            </div>
+            <div className="flex flex-col px-1">
+              <AnimatePresence initial={false}>
+                {finishedJobs.map((job) => (
+                  <JobRow key={job.id} job={job} onNavigateToFolder={onNavigateToFolder} />
+                ))}
+              </AnimatePresence>
+            </div>
+          </div>
+        )}
+
+        {!hasAiSection && activeJobs.length === 0 && finishedJobs.length === 0 && (
+          <div className="px-4 py-4 flex flex-col items-center gap-2 text-center">
+            <Inbox size={24} className="text-text-secondary" />
+            <Text as="div" color={TextColors.primary}>
+              {t('library.jobs.empty')}
+            </Text>
+            <Text as="div" variant={TextVariants.small} color={TextColors.secondary}>
+              {t('library.jobs.emptyHint')}
+            </Text>
+          </div>
+        )}
       </div>
     </DropdownMenu>
   );

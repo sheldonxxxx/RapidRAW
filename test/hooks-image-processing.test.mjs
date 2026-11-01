@@ -1,3 +1,4 @@
+import { extendUpstreamBoundaries } from './fixtures/upstream-boundaries.mjs';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { build } from 'esbuild';
@@ -26,6 +27,8 @@ for (const name of ['Editor', 'UI', 'Settings', 'Library']) {
      use${name}Store.getState = () => globalThis.__previewTest.${name};`;
 }
 stubs['../store/useEditorStore'] += '\nuseEditorStore.subscribe = fn => globalThis.__previewTest.subscribe(fn);';
+stubs['./useEditorActions'] += '\nexport const getOriginalAdjustments = value => value;';
+extendUpstreamBoundaries(stubs);
 const output = join(directory, 'processing.mjs');
 await build({
   stdin: {
@@ -147,6 +150,25 @@ function environment(t) {
   t.after(() => slots.forEach((slot) => slot?.cleanup?.()));
   return state;
 }
+
+test('opening a viewer requests a fresh frame while retaining the clipping overlay', async (t) => {
+  const state = environment(t);
+  state.Editor.isSliderDragging = false;
+  state.Editor.showClipping = true;
+  state.render();
+  await drain();
+  state.finish(0);
+  await drain();
+  const settled = state.calls.length;
+  state.UI.isViewerOpen = true;
+  state.render();
+  await drain();
+  assert.equal(state.calls.length, settled + 1);
+  assert.equal(state.calls.at(-1).payload.jsAdjustments.showClipping, true);
+  assert.ok(state.calls.at(-1).payload.inputRevision > state.calls[0].payload.inputRevision);
+  state.finish(state.calls.length - 1);
+  await drain();
+});
 
 test('the editor sends a bounded drag render, skips obsolete values and restores requested detail on release', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });

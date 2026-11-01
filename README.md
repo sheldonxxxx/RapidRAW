@@ -441,6 +441,16 @@ Each project has its own installation, dependencies and repository. RapidRAW doe
 
 RapidRAW edits the pixels it receives. Camera-native fisheye stitching and spherical reframing belong to the preparation tool. Review a full sphere's seams and poles and verify its final projection metadata after editing; the [handoff guide](skills/rapidraw-mcp/references/spherical-photos.md) explains the boundary.
 
+## Current source-build features
+
+These additions are unreleased; see the [Unreleased changelog](CHANGELOG.md#unreleased).
+
+The editor includes adjustable black-and-white conversion and toning, relative or Kelvin white balance, relighting, depth-based fog, nondestructive AI denoising and negative conversion. Text and face-part selections extend the local mask tools. A separate viewer and horizontal, vertical and side-by-side comparisons help inspect edits. Export options include borders, aspect-ratio padding and print DPI.
+
+Immich is optional. Originals download on demand, supported edits to your own photographs can sync, and edits to photographs shared by others stay local. The upstream RapidRAW Cloud service is a separate optional provider; cloud requests send selected image content to that service and use its account and subscription. Local built-in tools and self-hosted connectors remain available.
+
+The RAW decoder remains pinned to the fork revision containing the Sony/Canon active-area crop correction. Other upstream rendering changes are integrated in the application.
+
 ## Tested configurations and current limits
 
 | Configuration                                                 | Evidence and setup                                                                                                                                                                   |
@@ -450,7 +460,7 @@ RapidRAW edits the pixels it receives. Camera-native fisheye stitching and spher
 | Optional Linux ONNX CUDA inference                            | Foreground/sky masks, depth and AI denoise via the pinned x86_64 runtime pack; [model policy and runtime setup](docs/mcp/onnx-cuda.md)                                               |
 | Windows, packaged MCP releases and fresh-machine installation | No completed native acceptance claim                                                                                                                                                 |
 
-Without the pinned NVIDIA runtime pack, existing mask and denoise operations default to CPU on every platform; with the pack installed, an unset provider defaults to CUDA (an explicit `cpu` is always preserved). Their Linux CUDA support is opt-in and separate from GPU photo rendering; subject selection and local inpainting retain CPU compatibility paths.
+AI inference availability depends on the model, platform and runtime. The desktop GPU preference enables supported inference paths; some masks, normal maps and tagging operations still use the CPU, including compatibility paths on macOS. The optional pinned NVIDIA runtime pack supplies Linux CUDA inference, with explicit CPU overrides preserved. AI inference is separate from WGPU photo rendering.
 
 For GPU RAW denoising on an NVIDIA server, the optional [Nonlocal backend](denoise/README.md) integrates with MCP background jobs. It produces a Bayer DNG that uses RapidRAW's normal demosaic and colour pipeline, with captured edits in a separate session. The existing lightweight NIND option remains available. Nonlocal runs in-process through native ONNX Runtime from a pinned installed bundle (`RAPIDRAW_NONLOCAL_PROVIDER`: unset defaults to Linux CUDA and macOS CoreML, `cpu` is explicit), or directly through CoreML.framework on macOS (`RAPIDRAW_NONLOCAL_PROVIDER=coreml`); install it once with `install_model kind="nonlocal"` (`RAPIDRAW_NONLOCAL_BUNDLE` remains an explicit manual-bundle override); it is experimental, and commercial parity has not been established.
 

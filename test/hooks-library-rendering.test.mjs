@@ -1,3 +1,4 @@
+import { extendUpstreamBoundaries } from './fixtures/upstream-boundaries.mjs';
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { build } from 'esbuild';
@@ -13,11 +14,13 @@ const stubs = {
     'export const useTranslation=()=>({t:(key,options)=>options?.count === undefined ? key : `${key}:${options.count}`});',
   '@dnd-kit/core': 'export const useDraggable=()=>({attributes:{},listeners:{},setNodeRef:()=>{},isDragging:false});',
   '../../../utils/adjustments': 'export const COLOR_LABELS=[];',
-  '../../../store/useProcessStore': 'export const useProcessStore=selector=>selector({thumbnails:{}});',
+  '../../../store/useProcessStore':
+    'export const useProcessStore=selector=>selector({thumbnails:{},aiPendingPaths:{},aiJobs:{paused:false}});',
   '../../../store/useSettingsStore': 'export const useSettingsStore=selector=>selector({appSettings:{}});',
   '../../ui/AppProperties':
     'export const ThumbnailAspectRatio={Cover:"cover",Contain:"contain",Justified:"justified"}; export const ExifOverlay={Off:"off",Hover:"hover",Always:"always"};',
 };
+extendUpstreamBoundaries(stubs);
 const output = join(directory, 'library.mjs');
 await build({
   stdin: {

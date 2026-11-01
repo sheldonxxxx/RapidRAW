@@ -49,5 +49,6 @@ jobs:
         run: |
           cargo test --manifest-path src-tauri/Cargo.toml --features mcp --lib --locked gpu_processing::engine_regression_tests::gpu_gui_mcp_render_contract_matches_cpu_reference -- --ignored --exact --test-threads=1 --nocapture
           cargo test --manifest-path src-tauri/Cargo.toml --features mcp --lib --locked gpu_processing::precision_tests::gpu_precision_preserves_ramp_and_tile_boundaries -- --ignored --exact --test-threads=1 --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --features mcp --lib --locked gpu_processing::precision_tests::gpu_mask_only_flare_and_tall_blur_region_invariance -- --ignored --exact --test-threads=1 --nocapture
           cargo test --manifest-path src-tauri/Cargo.toml --features mcp --lib --locked gpu_processing::preview_perf_bench::cached_preview_resources_match_fresh_renders -- --ignored --exact --test-threads=1 --nocapture
       - run: cargo check --manifest-path src-tauri/Cargo.toml --locked

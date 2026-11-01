@@ -78,7 +78,7 @@ const stubs = {
   react:
     'export const useEffect=()=>{}; export const useRef=(current)=>({current}); export const useState=(v)=>[v,()=>{}];',
   '@tauri-apps/api/core': 'export const invoke=(...args)=>globalThis.__inpaint.invoke(...args);',
-  '@clerk/react': 'export const useAuth=()=>({getToken:async()=>null});',
+  '../store/useCloudStore': 'export const useCloudStore=selector=>selector({getToken:async()=>null});',
   'react-toastify': 'export const toast={error:(message)=>globalThis.__inpaint.errors.push(message)};',
   '../store/useEditorStore':
     'export const useEditorStore={getState:()=>globalThis.__inpaint.state,subscribe:(fn)=>{globalThis.__inpaint.subscriber=fn;return()=>{}}};',

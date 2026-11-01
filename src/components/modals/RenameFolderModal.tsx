@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import Text from '../ui/Text';
 import { TextVariants } from '../../types/typography';
+import Text from '../ui/Text';
 
 interface RenameFolderModalProps {
   currentName: string;

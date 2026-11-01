@@ -1,13 +1,23 @@
 import { create } from 'zustand';
-import { resetPreviewAssetRevisions } from '../utils/previewPipeline';
-import { AdjustmentSection, Adjustments, INITIAL_ADJUSTMENTS, MaskContainer } from '../utils/adjustments';
-import { SelectedImage, WaveformData, BrushSettings } from '../components/ui/AppProperties';
 import { ChannelConfig } from '../components/adjustments/Curves';
-import { ImageDimensions } from '../hooks/useImageRenderSize';
-import { ToolType } from '../components/panel/right/Masks';
 import { OverlayMode } from '../components/panel/right/CropPanel';
+import { ToolType } from '../components/panel/right/Masks';
+import { BrushSettings, CompareView, SelectedImage, WaveformData } from '../components/ui/AppProperties';
+import { ImageDimensions } from '../hooks/useImageRenderSize';
+import {
+  Adjustments,
+  AdjustmentSection,
+  CropGeometry,
+  INITIAL_ADJUSTMENTS,
+  MaskContainer,
+  pickCropGeometry,
+} from '../utils/adjustments';
+import { describeHistoryChange } from '../utils/editHistory';
+import { resetPreviewAssetRevisions } from '../utils/previewPipeline';
 
-export interface InteractivePatch {
+export type CenterMarker = 'vignette' | 'centre';
+
+interface InteractivePatch {
   url: string;
   normX: number;
   normY: number;
@@ -15,55 +25,41 @@ export interface InteractivePatch {
   normH: number;
 }
 
-export interface BaseRenderSize extends ImageDimensions {
+interface BaseRenderSize extends ImageDimensions {
   containerHeight: number;
   containerWidth: number;
   offsetX: number;
   offsetY: number;
 }
 
-export interface EditorState {
-  // Core Image & Adjustments
+interface EditorState {
   selectedImage: SelectedImage | null;
   imageSession: number;
   backendGeneration: number | null;
   adjustments: Adjustments;
   previewOverride: Adjustments | null;
-
-  // History State
   history: Adjustments[];
   historyIndex: number;
-
-  // Previews & Overlays
   finalPreviewUrl: string | null;
   comparisonPreviewUrl: string | null;
   uncroppedAdjustedPreviewUrl: string | null;
   interactivePatch: InteractivePatch | null;
   showOriginal: boolean;
-  /** Clipping warnings in the editor preview; a view aid, never saved with the edit. */
   showClipping: boolean;
-  /** Before/after split view: the unedited photo left of the divider. */
   splitCompare: boolean;
-  /** Divider position as a fraction of the image width. */
   splitComparePosition: number;
   splitComparisonUrl: string | null;
-
-  // Analytics
   histogram: ChannelConfig | null;
   waveform: WaveformData | null;
   isWaveformVisible: boolean;
   activeWaveformChannel: string;
   waveformHeight: number;
-
-  // Interaction State
   isSliderDragging: boolean;
   zoom: number;
   displaySize: ImageDimensions;
   previewSize: ImageDimensions;
   baseRenderSize: BaseRenderSize;
   originalSize: ImageDimensions;
-
-  // Tools State
   isRotationActive: boolean;
   overlayMode: OverlayMode;
   overlayRotation: number;
@@ -72,8 +68,6 @@ export interface EditorState {
   isGuidedPerspectiveActive: boolean;
   liveRotation: number | null;
   brushSettings: BrushSettings | null;
-
-  // Masks & AI
   activeMaskContainerId: string | null;
   activeMaskId: string | null;
   activeAiPatchContainerId: string | null;
@@ -86,79 +80,79 @@ export interface EditorState {
   isAIConnectorConnected: boolean;
   hasRenderedFirstFrame: boolean;
   patchesSentToBackend: Set<string>;
-
-  // Clipboard
   copiedSectionAdjustments: { section: AdjustmentSection; values: Partial<Adjustments> } | null;
   copiedMask: MaskContainer | null;
   copiedAdjustments: Partial<Adjustments> | null;
-
-  // Actions
   setEditor: (updater: Partial<EditorState> | ((state: EditorState) => Partial<EditorState>)) => void;
-  pushHistory: (newAdjustments: Adjustments) => void;
+  pushHistory: (newAdjustments: Adjustments, label?: string) => void;
   undo: () => void;
   redo: () => void;
   resetHistory: (initialState: Adjustments) => void;
   goToHistoryIndex: (index: number) => void;
+  historyLabels: string[];
+  compareView: CompareView;
+  splitPosition: number;
+  originalPreview: { path: string; url: string | null } | null;
+  isAutoStraightening: boolean;
+  isRelightPickerActive: boolean;
+  activeRelightLightId: string | null;
+  activeCenterMarker: CenterMarker | null;
+  cropSessionSnapshot: { path: string | null; geometry: CropGeometry } | null;
+  aiDenoiseProgress: Record<string, number>;
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
   selectedImage: null,
-  imageSession: 0,
-  backendGeneration: null,
   adjustments: INITIAL_ADJUSTMENTS,
   previewOverride: null,
   history: [INITIAL_ADJUSTMENTS],
+  historyLabels: [''],
   historyIndex: 0,
-
   finalPreviewUrl: null,
-  comparisonPreviewUrl: null,
   uncroppedAdjustedPreviewUrl: null,
   showOriginal: false,
-  showClipping: false,
-  splitCompare: false,
-  splitComparePosition: 0.5,
-  splitComparisonUrl: null,
+  compareView: 'off',
+  splitPosition: 0.5,
+  originalPreview: null,
   histogram: null,
   waveform: null,
   isWaveformVisible: false,
   activeWaveformChannel: 'luma',
   waveformHeight: 220,
-
   isSliderDragging: false,
   interactivePatch: null,
   activeMaskContainerId: null,
   activeMaskId: null,
   activeAiPatchContainerId: null,
   activeAiSubMaskId: null,
-  activeLocalEditKind: null,
-
   zoom: 1,
   displaySize: { width: 0, height: 0 },
   previewSize: { width: 0, height: 0 },
   baseRenderSize: { width: 0, height: 0, offsetX: 0, offsetY: 0, containerWidth: 0, containerHeight: 0 },
   originalSize: { width: 0, height: 0 },
-
   isRotationActive: false,
   overlayMode: 'thirds',
   overlayRotation: 0,
   isStraightenActive: false,
+  isAutoStraightening: false,
   isWbPickerActive: false,
+  isRelightPickerActive: false,
+  activeRelightLightId: null,
+  activeCenterMarker: null,
   isGuidedPerspectiveActive: false,
   liveRotation: null,
-
+  cropSessionSnapshot: null,
   copiedSectionAdjustments: null,
   copiedMask: null,
   brushSettings: { size: 50, feather: 50, tool: ToolType.Brush },
   copiedAdjustments: null,
-
   isGeneratingAiMask: false,
   isAIConnectorConnected: false,
   isGeneratingAi: false,
+  aiDenoiseProgress: {},
   isMaskControlHovered: false,
-  showPatchMarkers: true,
   hasRenderedFirstFrame: false,
   patchesSentToBackend: new Set<string>(),
-
   setEditor: (updater) =>
     set((state) => {
       let next = typeof updater === 'function' ? updater(state) : updater;
@@ -199,15 +193,18 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (leavingComparison) return { comparisonPreviewUrl: null, ...next };
       return next;
     }),
-
-  pushHistory: (newAdj) =>
+  pushHistory: (newAdj, label) =>
     set((state) => {
       const newHistory = state.history.slice(0, state.historyIndex + 1);
+      const newLabels = state.historyLabels.slice(0, state.historyIndex + 1);
+      newLabels.push(label || describeHistoryChange(state.history[state.historyIndex], newAdj));
       newHistory.push(newAdj);
-      if (newHistory.length > 50) newHistory.shift();
-      return { history: newHistory, historyIndex: newHistory.length - 1 };
+      if (newHistory.length > 50) {
+        newHistory.shift();
+        newLabels.shift();
+      }
+      return { history: newHistory, historyLabels: newLabels, historyIndex: newHistory.length - 1 };
     }),
-
   undo: () =>
     set((state) => {
       if (state.historyIndex > 0) {
@@ -219,7 +216,6 @@ export const useEditorStore = create<EditorState>((set) => ({
       }
       return state;
     }),
-
   redo: () =>
     set((state) => {
       if (state.historyIndex < state.history.length - 1) {
@@ -231,14 +227,21 @@ export const useEditorStore = create<EditorState>((set) => ({
       }
       return state;
     }),
-
   resetHistory: (initialState) =>
-    set({
+    set((state) => ({
       history: [initialState],
+      historyLabels: [''],
       historyIndex: 0,
       adjustments: initialState,
-    }),
-
+      ...(state.cropSessionSnapshot
+        ? {
+            cropSessionSnapshot: {
+              path: state.selectedImage?.path ?? null,
+              geometry: pickCropGeometry(initialState),
+            },
+          }
+        : {}),
+    })),
   goToHistoryIndex: (index) =>
     set((state) => {
       if (index >= 0 && index < state.history.length) {
@@ -249,4 +252,13 @@ export const useEditorStore = create<EditorState>((set) => ({
       }
       return state;
     }),
+  imageSession: 0,
+  backendGeneration: null,
+  comparisonPreviewUrl: null,
+  showClipping: false,
+  splitCompare: false,
+  splitComparePosition: 0.5,
+  splitComparisonUrl: null,
+  activeLocalEditKind: null,
+  showPatchMarkers: true,
 }));

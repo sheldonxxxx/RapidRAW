@@ -85,22 +85,38 @@ fn inherited_generation_options(
     Ok((options != crate::ai_connector::GenerationOptions::default()).then_some(options))
 }
 
-fn model_assets(kind: &str) -> Result<Vec<(&'static str, &'static str)>> {
+fn mask_model_kinds(kind: &str) -> Option<Vec<ai::AiMaskModel>> {
+    use ai::AiMaskModel::*;
+    Some(match kind {
+        "masks" => vec![Subject, Foreground, Sky, Text, Face, Depth],
+        "subject" => vec![Subject],
+        "foreground" => vec![Foreground],
+        "sky" => vec![Sky],
+        "text" => vec![Text],
+        "face" => vec![Face],
+        "depth" => vec![Depth],
+        _ => return None,
+    })
+}
+fn model_assets(kind: &str, gpu: bool) -> Result<Vec<(&'static str, &'static str)>> {
+    if let Some(kinds) = mask_model_kinds(kind) {
+        let mut assets = Vec::new();
+        for model in kinds {
+            for asset in model.assets(gpu) {
+                let hash = asset
+                    .sha256
+                    .ok_or("MODEL_NOT_PINNED: mask asset has no SHA-256")?;
+                if !assets.iter().any(|(name, _)| *name == asset.filename) {
+                    assets.push((asset.filename, hash));
+                }
+            }
+        }
+        return Ok(assets);
+    }
     Ok(match kind {
-        "masks" => vec![
-            (ai::ENCODER_FILENAME, ai::ENCODER_SHA256),
-            (ai::DECODER_FILENAME, ai::DECODER_SHA256),
-            (ai::U2NETP_FILENAME, ai::U2NETP_SHA256),
-            (ai::SKYSEG_FILENAME, ai::SKYSEG_SHA256),
-            (ai::DEPTH_FILENAME, ai::DEPTH_SHA256),
-        ],
         "inpaint" => vec![(ai::LAMA_FILENAME, ai::LAMA_SHA256)],
         "denoise" => vec![(ai::DENOISE_FILENAME, ai::DENOISE_SHA256)],
-        _ => {
-            return Err(
-                "INVALID_ARGUMENT: model kind must be masks, inpaint, denoise or nonlocal".into(),
-            );
-        }
+        _ => return Err("INVALID_ARGUMENT: unknown model kind".into()),
     })
 }
 
@@ -279,10 +295,25 @@ impl Bridge {
             "nonlocal".into(),
             crate::nonlocal_install::status(&self.paths.models),
         );
-        for kind in ["masks", "inpaint", "denoise"] {
+        for kind in [
+            "masks",
+            "subject",
+            "foreground",
+            "sky",
+            "text",
+            "face",
+            "depth",
+            "inpaint",
+            "denoise",
+        ] {
             let mut assets = Vec::new();
             let mut ready = true;
-            for (name, hash) in model_assets(kind)? {
+            for (name, hash) in model_assets(
+                kind,
+                crate::app_settings::load_settings(self.handle.clone())
+                    .unwrap_or_default()
+                    .ai_gpu_acceleration,
+            )? {
                 let path = self.paths.models.join(name);
                 let valid = path.is_file() && sha256_file(&path)? == hash;
                 ready &= valid;
@@ -345,7 +376,12 @@ impl Bridge {
             .join("models");
         let cache = super::model_cache::directory(&self.handle)?;
         let mut missing = Vec::new();
-        for (name, hash) in model_assets(kind)? {
+        for (name, hash) in model_assets(
+            kind,
+            crate::app_settings::load_settings(self.handle.clone())
+                .unwrap_or_default()
+                .ai_gpu_acceleration,
+        )? {
             let target = self.paths.models.join(name);
             if fs::symlink_metadata(&target).is_ok_and(|metadata| metadata.file_type().is_symlink())
             {
@@ -377,25 +413,42 @@ impl Bridge {
             ));
         }
         let state = self.handle.state::<AppState>();
-        match kind {
-            "masks" => {
-                ai::get_or_init_ai_models(&self.handle, &state.ai_state, &state.ai_init_lock)
+        if let Some(kinds) = mask_model_kinds(kind) {
+            for model in kinds {
+                ai::get_or_init_ai_models(
+                    &self.handle,
+                    &state.ai_state,
+                    &state.ai_init_lock,
+                    model,
+                )
+                .await
+                .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
+            }
+        } else {
+            match kind {
+                "inpaint" => {
+                    ai::get_or_init_lama_model(&self.handle, &state.ai_state, &state.ai_init_lock)
+                        .await
+                        .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
+                }
+                "denoise" => {
+                    ai::get_or_init_denoise_model(
+                        &self.handle,
+                        &state.ai_state,
+                        &state.ai_init_lock,
+                    )
                     .await
                     .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
+                }
+                _ => unreachable!(),
             }
-            "inpaint" => {
-                ai::get_or_init_lama_model(&self.handle, &state.ai_state, &state.ai_init_lock)
-                    .await
-                    .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
-            }
-            "denoise" => {
-                ai::get_or_init_denoise_model(&self.handle, &state.ai_state, &state.ai_init_lock)
-                    .await
-                    .map_err(|e| format!("MODEL_INITIALIZATION_FAILED: {e}"))?;
-            }
-            _ => unreachable!(),
         }
-        for (name, hash) in model_assets(kind)? {
+        for (name, hash) in model_assets(
+            kind,
+            crate::app_settings::load_settings(self.handle.clone())
+                .unwrap_or_default()
+                .ai_gpu_acceleration,
+        )? {
             super::model_cache::remember(&cache, &self.paths.models.join(name), hash)?;
         }
         Ok(())
@@ -405,7 +458,18 @@ impl Bridge {
         let session = self.session(params)?.clone();
         session.check_revision(params)?;
         let kind = required(params, "kind")?;
-        if !["subject", "foreground", "sky", "depth", "normals", "albedo"].contains(&kind) {
+        if ![
+            "subject",
+            "foreground",
+            "sky",
+            "text",
+            "face",
+            "depth",
+            "normals",
+            "albedo",
+        ]
+        .contains(&kind)
+        {
             return Err("INVALID_ARGUMENT: unknown AI mask kind".into());
         }
         let provider = params
@@ -432,6 +496,8 @@ impl Bridge {
             if ![
                 "grow",
                 "feather",
+                "prompt",
+                "parts",
                 "minDepth",
                 "maxDepth",
                 "minFade",
@@ -449,6 +515,9 @@ impl Bridge {
                 return Err(format!(
                     "INVALID_ARGUMENT: unsupported AI mask parameter {key}"
                 ));
+            }
+            if (key == "prompt" && kind != "text") || (key == "parts" && kind != "face") {
+                return Err(format!("INVALID_ARGUMENT: {key} does not apply to {kind}"));
             }
             if (key.starts_with("normal") && kind != "normals")
                 || (key.starts_with("surface") && kind != "albedo")
@@ -537,7 +606,7 @@ impl Bridge {
             }
         }
         if provider == "builtin" && !matches!(kind, "normals" | "albedo") {
-            self.ensure_models("masks", false).await?;
+            self.ensure_models(kind, false).await?;
         }
         self.activate(&session.id).await?;
         let state = self.handle.state::<AppState>();
@@ -563,11 +632,48 @@ impl Bridge {
                         flip_h,
                         flip_v,
                         orientation,
+                        None,
+                        None,
                         state.clone(),
                         self.handle.clone(),
                     )
                     .await?,
                 ),
+                "text" => Ok(crate::ai_commands::generate_ai_text_mask(
+                    adjustments.clone(),
+                    session.working_path.clone(),
+                    required(&controls, "prompt")?.to_string(),
+                    rotation,
+                    flip_h,
+                    flip_v,
+                    orientation,
+                    None,
+                    state.clone(),
+                    self.handle.clone(),
+                )
+                .await?),
+                "face" => {
+                    let parts: Vec<String> = serde_json::from_value(
+                        controls
+                            .get("parts")
+                            .cloned()
+                            .ok_or("INVALID_ARGUMENT: face masks require parts")?,
+                    )
+                    .map_err(|e| format!("INVALID_ARGUMENT: face parts must be strings: {e}"))?;
+                    Ok(crate::ai_commands::generate_ai_face_mask(
+                        adjustments.clone(),
+                        session.working_path.clone(),
+                        parts,
+                        rotation,
+                        flip_h,
+                        flip_v,
+                        orientation,
+                        None,
+                        state.clone(),
+                        self.handle.clone(),
+                    )
+                    .await?)
+                }
                 "foreground" => serde_json::to_value(
                     crate::ai_commands::generate_ai_foreground_mask(
                         adjustments.clone(),
@@ -575,6 +681,7 @@ impl Bridge {
                         flip_h,
                         flip_v,
                         orientation,
+                        None,
                         state.clone(),
                         self.handle.clone(),
                     )
@@ -583,10 +690,12 @@ impl Bridge {
                 "sky" => serde_json::to_value(
                     crate::ai_commands::generate_ai_sky_mask(
                         adjustments.clone(),
+                        session.working_path.clone(),
                         rotation,
                         flip_h,
                         flip_v,
                         orientation,
+                        None,
                         state.clone(),
                         self.handle.clone(),
                     )
@@ -645,6 +754,7 @@ impl Bridge {
                         flip_h,
                         flip_v,
                         orientation,
+                        None,
                         state.clone(),
                         self.handle.clone(),
                     )
@@ -761,7 +871,7 @@ impl Bridge {
         let session = self.session(params)?.clone();
         session.check_revision(params)?;
         let enable = flag(params, "enable_blur", false)?;
-        self.ensure_models("masks", false).await?;
+        self.ensure_models("depth", false).await?;
         self.activate(&session.id).await?;
         let data = crate::ai_commands::generate_full_image_depth_map(
             session.current().adjustments.clone(),
@@ -963,16 +1073,24 @@ impl Bridge {
                     definition,
                     adjustments,
                     source,
+                    None,
                     state,
                 )
                 .await?
             }
             "liquify" => {
-                crate::inpainting::generate_liquify_patch(definition, adjustments, source, state)
-                    .await?
+                crate::inpainting::generate_liquify_patch(
+                    definition,
+                    adjustments,
+                    source,
+                    None,
+                    state,
+                )
+                .await?
             }
             "retouch" => {
-                crate::inpainting::generate_retouch_patch(definition, adjustments, state).await?
+                crate::inpainting::generate_retouch_patch(definition, adjustments, None, state)
+                    .await?
             }
             "inpaint" | "generative" => {
                 crate::inpainting::invoke_generative_replace_with_mask_def(
@@ -982,6 +1100,7 @@ impl Bridge {
                     mode == "inpaint",
                     Some(preview_only),
                     params["token"].as_str().map(str::to_string),
+                    None,
                     self.handle.clone(),
                     state,
                 )
@@ -1238,7 +1357,7 @@ impl Bridge {
             }
         }
         let raw = &params["parameters"];
-        let settings = crate::negative_conversion::NegativeConversionParams {
+        let settings = crate::negative_conversion_legacy::NegativeConversionParams {
             red_weight: number(raw, "red_weight", 1.0, 0.5, 2.0)? as f32,
             green_weight: number(raw, "green_weight", 1.0, 0.5, 2.0)? as f32,
             blue_weight: number(raw, "blue_weight", 1.0, 0.5, 2.0)? as f32,
@@ -1248,7 +1367,7 @@ impl Bridge {
         self.activate(&parent.id).await?;
         let state = self.handle.state::<AppState>();
         let (source, _) = crate::get_original_image(&state)?;
-        let image = crate::negative_conversion::run_pipeline(&source, &settings, None);
+        let image = crate::negative_conversion_legacy::run_pipeline(&source, &settings, None);
         let result = self
             .derived(&parent, image, "Converted film negative")
             .await?;
@@ -1366,6 +1485,31 @@ impl Bridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn every_mask_group_has_verified_asset_pins_for_both_provider_modes() {
+        for kind in [
+            "masks",
+            "subject",
+            "foreground",
+            "sky",
+            "text",
+            "face",
+            "depth",
+        ] {
+            for gpu in [false, true] {
+                let assets = model_assets(kind, gpu).unwrap();
+                assert!(!assets.is_empty(), "{kind}");
+                for (name, hash) in assets {
+                    assert!(!name.is_empty());
+                    assert_eq!(hash.len(), 64, "{kind}: {name}");
+                    assert!(
+                        hash.bytes().all(|byte| byte.is_ascii_hexdigit()),
+                        "{kind}: {name}"
+                    );
+                }
+            }
+        }
+    }
     #[test]
     fn generated_component_joins_existing_parent_in_requested_mode() {
         let mut mask = json!({"id":"parent","subMasks":[{"id":"depth","type":"ai-depth","mode":"additive","parameters":{"depthArtifact":"opaque-depth"}}]});

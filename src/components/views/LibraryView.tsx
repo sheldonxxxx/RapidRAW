@@ -1,18 +1,17 @@
-import type { MainLibraryProps } from '../panel/MainLibrary';
+import { useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-
-import CommunityPage from '../panel/CommunityPage';
-import MainLibrary from '../panel/MainLibrary';
-import BottomBar from '../panel/BottomBar';
-
-import { useUIStore } from '../../store/useUIStore';
-import { useLibraryStore } from '../../store/useLibraryStore';
 import { useEditorStore } from '../../store/useEditorStore';
-import { useProcessStore } from '../../store/useProcessStore';
+import { useLibraryStore } from '../../store/useLibraryStore';
+import { selectAiModelDownloadStatus, selectAiTaggingJob, useProcessStore } from '../../store/useProcessStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
-
-import { ImageFile, LibraryViewMode, ThumbnailAspectRatio, ThumbnailSize } from '../ui/AppProperties';
+import { useUIStore } from '../../store/useUIStore';
+import { getImageFlag } from '../../utils/imageFlags';
 import { GroupBadgeInfo, GroupId } from '../../utils/imageGrouping';
+import BottomBar from '../panel/BottomBar';
+import CommunityPage from '../panel/CommunityPage';
+import type { MainLibraryProps } from '../panel/MainLibrary';
+import MainLibrary from '../panel/MainLibrary';
+import { ImageFile, LibraryViewMode, ThumbnailAspectRatio, ThumbnailSize } from '../ui/AppProperties';
 
 interface LibraryViewProps {
   sortedImageList: ImageFile[];
@@ -34,6 +33,7 @@ interface LibraryViewProps {
   handleContinueSession: () => void;
   handleGoHome: () => void;
   handleOpenFolder: () => void;
+  handleNavigateToFolder: (path: string) => void;
   handleImportClick: (path: string) => void;
   handleLibraryRefresh: () => Promise<void>;
   handleCopyAdjustments: () => void;
@@ -62,6 +62,7 @@ export default function LibraryView({
   handleContinueSession,
   handleGoHome,
   handleOpenFolder,
+  handleNavigateToFolder,
   handleImportClick,
   handleLibraryRefresh,
   handleCopyAdjustments,
@@ -107,18 +108,21 @@ export default function LibraryView({
     })),
   );
 
-  const { aiModelDownloadStatus, importState, indexingProgress, isIndexing, thumbnailProgress, isCopied, isPasted } =
-    useProcessStore(
-      useShallow((state) => ({
-        aiModelDownloadStatus: state.aiModelDownloadStatus,
-        importState: state.importState,
-        indexingProgress: state.indexingProgress,
-        isIndexing: state.isIndexing,
-        thumbnailProgress: state.thumbnailProgress,
-        isCopied: state.isCopied,
-        isPasted: state.isPasted,
-      })),
-    );
+  const { aiModelDownloadStatus, aiTaggingJob, importState, isCopied, isPasted } = useProcessStore(
+    useShallow((state) => ({
+      aiModelDownloadStatus: selectAiModelDownloadStatus(state),
+      aiTaggingJob: selectAiTaggingJob(state),
+      importState: state.importState,
+      isCopied: state.isCopied,
+      isPasted: state.isPasted,
+    })),
+  );
+
+  const handleMainLibraryImportClick = useCallback(
+    () => handleImportClick(currentFolderPath as string),
+    [handleImportClick, currentFolderPath],
+  );
+  const handleNavigateToCommunity = useCallback(() => setUI({ activeView: 'community' }), [setUI]);
 
   return (
     <div className="flex flex-row grow h-full min-h-0">
@@ -134,14 +138,13 @@ export default function LibraryView({
           <MainLibrary
             activePath={libraryActivePath}
             aiModelDownloadStatus={aiModelDownloadStatus}
+            aiTaggingJob={aiTaggingJob}
             appSettings={appSettings}
             currentFolderPath={currentFolderPath}
             groupBadgeInfo={groupBadgeInfo}
             imageList={sortedImageList}
             imageRatings={imageRatings}
             importState={importState}
-            indexingProgress={indexingProgress}
-            isIndexing={isIndexing}
             isLoading={isViewLoading}
             isTreeLoading={isTreeLoading}
             isAndroid={isAndroid}
@@ -149,14 +152,13 @@ export default function LibraryView({
             multiSelectedPaths={multiSelectedPaths}
             onClearSelection={handleClearSelection}
             onContextMenu={handleThumbnailContextMenu}
+            onNavigateToFolder={handleNavigateToFolder}
             onContinueSession={handleContinueSession}
             onEmptyAreaContextMenu={handleMainLibraryContextMenu}
             onGoHome={handleGoHome}
             onImageClick={handleLibraryImageSingleClick}
             onImageDoubleClick={handleImageSelect}
-            onImportClick={() => {
-              if (currentFolderPath) handleImportClick(currentFolderPath);
-            }}
+            onImportClick={handleMainLibraryImportClick}
             onLibraryRefresh={handleLibraryRefresh}
             onOpenFolder={handleOpenFolder}
             onSettingsChange={handleSettingsChange}
@@ -167,15 +169,14 @@ export default function LibraryView({
             setLibraryViewMode={setLibraryViewMode}
             theme={theme}
             thumbnailAspectRatio={thumbnailAspectRatio}
-            thumbnailProgress={thumbnailProgress}
             thumbnailSize={thumbnailSize}
-            onNavigateToCommunity={() => setUI({ activeView: 'community' })}
+            onNavigateToCommunity={handleNavigateToCommunity}
           />
         )}
         {rootPaths && rootPaths.length > 0 && (
           <BottomBar
             isCopied={isCopied}
-            isCopyDisabled={multiSelectedPaths.length !== 1}
+            isCopyDisabled={multiSelectedPaths.length === 0}
             isExportDisabled={multiSelectedPaths.length === 0}
             isLibraryView={true}
             layoutMode={layoutMode}
@@ -193,6 +194,7 @@ export default function LibraryView({
             onRate={handleRate}
             onReset={() => handleResetAdjustments()}
             rating={imageRatings[libraryActivePath || ''] || 0}
+            flag={getImageFlag(imageList, libraryActivePath)}
             thumbnailAspectRatio={thumbnailAspectRatio}
             totalImages={imageList.length}
           />

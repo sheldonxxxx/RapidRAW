@@ -25,7 +25,7 @@ fn same_basename_transfers_fail_before_writing_or_removing_sources() {
     let first = write(&a, "IMG_1.CR2", "first photo");
     let second = write(&b, "IMG_1.CR2", "second photo");
     let input = paths(&[&first, &second]);
-    assert!(copy_files(input.clone(), dest.to_string_lossy().into_owned()).is_err());
+    assert!(copy_files_on_disk(input.clone(), dest.to_string_lossy().into_owned()).is_err());
     assert!(plan_file_transfers(&input, &dest, false).is_err());
     assert_eq!(fs::read_to_string(first).unwrap(), "first photo");
     assert_eq!(fs::read_to_string(second).unwrap(), "second photo");
@@ -45,7 +45,7 @@ fn in_place_copy_preserves_orphan_sidecars_and_deduplicates_virtual_sources() {
         image.to_string_lossy().into_owned(),
         format!("{}?vc=abcdef", image.display()),
     ];
-    copy_files(input, dir.path().to_string_lossy().into_owned()).unwrap();
+    copy_files_on_disk(input, dir.path().to_string_lossy().into_owned()).unwrap();
     for (name, value) in [
         ("photo_copy_2.CR3", "original"),
         ("photo_copy_2.CR3.rrdata", "edit"),

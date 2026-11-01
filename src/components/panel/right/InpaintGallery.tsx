@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useEditorStore } from '../../../store/useEditorStore';
 import { useEditorActions } from '../../../hooks/useEditorActions';
+import { useEditorStore } from '../../../store/useEditorStore';
 import type { InpaintCandidate } from '../../../utils/adjustments';
-import { toggleInpaintCandidate, inpaintSpatialKey } from '../../../utils/inpaintHistory';
+import { inpaintSpatialKey, toggleInpaintCandidate } from '../../../utils/inpaintHistory';
 import Button from '../../ui/Button';
 
 export default function InpaintGallery({

@@ -121,6 +121,32 @@ const exportOptions = {
       'auto embeds an sRGB ICC profile in JPEG/PNG/TIFF/WebP; srgb requires support; none omits explicit embedding.',
     ),
   quality: z.number().int().min(1).max(100).optional(),
+  dpi: z
+    .number()
+    .int()
+    .min(1)
+    .max(65535)
+    .optional()
+    .describe('Print resolution in dots per inch for JPEG, PNG and TIFF.'),
+  pad: z
+    .object({
+      ratioWidth: z.number().min(0.001).max(1000),
+      ratioHeight: z.number().min(0.001).max(1000),
+      color: z.string().regex(/^#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/),
+    })
+    .strict()
+    .optional()
+    .describe('Pad the image to this aspect ratio with a solid color.'),
+  border: z
+    .object({
+      basis: z.enum(['longEdge', 'shortEdge', 'eachEdge']).optional(),
+      horizontalPercent: percent,
+      verticalPercent: percent,
+      color: z.string().regex(/^#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/),
+    })
+    .strict()
+    .optional()
+    .describe('Add a solid border; percentages specify thickness on each side.'),
   long_edge: longEdge.optional().describe('Convenience maximum long-edge resize. Cannot be combined with resize.'),
   resize: z
     .object({
@@ -625,10 +651,10 @@ export const toolDefinitions: ToolDefinition[] = [
   }),
   tool(
     'mask_generate',
-    'Generate an AI mask. Set target_mask_id and mode to add a new component inside an existing parent; omit both to create a parent. Normals/albedo explicitly use the separately enabled shared AI connector and save RGB16 maps. Normals parameters: normalAngle (degrees), normalAmount (signed exposure stops, -1.5..1.5). Albedo parameters: surfacePointX/Y (0..1 on the unrotated map), surfaceTolerance (.005..1), surfaceColor (RGB 0..255), surfaceAmount (0..1). Saved maps work offline; intersect with regional masks to confine edits. Depth defaults to the built-in model; depth_provider=marigold explicitly sends analysis pixels to the separately enabled depth service and saves a reusable 16-bit map. Region and include/exclude points use the full mask canvas before crop unless coordinate_space says otherwise. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
+    'Generate an AI mask. Text masks require parameters.prompt (nonempty text); face masks require parameters.parts (faceSkin, bodySkin, eyebrows, eyeWhites, iris, lips, teeth, nose or hair). Set target_mask_id and mode to add a new component inside an existing parent; omit both to create a parent. Normals/albedo explicitly use the separately enabled shared AI connector and save RGB16 maps. Normals parameters: normalAngle (degrees), normalAmount (signed exposure stops, -1.5..1.5). Albedo parameters: surfacePointX/Y (0..1 on the unrotated map), surfaceTolerance (.005..1), surfaceColor (RGB 0..255), surfaceAmount (0..1). Saved maps work offline; intersect with regional masks to confine edits. Depth defaults to the built-in model; depth_provider=marigold explicitly sends analysis pixels to the separately enabled depth service and saves a reusable 16-bit map. Region and include/exclude points use the full mask canvas before crop unless coordinate_space says otherwise. New point-guided masks require a region or positive point. refine replaces only an existing AI-subject submask, preserving IDs, siblings and grade; requires expected_revision. Inspect returned refinement.prior_mode and review the mask before edits.',
     {
       ...mutation,
-      kind: z.enum(['subject', 'foreground', 'sky', 'depth', 'normals', 'albedo']),
+      kind: z.enum(['subject', 'foreground', 'sky', 'text', 'face', 'depth', 'normals', 'albedo']),
       depth_provider: z.enum(['builtin', 'marigold']).optional(),
       name: z.string().max(200).optional(),
       region: region.optional(),
@@ -779,7 +805,20 @@ export const toolDefinitions: ToolDefinition[] = [
   tool(
     'install_model',
     'Download and install RapidRAW local model assets for masks, inpainting, denoise or nonlocal (Bayer RAW denoise runtime bundle selected by RAPIDRAW_NONLOCAL_PROVIDER). This makes network requests and may download large files.',
-    { kind: z.enum(['masks', 'inpaint', 'denoise', 'nonlocal']) },
+    {
+      kind: z.enum([
+        'masks',
+        'subject',
+        'foreground',
+        'sky',
+        'text',
+        'face',
+        'depth',
+        'inpaint',
+        'denoise',
+        'nonlocal',
+      ]),
+    },
     false,
     { network: true, idempotent: true, timeoutMs: 1_800_000 },
   ),

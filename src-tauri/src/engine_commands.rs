@@ -296,12 +296,28 @@ pub(crate) struct ExportRequest<'a> {
 }
 
 pub(crate) fn encode_export(request: ExportRequest<'_>) -> Result<Vec<u8>, String> {
-    crate::export_processing::encode_image_to_bytes_native(
+    crate::export_processing::encode_native_with_options(
         request.image,
         request.format,
         request.quality,
         request.bit_depth,
+        None,
     )
+}
+
+pub(crate) fn effective_adjustments_with_render_options(
+    request: AdjustRequest<'_>,
+    as_shot: crate::as_shot::AsShot,
+    render: crate::image_processing::RenderOptions,
+) -> AllAdjustments {
+    let mut resolved = crate::image_processing::get_all_adjustments_with_render_options(
+        request.adjustments,
+        request.is_raw,
+        as_shot,
+        render,
+    );
+    resolved.global.show_clipping = u32::from(request.show_clipping);
+    resolved
 }
 
 #[cfg(test)]

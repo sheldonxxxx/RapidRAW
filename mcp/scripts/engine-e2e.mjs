@@ -256,6 +256,38 @@ try {
       async () => inspectTiff16(await readFile(masterPath)),
       'pixel_assertion',
     );
+    const printPath = join(workspace, 'exports', `${prefix}-print.png`);
+    await call('export', {
+      session_id,
+      path: printPath,
+      format: 'png',
+      bit_depth: 16,
+      keep_metadata: false,
+      dpi: 300,
+      pad: { ratioWidth: 1, ratioHeight: 1, color: '#fff' },
+      border: { basis: 'eachEdge', horizontalPercent: 5, verticalPercent: 5, color: '#112233' },
+    });
+    const printed = await readFile(printPath);
+    const side = Math.max(
+      precision.width + 2 * Math.round(precision.width * 0.05),
+      precision.height + 2 * Math.round(precision.height * 0.05),
+    );
+    assert.equal(printed.readUInt32BE(16), side, 'Padding includes the requested border');
+    assert.equal(printed.readUInt32BE(20), side);
+    assert.equal(printed[24], 16, 'Print PNG retains 16-bit samples');
+    const densities = [];
+    for (let offset = 8; offset + 12 <= printed.length;) {
+      const length = printed.readUInt32BE(offset);
+      if (printed.toString('ascii', offset + 4, offset + 8) === 'pHYs') {
+        densities.push([printed.readUInt32BE(offset + 8), printed.readUInt32BE(offset + 12), printed[offset + 16]]);
+      }
+      offset += length + 12;
+    }
+    assert.deepEqual(
+      densities,
+      [[11811, 11811, 1]],
+      'Print density survives capture-metadata removal without duplicate chunks',
+    );
     const finalState = data(await call('get_session', { session_id, include_adjustments: true }));
     const beforeRestart = await writePreview(
       await call('render', { session_id, long_edge: 800 }),

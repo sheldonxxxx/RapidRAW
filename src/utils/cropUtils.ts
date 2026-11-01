@@ -1,5 +1,20 @@
 import { Crop } from 'react-image-crop';
 
+// aspectRatio 0 locks the crop to the image's own ratio, null leaves it free.
+// 0 is the default, because the image ratio differs per image and cannot be stored as one number.
+export const ORIGINAL_RATIO = 0;
+
+export function resolveAspectRatio(
+  aspectRatio: number | null,
+  image: { width: number; height: number } | null | undefined,
+  orientationSteps: number,
+): number | null {
+  if (aspectRatio !== ORIGINAL_RATIO) return aspectRatio;
+  if (!image?.width || !image?.height) return null;
+  const { width, height } = getOrientedDimensions(image.width, image.height, orientationSteps);
+  return width / height;
+}
+
 export function getOrientedDimensions(
   imageWidth: number,
   imageHeight: number,
@@ -10,6 +25,46 @@ export function getOrientedDimensions(
     width: isSwapped ? imageHeight : imageWidth,
     height: isSwapped ? imageWidth : imageHeight,
   };
+}
+
+export function normalizeCropChange(
+  current: Crop | null,
+  next: Crop | null,
+  imageWidth: number,
+  imageHeight: number,
+  orientationSteps: number = 0,
+  rotation: number = 0,
+): Crop | null {
+  const { width, height } = getOrientedDimensions(imageWidth, imageHeight, orientationSteps);
+  const normalize = (crop: Crop | null): Crop | null =>
+    crop &&
+    (crop.unit === 'px' || crop.unit === undefined) &&
+    rotation === 0 &&
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    width > 0 &&
+    height > 0 &&
+    crop.x === 0 &&
+    crop.y === 0 &&
+    crop.width === width &&
+    crop.height === height
+      ? null
+      : crop;
+  const before = normalize(current);
+  const after = normalize(next);
+  if (
+    before === after ||
+    (before &&
+      after &&
+      (before.unit ?? 'px') === (after.unit ?? 'px') &&
+      before.x === after.x &&
+      before.y === after.y &&
+      before.width === after.width &&
+      before.height === after.height)
+  ) {
+    return current;
+  }
+  return after;
 }
 
 export function calculateCenteredCrop(
@@ -236,6 +291,36 @@ export function moveCropInsideBounds(
     x: Math.round(bestX),
     y: Math.round(bestY),
   };
+}
+
+export function fitCropTowards<T extends Crop>(from: T, to: T, isValid: (crop: T) => boolean): T {
+  if (isValid(to)) {
+    return to;
+  }
+
+  let low = 0;
+  let high = 1;
+  let bestCrop = from;
+
+  for (let i = 0; i < 15; i++) {
+    const mid = (low + high) / 2;
+    const testCrop: T = {
+      ...from,
+      x: from.x + (to.x - from.x) * mid,
+      y: from.y + (to.y - from.y) * mid,
+      width: from.width + (to.width - from.width) * mid,
+      height: from.height + (to.height - from.height) * mid,
+    };
+
+    if (isValid(testCrop)) {
+      bestCrop = testCrop;
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  return bestCrop;
 }
 
 export function forceCropInBounds(crop: Crop, imageW: number, imageH: number, rotation: number): Crop {

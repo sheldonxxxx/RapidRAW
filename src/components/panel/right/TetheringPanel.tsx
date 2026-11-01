@@ -1,48 +1,48 @@
-import type { Option } from '../../ui/AppProperties';
-import type { UserPreset } from '../../../hooks/usePresets';
-import React, { useEffect, useCallback, useState, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import clsx from 'clsx';
 import {
+  Battery,
+  BatteryCharging,
+  BatteryFull,
+  BatteryLow,
+  BatteryMedium,
+  BatteryWarning,
   Camera,
-  RefreshCw,
-  Image as ImageIcon,
-  Grid3x3,
-  RotateCw,
   FlipHorizontal,
+  Focus,
+  Folder as FolderIcon,
+  Gauge,
+  Grid3x3,
+  Image as ImageIcon,
   Layers,
   Loader,
   Power,
-  Battery,
-  BatteryCharging,
-  BatteryLow,
-  BatteryMedium,
-  BatteryFull,
-  BatteryWarning,
-  Focus,
-  Gauge,
-  Folder as FolderIcon,
+  RefreshCw,
+  RotateCw,
   X,
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
-import { toast } from 'react-toastify';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import clsx from 'clsx';
+import { toast } from 'react-toastify';
 import { useShallow } from 'zustand/react/shallow';
+import type { UserPreset } from '../../../hooks/usePresets';
+import type { Option } from '../../ui/AppProperties';
 
-import Text from '../../ui/Text';
-import Button from '../../ui/Button';
-import Switch from '../../ui/Switch';
-import Dropdown from '../../ui/Dropdown';
-import { TextVariants, TextColors, TextWeights } from '../../../types/typography';
-import { Invokes, Preset } from '../../ui/AppProperties';
-import { useLibraryStore } from '../../../store/useLibraryStore';
-import { useEditorStore } from '../../../store/useEditorStore';
-import { usePresets } from '../../../hooks/usePresets';
 import { useContextMenu } from '../../../context/ContextMenuContext';
+import { usePresets } from '../../../hooks/usePresets';
+import { useEditorStore } from '../../../store/useEditorStore';
+import { useLibraryStore } from '../../../store/useLibraryStore';
+import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
+import { Invokes, Preset } from '../../ui/AppProperties';
+import Button from '../../ui/Button';
+import Dropdown from '../../ui/Dropdown';
+import Switch from '../../ui/Switch';
+import Text from '../../ui/Text';
 
+import { CameraSetting, useTetheringStore } from '../../../store/useTetheringStore';
+import { IconAperture, IconIso, IconShutter } from '../editor/ExifIcons';
 import CompositionOverlays from '../editor/overlays/CompositionOverlays';
 import type { OverlayMode } from '../right/CropPanel';
-import { IconAperture, IconShutter, IconIso } from '../editor/ExifIcons';
-import { useTetheringStore, CameraSetting } from '../../../store/useTetheringStore';
 
 const iconProps = {
   width: 14,

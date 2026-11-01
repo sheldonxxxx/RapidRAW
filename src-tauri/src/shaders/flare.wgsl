@@ -18,6 +18,21 @@ fn get_luma(c: vec3<f32>) -> f32 {
     return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
 }
 
+// Float32 final renders use explicit interpolation so streamed source samples
+// agree with the full-image path independently of sampler weight precision.
+fn sample_input_bilinear(uv: vec2<f32>) -> vec4<f32> {
+    let dims = vec2<i32>(textureDimensions(input_texture));
+    let p = uv * vec2<f32>(dims) - 0.5;
+    let base = vec2<i32>(floor(p));
+    let weight = fract(p);
+    let hi = dims - vec2<i32>(1);
+    let a = textureLoad(input_texture, clamp(base, vec2<i32>(0), hi), 0);
+    let b = textureLoad(input_texture, clamp(base + vec2<i32>(1, 0), vec2<i32>(0), hi), 0);
+    let c = textureLoad(input_texture, clamp(base + vec2<i32>(0, 1), vec2<i32>(0), hi), 0);
+    let d = textureLoad(input_texture, clamp(base + vec2<i32>(1), vec2<i32>(0), hi), 0);
+    return mix(mix(a, b, weight.x), mix(c, d, weight.x), weight.y);
+}
+
 fn srgb_to_linear(c: vec3<f32>) -> vec3<f32> {
     let cutoff = vec3<f32>(0.04045);
     let higher = pow((c + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));

@@ -4,6 +4,13 @@ Changes added by this fork to RapidRAW. Upstream application changes remain in t
 
 ## Unreleased
 
+### Editor and workflow updates
+
+- Integrate upstream black-and-white conversion and toning, Kelvin white balance, relighting, depth-based fog, nondestructive denoising and negative conversion, text and face-part masks, and persistent AI jobs.
+- Add a separate viewer, horizontal and side-by-side comparisons, configurable adjustment sections, image flags, additional translations, and optional Immich browsing and edit sync. Edits to photographs shared by other Immich users remain local.
+- Add print DPI, borders and aspect-ratio padding to desktop and MCP exports, along with source-aware AI and EXIF caches. Keep the fork's preview generation guards, precise final rendering, isolated MCP sessions and legacy destructive conversion commands.
+- Identify the optional upstream RapidRAW Cloud provider separately from this fork and describe when it receives image content. GPU inference availability remains model- and platform-dependent.
+
 ### File and export reliability
 
 - Validate batch copy, move, and rename destinations before writing, including sidecars. Reject conflicting destinations instead of overwriting another selected photograph or an existing edit, and keep associated-file deletion scoped to each selected folder.

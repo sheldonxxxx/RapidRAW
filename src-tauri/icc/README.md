@@ -1,0 +1,1 @@
+`sRGB-v2-magic.icc` is an upstream reference asset from [saucecontrol/Compact-ICC-Profiles](https://github.com/saucecontrol/Compact-ICC-Profiles) (commit abb1b6f), licensed CC0-1.0. It is a 736-byte sRGB IEC 61966-2-1 profile (description "sRGB"). This fork's exports embed the generated sRGB profile from [`color_profiles.rs`](../src/color_profiles.rs).

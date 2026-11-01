@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { exit } from '@tauri-apps/plugin-process';
-
-import { useProcessStore } from '../store/useProcessStore';
-import { useEditorStore } from '../store/useEditorStore';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Invokes } from '../components/ui/AppProperties';
 import { ExportSettings, Status } from '../components/ui/ExportImportProperties';
+import { useEditorStore } from '../store/useEditorStore';
+import { useProcessStore } from '../store/useProcessStore';
 import { debouncedSave } from './useEditorActions';
 
 /**
@@ -63,6 +62,8 @@ export function useExternalEditSession(handleImageSelect: (path: string) => void
       destinationType: 'customFolder',
       subfolder: '',
       resize: null,
+      border: null,
+      pad: null,
       stripGps: false,
       exportMasks: false,
       watermark: null,
@@ -70,6 +71,7 @@ export function useExternalEditSession(handleImageSelect: (path: string) => void
 
     setIsFinishing(true);
     useProcessStore.getState().setExportState({
+      destination: session.output,
       status: Status.Exporting,
       progress: { current: 0, total: 1 },
       errorMessage: '',

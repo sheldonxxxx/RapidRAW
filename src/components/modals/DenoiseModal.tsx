@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import { CheckCircle, XCircle, Loader2, Save, RefreshCw, ZoomIn, ZoomOut, Move, Grip } from 'lucide-react';
+import { listen } from '@tauri-apps/api/event';
 import { motion } from 'framer-motion';
+import { CheckCircle, Grip, Loader2, Move, RefreshCw, Save, XCircle, ZoomIn, ZoomOut } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { TextColors, TextVariants, TextWeights } from '../../types/typography';
 import Button from '../ui/Button';
 import Dropdown from '../ui/Dropdown';
 import Slider from '../ui/Slider';
 import Text from '../ui/Text';
-import { TextColors, TextVariants, TextWeights } from '../../types/typography';
-import { listen } from '@tauri-apps/api/event';
 
 interface DenoiseModalProps {
   isOpen: boolean;
